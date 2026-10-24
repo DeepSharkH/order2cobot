@@ -71,6 +71,23 @@ tests the 8 ports of a TP-Link LS108G one by one; the Jetson checks the link on
    estimates of height and x were unreliable — the operator could see the error directly.
 3. Use the operator's eyes: one "N mm left/right, M mm up/down" from them is cheaper than
    a blind 2-D search.
+4. **Say when an image is not good enough.** The fixed-camera frames were too dark and
+   noisy to judge the plug against the port, and I kept zooming instead of telling the
+   operator — they added a phone flash on their own. Whenever a frame is too dark,
+   blurry, occluded or low-res (D435 runs at 640x480 over USB2) to support the decision,
+   say so right away and ask for light / a camera move / a different view.
+
+## Second setup (camera moved to the switch's front-left, switch moved)
+
+- The switch moved ~13 cm to -x and ~7 cm to -y; yaw now ~1.8°. All of the earlier
+  geometry was void — re-surveyed with the wrist camera from z 0.34 m (image right = +x,
+  up = +y, ~2.04 px/mm), using the old switch position as the pixel->base reference.
+- New D435 view (low, diagonal from the front-left) shows the plug side-on next to the
+  ports; image-left ≈ base +y.
+- Tip-on-face scans (absolute x/z targets — relative moves let z sag 0.05 mm per peck):
+  face at tip y ≈ 0.169, switch left end x ≈ -0.4267, port 1 ≈ -0.400. 90 pecks along the
+  face at flange z 0.2088 found no opening: the face is flush, so a wrong height gives no
+  signal at all — get z right (operator / better image) before scanning x.
 
 ## Touch measurements that worked (method, not the numbers)
 
@@ -81,6 +98,54 @@ tests the 8 ports of a TP-Link LS108G one by one; the Jetson checks the link on
   Measured the face yaw and the left end to ~±0.5 mm in ~40 s for 45 pecks.
 - After probing the face with the plug **tip** (at port height) the corrected model
   agreed within 1.2 mm in y.
+
+## Where the session ended
+
+- No port was inserted. Last state: the tip rests on the face at port 1's estimated x
+  (flange x -0.400, y 0.1353, z 0.2088, tool down), with light guarded contact. The best
+  image (phone flash, dashboard overlays off) suggested the plug was ~4-5 mm too low and
+  1-2 mm toward port 2. The next step would have been a peck grid z -0.8..+6.8 mm,
+  x ±3 mm.
+- Dashboard overlays (robot skeleton, point cloud) are drawn into the camera stream;
+  turn them off with the websocket message `{"type": "set_overlays", "on": false}`
+  before judging images.
+- Too much light is also a problem: the phone flash overexposed the white shell.
+
+## A better way to know where the switch is (ideas for the next attempt)
+
+The core problem: port height and x were never known better than ±2-5 mm. The face is
+flush, so touch only gives "face/no face" and finds an opening only when x **and** z are
+both within ~0.3 mm. Cameras without calibration and at 640x480 could not close that gap.
+Options, cheapest/most robust first:
+
+1. **Measure the switch once with calipers** — port 1 centre from the left end, port
+   bottom above the table, pitch, opening size — and put the numbers in
+   `geometry.py`. This removes the image estimates that caused the 4-5 mm height error.
+   Then touch probing (left end, top edge or table, face + yaw — all tip-based) gives the
+   port centres to ~0.5 mm.
+2. **Fixture the switch**: a 3D-printed bracket/corner stop screwed or taped to the plate
+   so the switch always sits at the same pose. Find ports 1 and 8 once, store them, and
+   only re-check the face y by touch on later runs.
+3. **Fiducial on the switch**: an AprilTag/ArUco on the top or front next to the ports,
+   at a measured offset from port 1. Hand-eye-calibrate the Gemini wrist camera
+   (checkerboard flow already in the dashboard), then the tag pose in base gives all 8
+   port poses to ~0.5-1 mm even after the switch moves.
+4. **Port detection in the wrist camera**: tilt joint 4 (≈ -0.5 rad) so the camera looks
+   at the face, detect the 8 dark openings, fit a row with the known pitch, and servo the
+   plug to the fitted centre (needs hand-eye calibration or a reference image taken with
+   the plug seated once).
+5. **Compliance for the last millimetre**: `force_mode` with x/z compliant and a slow
+   spiral (0.3-0.4 mm pitch, ≤3 mm radius) while pushing 5-8 N, instead of rigid pecks.
+   Also yaw the plug to the face normal (TCP at the tip) before searching.
+6. **Faster loop**: each bridge step costs ~20 s. Pack sequences into one script, or ask
+   whether a long-running program talking to the Jetson over a URScript socket is
+   acceptable, for interactive control.
+7. **Camera hygiene**: D435 on USB3 (1280x720), side view at port height, steady diffuse
+   light (no phone flash on the white shell), overlays off; say early when a frame is
+   not good enough.
+
+Recommendation for the PoC: 1 + 2 (calipers + fixture, then touch-calibrate once) are
+enough to test all 8 ports quickly. Add 3 if the switch has to be placed freely.
 
 ## Insertion plan (not run yet)
 

@@ -79,15 +79,17 @@ def grid_search(c, d, n, nx, sx, z0, nz, sz, back, depth, fmax):
 end
 
 def peck_scan(step, n, back, depth, fmax, nfree):
-  # from a pose touching the face (+y): back off, shift by `step` (base vector), push +y again.
-  # Stops after `nfree` consecutive pecks that go deeper than back + 2 mm.
+  # from a pose touching the face (+y): back off, shift to start + i*step (absolute, so
+  # x/z do not drift), push +y again. Stops after `nfree` consecutive pecks that go
+  # deeper than back + 2 mm.
   zero_ftsensor()
   sleep(0.3)
+  s0 = get_actual_tcp_pose()
   free = 0
-  i = 0
-  while i < n:
+  i = 1
+  while i <= n:
     p = get_actual_tcp_pose()
-    movel(pose_add(p, p[step[0], step[1] - back, step[2], 0, 0, 0]), a=0.2, v=0.01)
+    movel(p[s0[0] + i*step[0], p[1] - back, s0[2] + i*step[2], s0[3], s0[4], s0[5]], a=0.2, v=0.01)
     t = peck([0, 1, 0], back + depth, fmax, 0.006)
     q = get_actual_tcp_pose()
     textmsg(str_cat(str_cat(str_cat("pk ", i), str_cat(" ", q[0])), str_cat(str_cat(" ", q[1]), str_cat(" ", q[2]))))
@@ -101,7 +103,5 @@ def peck_scan(step, n, back, depth, fmax, nfree):
     end
     i = i + 1
   end
-  p = get_actual_tcp_pose()
-  movel(pose_add(p, p[0, -0.004, 0, 0, 0, 0]), a=0.2, v=0.01)
 end
 '''
