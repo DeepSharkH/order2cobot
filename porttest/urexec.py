@@ -10,7 +10,7 @@ import sys
 import time
 from pathlib import Path
 
-sys.path.insert(0, '/home/lab/order2cobot')     # dashboard/ur_bridge.py lives in the main checkout
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from dashboard.ur_bridge import URBridge, BridgeError  # noqa: E402
 
 from porttest.urlib import LIB  # noqa: E402
@@ -18,8 +18,8 @@ from porttest.urlib import LIB  # noqa: E402
 APP = 'rj45_qa'
 STATE = Path(__file__).resolve().parent.parent / 'data' / 'urexec.json'
 
-# Hand-E (~0.9 kg) plus the plug shell; the CoG roughly 5 cm out along the tool axis
-PREAMBLE = 'set_target_payload(1.0, [0.0, 0.0, 0.05])\n' + LIB
+# Hand-E (~1 kg) + UR camera mount with the Gemini (480 g) + plug shell; CoG ~6 cm out
+PREAMBLE = 'set_target_payload(1.5, [0.0, 0.0, 0.06])\n' + LIB
 
 
 def call(b, tool, **args):
