@@ -218,3 +218,10 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Generated robot programs
+out/
+
+# Generated results
+results/
+datasets/

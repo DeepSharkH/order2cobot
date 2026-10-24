@@ -1,0 +1,14 @@
+# Qwen 3.8 Flash Next (AWQ INT4) on TUM's Morpheus server (OpenAI-compatible, vLLM)
+provider: openai
+model: cyankiwi/Qwen3.8-Flash-Next-AWQ-INT4
+base_url: https://morpheus.cit.tum.de/api/v1
+api_key_env: MORPHEUS_API_KEY
+client_name: qwen-task-builder   # connection name on the pendant; give it Adjust access
+params:                          # the "medium" variant
+  chat_template_kwargs:
+    enable_thinking: true
+    preserve_thinking: true
+  reasoning_effort: medium
+  # other variants:
+  #   off:   chat_template_kwargs: {enable_thinking: false}   (and drop reasoning_effort)
+  #   low / xhigh: same as above with reasoning_effort: low | xhigh

@@ -1,0 +1,7 @@
+# A local model served by Ollama (no API key)
+provider: openai
+model: qwen3:32b
+base_url: http://localhost:11434/v1
+client_name: ollama-task-builder
+params:
+  temperature: 0.2

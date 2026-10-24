@@ -1,0 +1,5 @@
+# UR robot reached through the AI Agent Bridge (MCP) and the read-only Robot API
+bridge_url: https://universal-robots/universal-robots/ai-agent-bridge/mcp/v1/   # keep the trailing slash
+robot_api_url: https://universal-robots/universal-robots/robot-api
+cert_path: ~/.config/ur3/robot-cert.pem   # the robot's self-signed certificate
+request_timeout_s: 120
