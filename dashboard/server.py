@@ -64,7 +64,7 @@ class Robot:
     def _loop(self):
         while True:
             try:
-                b = URBridge(self.cfg['bridge_url'], client_name='order2cobot-calib')
+                b = URBridge(self.cfg['bridge_url'], client_name='order2cobot-dashboard')
                 self.status = b.call('bridge_my_status').get('data', {})
                 self.dh = kin.dh_from_bridge(b.call('robot_get_kinematic_info')['data'])
                 self.error = None
