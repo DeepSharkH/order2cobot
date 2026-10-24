@@ -135,6 +135,36 @@ tests the 8 ports of a TP-Link LS108G one by one; the Jetson checks the link on
 - The UR AI Accelerator manual gives no mount offsets (only 480 g, M6 bolts, 5 Nm, and
   calibration via the URCap); the Gemini 335L series depth starts at ~0.17 m.
 
+## First successful port (session 4, 2026-10-24 21:43)
+
+Port 1 seated by the robot without hints: link up 1000 Mb/s full, 0 flaps.
+
+**How it was found:**
+- Ports: wrist-camera triangulation from 3 views shifted ±5 cm in x
+  (`porttest/port_survey.py`), with rays agreeing to ~0.1 mm. Pitch 14.56 mm, yaw -1.3°. x was
+  right; z from the dark-box centre was ~3 mm too low.
+- Plug height below the flange: guarded descent onto the checkerboard, whose surface z is known
+  from the calibrated camera. The plug centre line is 185.4 mm below the flange (this grip).
+- Face y: a vertical touch profile at a solid spot (the power-LED area) gives the face y, the
+  top edge (z ≈ 40 mm = plate + 25) and the band where the face is solid.
+- Grid of pecks (x ±2 mm, z 26-30.5 mm, 20 N) inside that band: entry at plug centre z 29.0 mm,
+  x as triangulated. Then push in at ≤40 N and 3 mm/s, and the link came up.
+
+**Pitfalls in this session:**
+- **F/T drift and cable spring:** the force reading drifts several N as the arm moves, and
+  the taut cable adds ~1.2 N per mm of forward travel. A single zero plus a 5-6 N threshold gave
+  false contacts mid-air ("jiggling without touching"). Re-zero at rest before every peck,
+  use 12-20 N, count only the reaction against the motion, and give the cable slack.
+- **Free travel ≠ port:** below the switch face the plug moves freely too. Only count travel
+  past the face as a hit inside a z band known to be on the face.
+- **Never end a program while pressing:** ending at 40 N in the port raised a protective
+  stop (C153). `urlib.insert` backs off 0.5 mm after seating. Clearing a protective stop
+  is the operator's job (the agent's unlock was blocked).
+- After a regrip, re-measure everything about the plug: tip reach and height changed by
+  10-20 mm.
+- The operator won't give alignment hints ("that's cheating"); setup help such as lighting,
+  Remote mode or cable slack is fine.
+
 ## A better way to know where the switch is (ideas for the next attempt)
 
 The core problem: port height and x were never known better than ±2-5 mm. The face is

@@ -30,12 +30,51 @@ def guarded(d, maxd, fmax, v):
   return hit
 end
 
+def guarded_axial(d, maxd, fmax, v):
+  # like guarded(), but only the reaction against the motion counts (cable pull sideways is ignored)
+  zero_ftsensor()
+  sleep(0.5)
+  p0 = get_actual_tcp_pose()
+  hit = False
+  while True:
+    speedl([d[0]*v, d[1]*v, d[2]*v, 0, 0, 0], 0.2, 0.008)
+    F = get_tcp_force()
+    if -(F[0]*d[0] + F[1]*d[1] + F[2]*d[2]) > fmax:
+      hit = True
+      break
+    end
+    if point_dist(get_actual_tcp_pose(), p0) > maxd:
+      break
+    end
+  end
+  stopl(1.0)
+  textmsg("contact ", hit)
+  textmsg("pose ", get_actual_tcp_pose())
+  textmsg("force ", get_tcp_force())
+  return hit
+end
+
+def insert(d, maxd, fmax, v):
+  # push the plug home along d, then back off 0.5 mm so the program never ends while pressing
+  # (ending at ~40 N into the port raised a protective stop, C153)
+  hit = guarded_axial(d, maxd, fmax, v)
+  p = get_actual_tcp_pose()
+  movel(pose_add(p, p[-0.0005*d[0], -0.0005*d[1], -0.0005*d[2], 0, 0, 0]), a=0.1, v=0.002)
+  textmsg("seated ", get_actual_tcp_pose())
+  return hit
+end
+
 def peck(d, maxd, fmax, v):
-  # guarded move without re-zeroing; returns the distance travelled (maxd = no contact)
+  # guarded move; the F/T sensor is re-zeroed at rest first (its reading drifts by several N
+  # when the arm moves between pecks). Returns the distance travelled (maxd = no contact).
+  sleep(0.2)
+  zero_ftsensor()
+  sleep(0.2)
   p0 = get_actual_tcp_pose()
   while True:
     speedl([d[0]*v, d[1]*v, d[2]*v, 0, 0, 0], 0.3, 0.008)
-    if fnorm(get_tcp_force()) > fmax:
+    F = get_tcp_force()
+    if -(F[0]*d[0] + F[1]*d[1] + F[2]*d[2]) > fmax:   # reaction against the motion only
       break
     end
     if point_dist(get_actual_tcp_pose(), p0) > maxd:
@@ -76,6 +115,23 @@ def grid_search(c, d, n, nx, sx, z0, nz, sz, back, depth, fmax):
   movel(pose_add(c, p[-0.01*n[0], -0.01*n[1], 0, 0, 0, 0]), a=0.2, v=0.01)
   textmsg("not found")
   return False
+end
+
+def profile(c, step, n, back, depth, fmax):
+  # pecks along +y from fixed absolute starts c + i*step - back*y (no creeping forward);
+  # reports the travel of each peck: < back + ~0.5 mm = face, ~ back + depth = free
+  zero_ftsensor()
+  sleep(0.3)
+  i = 0
+  while i < n:
+    s = pose_add(c, p[i*step[0], i*step[1] - back, i*step[2], 0, 0, 0])
+    movel(s, a=0.2, v=0.01)
+    t = peck([0, 1, 0], back + depth, fmax, 0.006)
+    F = get_tcp_force()
+    textmsg(str_cat(str_cat("pf ", i), str_cat(str_cat(" z ", s[2]), str_cat(str_cat(" t ", t), str_cat(" Fy ", F[1])))))
+    movel(s, a=0.2, v=0.01)
+    i = i + 1
+  end
 end
 
 def peck_scan(step, n, back, depth, fmax, nfree):
