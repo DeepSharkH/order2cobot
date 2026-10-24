@@ -1,5 +1,5 @@
 """Camera readers: RealSense D435 (fixed scene camera, color + aligned depth)
-and the Orbbec gripper camera over plain UVC (V4L2). Each runs in its own
+and the Orbbec gripper camera (Orbbec SDK with depth, else plain UVC color). Each runs in its own
 thread and keeps only the latest frame."""
 
 import math
@@ -206,6 +206,62 @@ class UVCCamera(Camera):
         return None
 
 
+
+class OrbbecCamera(UVCCamera):
+    """Gripper Gemini 335Lg through the Orbbec SDK: color + depth aligned to
+    color (every 1/depth_hz s), factory intrinsics unless calibrated ones exist."""
+
+    def _run(self):
+        import pyorbbecsdk as ob
+        w, h = self.cfg.get('size', [1280, 720])
+        pipe, conf = ob.Pipeline(), ob.Config()
+        cp = pipe.get_stream_profile_list(ob.OBSensorType.COLOR_SENSOR).get_video_stream_profile(
+            w, h, ob.OBFormat.RGB, self.cfg.get('fps', 30))
+        dp = pipe.get_stream_profile_list(ob.OBSensorType.DEPTH_SENSOR).get_default_video_stream_profile()
+        conf.enable_stream(cp)
+        conf.enable_stream(dp)
+        conf.set_frame_aggregate_output_mode(ob.OBFrameAggregateOutputMode.FULL_FRAME_REQUIRE)
+        pipe.start(conf)
+        try:
+            align = ob.AlignFilter(align_to_stream=ob.OBStreamType.COLOR_STREAM)
+            self.size = [w, h]
+            saved = self._saved_intrinsics()
+            if saved and saved.get('size') == self.size:
+                self.load_intrinsics(saved)
+            else:
+                p = pipe.get_camera_param()
+                i, d = p.rgb_intrinsic, p.rgb_distortion
+                self.K = np.array([[i.fx, 0, i.cx], [0, i.fy, i.cy], [0, 0, 1]])
+                self.dist = np.array([d.k1, d.k2, d.p1, d.p2, d.k3])
+                self.intrinsics_source = 'factory'
+            depth_dt = 1.0 / self.cfg.get('depth_hz', 5)
+            self.error = None
+            t0, n, t_depth, t_last = time.time(), 0, 0.0, time.time()
+            while not self._stop:
+                fs = pipe.wait_for_frames(200)
+                if fs is None:
+                    if time.time() - t_last > 5:
+                        raise RuntimeError('Gemini: no frames for 5 s')
+                    continue
+                t_last = time.time()
+                depth = None
+                if t_last - t_depth >= depth_dt:
+                    t_depth = t_last
+                    fa = align.process(fs)
+                    df = fa and fa.as_frame_set().get_depth_frame()
+                    if df is not None:
+                        depth = (np.frombuffer(df.get_data(), np.uint16).reshape(df.get_height(), df.get_width())
+                                 .astype(np.float32) * (df.get_depth_scale() / 1000.0))
+                c = fs.get_color_frame()
+                if c is None:
+                    continue
+                rgb = np.frombuffer(c.get_data(), np.uint8).reshape(c.get_height(), c.get_width(), 3)
+                self._put(cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR), depth)
+                n += 1
+                if time.time() - t0 > 2:
+                    self.fps, t0, n = n / (time.time() - t0), time.time(), 0
+        finally:
+            pipe.stop()
 def depth_to_cloud(color, depth, K, stride=4, max_range=2.0):
     """Subsampled colored point cloud in the camera optical frame."""
     d = depth[::stride, ::stride]

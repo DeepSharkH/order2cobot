@@ -5,7 +5,7 @@ Serves web/ and streams to each browser over one websocket (/ws):
   text   JSON {"type": "state", ...}            robot, cameras, calibration
   text   JSON {"type": "result", ...}           after a solve
   binary [u8 1][u8 cam_index] + JPEG            camera frame (0 fixed, 1 gripper)
-  binary [u8 2][u8 0][2 pad][u32 n] + n*3 f32 xyz + n*3 u8 rgb   fixed-cam cloud (fcam frame)
+  binary [u8 2][u8 cam_index][2 pad][u32 n] + n*3 f32 xyz + n*3 u8 rgb   cloud in that camera's optical frame
 The browser sends {"type": ...}: capture, delete_sample {id}, new_session,
 solve {opts}, set_overlays {on}, qa_test {port, phase}, qa_reset {port?}.
 
@@ -35,7 +35,7 @@ from . import base_align
 from . import calibration as cal
 from . import check_link
 from . import kinematics as kin
-from .cameras import RealSenseCamera, UVCCamera, depth_to_cloud, remove_outliers, table_pose
+from .cameras import OrbbecCamera, RealSenseCamera, UVCCamera, depth_to_cloud, remove_outliers, table_pose
 from .robot_model import UR3eSurface
 from .ur_bridge import URBridge
 
@@ -210,11 +210,11 @@ class App:
         self.robot = Robot(cfg['robot'])
         self.qa = PortQA(cfg.get('qa', {}))
         self.cams = [RealSenseCamera(cfg['fixed_camera']).start(),
-                     UVCCamera(cfg['gripper_camera'], self.result_file).start()]
+                     _gripper_cam_class()(cfg['gripper_camera'], self.result_file).start()]
         self.store = cal.SampleStore(ROOT / cfg['samples_dir'])
         self.det = [{} for _ in self.cams]           # latest detection per camera
         self.frames = [(0, None) for _ in self.cams]
-        self.cloud_msg = (0, None)
+        self.cloud_msgs = [(0, None) for _ in self.cams]
         self.fcam_table = None   # T_world_fcam with the table on z = 0 (until calibrated)
         self.overlays = True
         self.surface = UR3eSurface()
@@ -225,7 +225,8 @@ class App:
         self.message = ''
         for i in range(len(self.cams)):
             threading.Thread(target=self._vision_loop, args=(i,), daemon=True).start()
-        threading.Thread(target=self._cloud_loop, daemon=True).start()
+        for i in range(len(self.cams)):
+            threading.Thread(target=self._cloud_loop, args=(i,), daemon=True).start()
 
     # ── calibration-derived transforms ────────────────────────────────────
     def transforms(self):
@@ -432,8 +433,8 @@ class App:
         off = kin.fk(q, self.dh())[:3, 3] - nom[6][:3, 3]
         return np.array([F[:3, 3] for F in nom]) + off * np.linspace(0, 1, 7)[:, None]
 
-    def _cloud_loop(self):
-        cam = self.cams[0]
+    def _cloud_loop(self, idx):
+        cam = self.cams[idx]
         last = 0
         while True:
             time.sleep(1.0 / self.cfg.get('cloud_hz', 2))
@@ -443,9 +444,9 @@ class App:
             last = seq
             xyz, rgb = depth_to_cloud(color, depth, cam.K, self.cfg.get('cloud_stride', 4))
             xyz, rgb = remove_outliers(xyz, rgb, self.cfg.get('cloud_outlier_k', 8), self.cfg.get('cloud_outlier_std', 2.0))
-            if 'T_base_fcam' not in self.transforms():
+            if idx == 0 and 'T_base_fcam' not in self.transforms():
                 self.fcam_table = table_pose(xyz, self.fcam_table)
-            self.cloud_msg = (seq, struct.pack('<BBxxI', 2, 0, len(xyz)) + xyz.tobytes() + rgb.tobytes())
+            self.cloud_msgs[idx] = (seq, struct.pack('<BBxxI', 2, idx, len(xyz)) + xyz.tobytes() + rgb.tobytes())
 
     # ── actions ───────────────────────────────────────────────────────────
     def capture(self):
@@ -541,6 +542,15 @@ class App:
                 'qa': self.qa.state()}
 
 
+def _gripper_cam_class():
+    """Orbbec SDK (color + depth) when installed, else UVC color only."""
+    try:
+        import pyorbbecsdk  # noqa: F401
+        return OrbbecCamera
+    except ImportError:
+        return UVCCamera
+
+
 def _no_nan(o):
     """NaN/inf -> None: the browser's JSON.parse rejects them and drops the whole state."""
     if isinstance(o, float):
@@ -554,7 +564,7 @@ def _no_nan(o):
 
 async def _client_loop(ws, app, dt):
     sent = {}
-    sent_cloud = 0
+    sent_cloud = {}
     t_state = 0.0
     try:
         while not ws.closed:
@@ -566,10 +576,10 @@ async def _client_loop(ws, app, dt):
                 if payload is not None and sent.get(i) != seq:
                     sent[i] = seq
                     await ws.send_bytes(payload)
-            seq, payload = app.cloud_msg
-            if payload is not None and seq != sent_cloud:
-                sent_cloud = seq
-                await ws.send_bytes(payload)
+            for i, (seq, payload) in enumerate(app.cloud_msgs):
+                if payload is not None and sent_cloud.get(i) != seq:
+                    sent_cloud[i] = seq
+                    await ws.send_bytes(payload)
             await asyncio.sleep(0.01)
     except (ConnectionResetError, RuntimeError):
         pass

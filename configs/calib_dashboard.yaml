@@ -36,7 +36,7 @@ gripper_camera:            # Orbbec Gemini 335Lg on the gripper, color over UVC
   hfov_deg: 86             # only for the intrinsics guess before calibration
   # flange -> camera [rx, ry, rz, x, y, z] used to draw the frustum before the
   # hand-eye solve; a rough guess (camera beside the gripper, looking along the tool axis)
-  mount_guess: [0, 0, 0, 0.0, -0.07, 0.03]
+  mount_guess: [0, 0, 0, 0.0, -0.07, 0.117]   # z: board PnP height from the table (2026-10-24)
 
 samples_dir: data/calib
 result_file: configs/calibration/result.yaml

@@ -59,8 +59,13 @@ class Board:
         use the slow, accurate path.
         """
         if not fast:
-            ok, corners = cv2.findChessboardCornersSB(gray, (self.cols, self.rows), DET_FLAGS)
-            return corners.reshape(-1, 2).astype(np.float64) if ok else None
+            # small or steep boards (640x480 D435 across the table) need upsampling
+            for s in (1, 2, 3):
+                g = cv2.resize(gray, None, fx=s, fy=s, interpolation=cv2.INTER_CUBIC) if s > 1 else gray
+                ok, corners = cv2.findChessboardCornersSB(g, (self.cols, self.rows), DET_FLAGS)
+                if ok:
+                    return corners.reshape(-1, 2).astype(np.float64) / s
+            return None
         scale = min(1.0, max_width / gray.shape[1])
         small = cv2.resize(gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA) if scale < 1 else gray
         ok, corners = cv2.findChessboardCornersSB(small, (self.cols, self.rows), 0)

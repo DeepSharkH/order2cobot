@@ -7,6 +7,7 @@ import { OrbitControls } from './vendor/OrbitControls.js';
 import { CSS2DRenderer, CSS2DObject } from './vendor/CSS2DRenderer.js';
 import { TransformControls } from './vendor/TransformControls.js';
 import { UR3eModel } from './ur3e_model.js';
+import { HandEModel } from './hande_model.js';
 import { SwitchView } from './switch3d.js';
 
 const C = { bg: 0x111111, cream: 0xfef5da, brass: 0xc9a15d, grey: 0x8c8577, blue: 0x5b8fd6, red: 0xd2483c };
@@ -72,17 +73,10 @@ baseGroup.add(baseAxes);
 const flangeG = placed(baseGroup);
 flangeG.add(new THREE.AxesHelper(0.06));
 
-// simple two-finger gripper on the flange (body along flange z)
-const gripMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.7 });
-const gripBody = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.07, 24), gripMat);
-gripBody.rotation.x = Math.PI / 2;
-gripBody.position.z = 0.035;
-flangeG.add(gripBody);
-for (const s of [-1, 1]) {
-  const f = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.02, 0.05), gripMat);
-  f.position.set(s * 0.02, 0, 0.095);
-  flangeG.add(f);
-}
+// Robotiq Hand-E on the flange (coupler + body along flange z; fingers along x)
+const hande = new HandEModel();
+flangeG.add(hande.root);
+hande.load().catch((e) => console.error('Hand-E meshes failed to load', e));
 
 // checkerboard (board frame: OpenCV, z into the table)
 const boardG = placed(baseGroup);
@@ -172,11 +166,14 @@ const fcam = frustum(scene, C.grey, 'Fixed D435', GLYPH_DEPTH.fixed);
 const gcam = frustum(baseGroup, C.brass, 'Gripper cam', GLYPH_DEPTH.gripper);
 const FCAM_PLACEHOLDER = new THREE.Matrix4().makeRotationX(Math.PI).setPosition(0, -0.35, 0.9);
 
-// fixed-cam point cloud, in the fixed camera's frame
-const cloud = new THREE.Points(new THREE.BufferGeometry(),
-  new THREE.PointsMaterial({ size: 0.004, vertexColors: true, sizeAttenuation: true }));
-cloud.frustumCulled = false;
-fcam.g.add(cloud);
+// point clouds, each in its camera's optical frame (the gripper's rides on the arm)
+const clouds = [fcam, gcam].map((f, i) => {
+  const c = new THREE.Points(new THREE.BufferGeometry(),
+    new THREE.PointsMaterial({ size: i === 0 ? 0.004 : 0.002, vertexColors: true, sizeAttenuation: true }));
+  c.frustumCulled = false;
+  f.g.add(c);
+  return c;
+});
 
 // sample flange poses
 const samplesG = new THREE.Group();
@@ -281,7 +278,7 @@ function toggle(id, fn) {
   const b = $(id);
   b.onclick = () => { b.classList.toggle('on'); fn(b.classList.contains('on')); };
 }
-toggle('#btn-cloud', (on) => { cloud.visible = on; });
+toggle('#btn-cloud', (on) => { clouds.forEach((c) => { c.visible = on; }); });
 toggle('#btn-samples', (on) => { samplesG.visible = on; });
 toggle('#btn-fimg', (on) => {
   showFrustumImages = on;
@@ -496,6 +493,8 @@ function applyState(s) {
 }
 
 function applyCloud(buf) {
+  const cloud = clouds[new Uint8Array(buf, 1, 1)[0]];
+  if (!cloud) return;
   const n = new DataView(buf).getUint32(4, true);
   const xyz = new Float32Array(buf, 8, n * 3);
   const rgb = new Uint8Array(buf, 8 + n * 12, n * 3);

@@ -2,36 +2,52 @@ fits: {}
 n_samples: 0
 n_fixed: 0
 T_base_fcam:
-- - -0.7039092907241881
-  - -0.30977385913026506
-  - 0.639180621289251
-  - -0.6355373562175455
-- - -0.7039092907241882
-  - 0.1838856686348867
-  - -0.6860741733244816
-  - 0.270627600250708
-- - 0.09499168839609481
-  - -0.9328591625053821
-  - -0.34749152804840566
-  - 0.0956774107186756
+- - 0.013895044896269394
+  - 0.18356783008472088
+  - -0.9829088357957304
+  - 1.6674433987338728
+- - 0.9981047695824499
+  - 0.05638873528609374
+  - 0.024641011943504536
+  - 0.33060707098678094
+- - 0.05994828324560886
+  - -0.9813883850396958
+  - -0.18243640274101652
+  - 0.09433562692551756
 - - 0.0
   - 0.0
   - 0.0
   - 1.0
-T_base_board: null
+T_base_board:
+- - 0.9963110083075728
+  - -0.08581593514696612
+  - -4.80381945928943e-17
+  - 1.3213208610995566
+- - -0.08581593514696614
+  - -0.9963110083075728
+  - -3.018495306425653e-17
+  - 0.4247914964773191
+- - 3.455797316868069e-17
+  - -3.059075280789465e-17
+  - -1.0000000000000004
+  - 0.005234994083728461
+- - 0.0
+  - 0.0
+  - 0.0
+  - 1.0
 T_world_base:
-- - 1.0
+- - 0.9963110083075725
+  - -0.0858159351469661
   - 0.0
+  - -1.3324926399072483
+- - 0.0858159351469661
+  - 0.9963110083075725
   - 0.0
-  - 0.0
+  - -0.4916148295002532
 - - 0.0
-  - 1.0
-  - 0.0
-  - 0.0
-- - 0.0
   - 0.0
   - 1.0
-  - 0.0
+  - -0.005234994083728434
 - - 0.0
   - 0.0
   - 0.0
@@ -57,24 +73,24 @@ fixed_intrinsics:
   - 640
   - 480
 base_align:
-  visible_pts: 0
-  inlier_frac: 0.0
-  inlier_rms_mm: null
-  tilt_deg: 0.0
-  base_height_mm: 0.0
-  pnp_rms_px: null
-  plane_source: depth
-  seconds: 4.367655515670776
-  runner_up_inlier_frac: null
-  stamp: '2026-10-24T18:11:47'
+  visible_pts: 4874
+  inlier_frac: 0.1811653672548215
+  inlier_rms_mm: 5.5227870333923885
+  tilt_deg: 1.0589244493555876
+  base_height_mm: -9.22400328243569
+  pnp_rms_px: 0.2842905637479191
+  plane_source: board
+  seconds: 21.755414962768555
+  runner_up_inlier_frac: 0.17911366434140336
+  stamp: '2026-10-24T18:47:08'
   q:
   - -0.398
-  - -1.5382
-  - 1.8231
-  - -1.8734
+  - -1.5384
+  - 1.8226
+  - -1.8726
   - -1.5764
   - 2.7365
-stamp: '2026-10-24T18:11:47'
+stamp: '2026-10-24T18:47:08'
 board:
   cols: 8
   rows: 7
@@ -97,10 +113,10 @@ board:
     - 0.0
     - 1.0
 log:
-- board not fully visible (8x7); table plane from the depth
-- depth table offset 0.9mm; 6392 scene points
-- 'coarse search: 396 positions x 24 yaws, best 28.6mm mean dist'
-- "ICP: nan% of 0 visible model points within 1cm, rms \u2014mm, tilt 0.00deg, base\
-  \ z 0.9mm"
+- table plane from the board (pnp 0.28px)
+- depth table offset -5.2mm; 15651 scene points
+- 'coarse search: 972 positions x 24 yaws, best 26.3mm mean dist'
+- 'ICP: 18% of 4874 visible model points within 1cm, rms 5.5mm, tilt 1.06deg, base
+  z -14.5mm'
 - base snapped upright onto the table plane (slide it in the base editor if x/y/yaw
   are off)
