@@ -111,6 +111,30 @@ tests the 8 ports of a TP-Link LS108G one by one; the Jetson checks the link on
   before judging images.
 - Too much light is also a problem: the phone flash overexposed the white shell.
 
+## Gripper-camera hand-eye calibration (session 3)
+
+- Done without the AI Accelerator URCap, with the dashboard's own checkerboard solver run
+  offline: `porttest/handeye_capture.py` (orbit poses), `handeye_fix_q.py`,
+  `handeye_solve.py`. Result in `configs/calibration/handeye_gripper.yaml`: 13 samples,
+  0.42 px with the controller DH. Camera origin in the flange frame is (-40, 115, 100) mm,
+  with the optical axis within 2.3° of the tool axis.
+- **Stale joints:** the dashboard polls joints over its own bridge session with the same
+  client name (`order2cobot-calib`). When porttest reconnects, the dashboard's session
+  drops and it keeps serving old joints; its "robot still moving" check then passes on the
+  stale values. 7 of 12 samples had joints up to 1.4 rad off, which gave 160 px RMS.
+  Check the invariant (flange rotation angle == camera rotation angle per pair). Fix:
+  use the commanded poses, or give the dashboard its own client name.
+- Square size: a sweep of the bundle adjustment over the square size gives a sharp
+  minimum (robot motion is metric): **15.2 mm**, so the config's 15 mm was right. Twice the
+  RMS at 14 / 16.5 mm.
+- **Gemini depth is not trustworthy yet:** fresh (it moves 1:1 with the robot) but
+  ~27 cm beyond the board plane predicted by the calibration, and readings at the same
+  pose drifted 0.33 → 0.43 → 0.50 m over time. Check the camera depth settings (depth
+  work mode, disparity offset, D2C alignment) and verify with a ruler before using depth
+  for the switch.
+- The UR AI Accelerator manual gives no mount offsets (only 480 g, M6 bolts, 5 Nm, and
+  calibration via the URCap); the Gemini 335L series depth starts at ~0.17 m.
+
 ## A better way to know where the switch is (ideas for the next attempt)
 
 The core problem: port height and x were never known better than ±2-5 mm. The face is
