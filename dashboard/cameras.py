@@ -1,0 +1,266 @@
+"""Camera readers: RealSense D435 (fixed scene camera, color + aligned depth)
+and the Orbbec gripper camera over plain UVC (V4L2). Each runs in its own
+thread and keeps only the latest frame."""
+
+import math
+import threading
+import time
+from pathlib import Path
+
+import cv2
+import numpy as np
+
+
+class Camera:
+    name = ''
+
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.seq = 0
+        self.color = None
+        self.depth = None          # metres, aligned to color (or None)
+        self.depth_seq = 0
+        self.K = None
+        self.dist = np.zeros(5)
+        self.size = None
+        self.fps = 0.0
+        self.error = None
+        self.intrinsics_source = 'none'
+        self._stop = False
+
+    def latest(self):
+        with self.lock:
+            return self.seq, self.color, self.depth
+
+    def _put(self, color, depth=None):
+        """New color frame; depth=None keeps the last depth (it updates slower)."""
+        with self.lock:
+            self.seq += 1
+            self.color = color
+            if depth is not None:
+                self.depth = depth
+                self.depth_seq += 1
+
+    def start(self):
+        threading.Thread(target=self._loop, daemon=True, name=self.name).start()
+        return self
+
+    def _loop(self):
+        while not self._stop:
+            try:
+                self._run()
+            except Exception as e:     # unplugged, busy, ... retry
+                self.error = str(e)
+                time.sleep(2.0)
+
+    def info(self):
+        return {'name': self.name, 'ok': self.error is None and self.color is not None,
+                'error': self.error, 'size': self.size, 'fps': round(self.fps, 1),
+                'K': None if self.K is None else np.asarray(self.K).tolist(),
+                'intrinsics': self.intrinsics_source}
+
+
+def usb_present(vendor):
+    """Cheap sysfs check, so we never call into librealsense without a device:
+    its device queries hold the GIL for seconds and stall every other thread."""
+    for d in Path('/sys/bus/usb/devices').iterdir():
+        try:
+            if (d / 'idVendor').read_text().strip() == vendor:
+                return True
+        except OSError:
+            continue
+    return False
+
+
+class RealSenseCamera(Camera):
+    def __init__(self, cfg):
+        super().__init__()
+        self.cfg = cfg
+        self.name = cfg.get('label', 'Fixed D435')
+
+    def _run(self):
+        if not usb_present(self.cfg.get('usb_vendor', '8086')):
+            raise RuntimeError('D435 not on USB (re-plug it)')
+        import pyrealsense2 as rs
+        last_err = None
+        for w, h, fps in [tuple(m) for m in self.cfg.get('modes', [[1280, 720, 15], [640, 480, 15]])]:
+            pipe, conf = rs.pipeline(), rs.config()
+            if self.cfg.get('serial'):
+                conf.enable_device(str(self.cfg['serial']))
+            conf.enable_stream(rs.stream.color, w, h, rs.format.bgr8, fps)
+            conf.enable_stream(rs.stream.depth, min(w, 848) if w > 640 else w, 480 if w > 640 else h, rs.format.z16, fps)
+            try:
+                prof = pipe.start(conf)
+                break
+            except RuntimeError as e:
+                last_err = e
+        else:
+            raise RuntimeError(f'RealSense: no stream mode worked ({last_err})')
+        try:
+            i = prof.get_stream(rs.stream.color).as_video_stream_profile().get_intrinsics()
+            self.K = np.array([[i.fx, 0, i.ppx], [0, i.fy, i.ppy], [0, 0, 1]])
+            self.dist = np.array(i.coeffs[:5], float)
+            self.size = [i.width, i.height]
+            self.intrinsics_source = 'factory'
+            scale = prof.get_device().first_depth_sensor().get_depth_scale()
+            align = rs.align(rs.stream.color)
+            depth_dt = 1.0 / self.cfg.get('depth_hz', 5)
+            self.error = None
+            t0, n = time.time(), 0
+            t_last = t_depth = time.time()
+            while not self._stop:
+                # poll + sleep instead of wait_for_frames, which blocks with the GIL held
+                fr = pipe.poll_for_frames()
+                if not fr:
+                    if time.time() - t_last > 5:
+                        raise RuntimeError('D435: no frames for 5 s')
+                    time.sleep(0.005)
+                    continue
+                t_last = time.time()
+                depth = None
+                if t_last - t_depth >= depth_dt:       # aligning depth to color is the costly part
+                    t_depth = t_last
+                    fr = align.process(fr)
+                    d = fr.get_depth_frame()
+                    if d:
+                        depth = np.asanyarray(d.get_data()).astype(np.float32) * scale
+                c = fr.get_color_frame()
+                if not c:
+                    continue
+                self._put(np.asanyarray(c.get_data()).copy(), depth)
+                n += 1
+                if time.time() - t0 > 2:
+                    self.fps, t0, n = n / (time.time() - t0), time.time(), 0
+        finally:
+            pipe.stop()
+
+
+def find_uvc(name_match):
+    """First V4L2 node whose card name contains name_match and streams YUYV/MJPG."""
+    for p in sorted(Path('/sys/class/video4linux').glob('video*'), key=lambda p: int(p.name[5:])):
+        if name_match.lower() not in (p / 'name').read_text().lower():
+            continue
+        cap = cv2.VideoCapture(f'/dev/{p.name}', cv2.CAP_V4L2)
+        if not cap.isOpened():
+            continue
+        fcc = int(cap.get(cv2.CAP_PROP_FOURCC))
+        cap.release()
+        if ''.join(chr((fcc >> 8 * k) & 255) for k in range(4)) in ('YUYV', 'MJPG'):
+            return f'/dev/{p.name}'
+    return None
+
+
+class UVCCamera(Camera):
+    def __init__(self, cfg, intrinsics_file=None):
+        super().__init__()
+        self.cfg = cfg
+        self.name = cfg.get('label', 'Gripper cam')
+        self.intrinsics_file = intrinsics_file
+
+    def load_intrinsics(self, intr=None):
+        """Calibrated intrinsics if we have them, else a pinhole guess from the HFOV."""
+        if intr and intr.get('size') == self.size:
+            self.K, self.dist = np.array(intr['K']), np.array(intr['dist']).ravel()
+            self.intrinsics_source = 'calibrated'
+            return
+        w, h = self.size
+        f = w / 2 / math.tan(math.radians(self.cfg.get('hfov_deg', 86)) / 2)
+        self.K = np.array([[f, 0, w / 2], [0, f, h / 2], [0, 0, 1]])
+        self.dist = np.zeros(5)
+        self.intrinsics_source = 'guess (hfov)'
+
+    def _run(self):
+        dev = self.cfg.get('device') or find_uvc(self.cfg.get('match', 'Orbbec'))
+        if not dev:
+            raise RuntimeError('gripper camera not found')
+        cap = cv2.VideoCapture(dev, cv2.CAP_V4L2)
+        w, h = self.cfg.get('size', [1280, 720])
+        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'YUYV'))
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, w)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, h)
+        cap.set(cv2.CAP_PROP_FPS, self.cfg.get('fps', 15))
+        try:
+            ok, img = cap.read()
+            if not ok:
+                raise RuntimeError(f'{dev}: no frames')
+            self.size = [img.shape[1], img.shape[0]]
+            if self.K is None or self.intrinsics_source.startswith('guess'):
+                self.load_intrinsics(self._saved_intrinsics())
+            self.error = None
+            t0, n = time.time(), 0
+            while not self._stop:
+                ok, img = cap.read()
+                if not ok:
+                    raise RuntimeError(f'{dev}: read failed')
+                self._put(img)
+                n += 1
+                if time.time() - t0 > 2:
+                    self.fps, t0, n = n / (time.time() - t0), time.time(), 0
+        finally:
+            cap.release()
+
+    def _saved_intrinsics(self):
+        import yaml
+        if self.intrinsics_file and Path(self.intrinsics_file).exists():
+            return (yaml.safe_load(Path(self.intrinsics_file).read_text()) or {}).get('gripper_intrinsics')
+        return None
+
+
+def depth_to_cloud(color, depth, K, stride=4, max_range=2.0):
+    """Subsampled colored point cloud in the camera optical frame."""
+    d = depth[::stride, ::stride]
+    v, u = np.mgrid[0:depth.shape[0]:stride, 0:depth.shape[1]:stride]
+    m = (d > 0.1) & (d < max_range)
+    z = d[m]
+    x = (u[m] - K[0, 2]) * z / K[0, 0]
+    y = (v[m] - K[1, 2]) * z / K[1, 1]
+    rgb = color[::stride, ::stride][m][:, ::-1]
+    return np.c_[x, y, z].astype(np.float32), np.ascontiguousarray(rgb, dtype=np.uint8)
+
+
+
+def remove_outliers(xyz, rgb, k=8, std=2.0):
+    """Statistical outlier removal: drop points whose mean distance to their k
+    nearest neighbours (divided by depth, since the spacing grows with it) is
+    more than std sigmas above the average. Removes flying pixels at edges."""
+    if std <= 0 or len(xyz) <= k:
+        return xyz, rgb
+    from scipy.spatial import cKDTree
+    d, _ = cKDTree(xyz).query(xyz, k + 1, workers=-1)
+    score = d[:, 1:].mean(1) / xyz[:, 2]
+    keep = score < score.mean() + std * score.std()
+    return xyz[keep], rgb[keep]
+def table_pose(xyz, prev=None, iters=200, tol=0.01, rng=np.random.default_rng(0)):
+    """T_world_cam for an uncalibrated scene camera: world z = normal of the
+    dominant plane in the cloud (the table, facing the camera), origin where the
+    optical axis meets it, x along the camera's x. Keeps prev if no plane is found."""
+    if len(xyz) < 500:
+        return prev
+    sub = xyz[rng.choice(len(xyz), min(len(xyz), 2000), replace=False)].astype(np.float64)
+    best, best_n = None, 0
+    for _ in range(iters):
+        a, b, c = sub[rng.choice(len(sub), 3, replace=False)]
+        n = np.cross(b - a, c - a)
+        if np.linalg.norm(n) < 1e-9:
+            continue
+        n /= np.linalg.norm(n)
+        k = np.count_nonzero(np.abs((sub - a) @ n) < tol)
+        if k > best_n:
+            best, best_n = (n, a), k
+    if best is None or best_n < 0.2 * len(sub):
+        return prev
+    n, a = best
+    inl = xyz[np.abs((xyz - a) @ n) < tol]
+    centroid = inl.mean(0)                     # least-squares refit on the inliers
+    n = np.linalg.eigh(np.cov((inl - centroid).T))[1][:, 0]
+    if n @ centroid > 0:                       # normal toward the camera
+        n = -n
+    z = n
+    x = np.array([1.0, 0, 0]) - z[0] * z
+    x /= np.linalg.norm(x)
+    R_cam_world = np.c_[x, np.cross(z, x), z]
+    o = np.array([0, 0, 1.0]) * (centroid @ n) / n[2]   # optical axis hits the plane
+    T = np.eye(4)
+    T[:3, :3] = R_cam_world.T
+    T[:3, 3] = -R_cam_world.T @ o
+    return T

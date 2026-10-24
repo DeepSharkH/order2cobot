@@ -1,0 +1,106 @@
+fits: {}
+n_samples: 0
+n_fixed: 0
+T_base_fcam:
+- - -0.7039092907241881
+  - -0.30977385913026506
+  - 0.639180621289251
+  - -0.6355373562175455
+- - -0.7039092907241882
+  - 0.1838856686348867
+  - -0.6860741733244816
+  - 0.270627600250708
+- - 0.09499168839609481
+  - -0.9328591625053821
+  - -0.34749152804840566
+  - 0.0956774107186756
+- - 0.0
+  - 0.0
+  - 0.0
+  - 1.0
+T_base_board: null
+T_world_base:
+- - 1.0
+  - 0.0
+  - 0.0
+  - 0.0
+- - 0.0
+  - 1.0
+  - 0.0
+  - 0.0
+- - 0.0
+  - 0.0
+  - 1.0
+  - 0.0
+- - 0.0
+  - 0.0
+  - 0.0
+  - 1.0
+fixed_intrinsics:
+  K:
+  - - 617.6445922851562
+    - 0.0
+    - 328.8354797363281
+  - - 0.0
+    - 618.1095581054688
+    - 239.44027709960938
+  - - 0.0
+    - 0.0
+    - 1.0
+  dist:
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  size:
+  - 640
+  - 480
+base_align:
+  visible_pts: 0
+  inlier_frac: 0.0
+  inlier_rms_mm: null
+  tilt_deg: 0.0
+  base_height_mm: 0.0
+  pnp_rms_px: null
+  plane_source: depth
+  seconds: 4.367655515670776
+  runner_up_inlier_frac: null
+  stamp: '2026-10-24T18:11:47'
+  q:
+  - -0.398
+  - -1.5382
+  - 1.8231
+  - -1.8734
+  - -1.5764
+  - 2.7365
+stamp: '2026-10-24T18:11:47'
+board:
+  cols: 8
+  rows: 7
+  square: 0.015
+  T_board_world:
+  - - 1.0
+    - 0.0
+    - 0.0
+    - 0.0525
+  - - 0.0
+    - -1.0
+    - 0.0
+    - 0.045
+  - - 0.0
+    - 0.0
+    - -1.0
+    - 0.0
+  - - 0.0
+    - 0.0
+    - 0.0
+    - 1.0
+log:
+- board not fully visible (8x7); table plane from the depth
+- depth table offset 0.9mm; 6392 scene points
+- 'coarse search: 396 positions x 24 yaws, best 28.6mm mean dist'
+- "ICP: nan% of 0 visible model points within 1cm, rms \u2014mm, tilt 0.00deg, base\
+  \ z 0.9mm"
+- base snapped upright onto the table plane (slide it in the base editor if x/y/yaw
+  are off)

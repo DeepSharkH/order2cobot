@@ -1,0 +1,53 @@
+# Camera + UR3e calibration dashboard (dashboard/server.py)
+port: 8090
+state_hz: 10
+stream_width: 960          # JPEG width sent to the browser
+stream_hz: 30              # camera feeds to the browser
+detect_hz: 3               # live board detection (fast, downscaled); samples use full accuracy
+cloud_hz: 2
+cloud_stride: 4
+cloud_outlier_k: 8           # statistical outlier removal: neighbours per point
+cloud_outlier_std: 2.0       # drop points this many sigmas sparser than average (0 = off)
+
+robot:
+  bridge_url: https://192.168.2.12/universal-robots/ai-agent-bridge/mcp/v1/
+  poll_s: 0.05
+  use_refined_dh: true     # draw with the refined DH table once a solve produced one
+
+# Checkerboard in the middle of the table. Inner corners, not squares.
+# 7 x 8 inner corners and ~15 mm squares were measured with the D435 depth
+# (board partly out of view) — check with a ruler and fix here if needed.
+board:
+  cols: 8
+  rows: 7
+  square: 0.015
+
+fixed_camera:              # RealSense D435 above the table
+  label: Fixed D435
+  serial: "818312071128"
+  modes: [[1280, 720, 30], [640, 480, 30]]   # first that works (USB2 only gets 640x480)
+  depth_hz: 5              # depth aligned to color this often (point cloud, base alignment)
+
+gripper_camera:            # Orbbec Gemini 335Lg on the gripper, color over UVC
+  label: Gripper Gemini 335Lg
+  match: Orbbec            # first Orbbec V4L2 node that streams YUYV (was /dev/video6)
+  size: [1280, 720]
+  fps: 30
+  hfov_deg: 86             # only for the intrinsics guess before calibration
+  # flange -> camera [rx, ry, rz, x, y, z] used to draw the frustum before the
+  # hand-eye solve; a rough guess (camera beside the gripper, looking along the tool axis)
+  mount_guess: [0, 0, 0, 0.0, -0.07, 0.03]
+
+samples_dir: data/calib
+result_file: configs/calibration/result.yaml
+manual_base_file: configs/calibration/manual_base.yaml   # written by the base editor
+
+# Switch port QA (dashboard Port QA tab, dashboard/check_link.py). The robot
+# moves the cable from this Jetson port between the switch's ports.
+qa:
+  iface: enP7p1s0f0
+  ports: 8
+  timeout_s: 6.0           # time for the link to come up / drop
+  stable_s: 1.0            # the link must hold this long
+  min_speed: 1000          # Mb/s; 100 usually means a bad crimp or a half-seated plug
+  results_file: data/qa/ports.json
