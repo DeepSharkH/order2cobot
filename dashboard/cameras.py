@@ -211,6 +211,31 @@ class OrbbecCamera(UVCCamera):
     """Gripper Gemini 335Lg through the Orbbec SDK: color + depth aligned to
     color (every 1/depth_hz s), factory intrinsics unless calibrated ones exist."""
 
+    def _laser_on(self, ob, dev):
+        """Active stereo needs the IR projector: without it plain surfaces (plate, switch)
+        give no depth and repetitive texture (pegboard) mismatches. Force it on, log the state."""
+        P = ob.OBPropertyID
+        for prop, val in (('OB_PROP_LASER_CONTROL_INT', 1), ('OB_PROP_LASER_BOOL', True)):
+            pid = getattr(P, prop, None)
+            try:
+                if pid is not None and dev.is_property_supported(pid, ob.OBPermissionType.PERMISSION_READ_WRITE):
+                    (dev.set_int_property if prop.endswith('INT') else dev.set_bool_property)(pid, val)
+            except Exception as e:                       # SDK/firmware differences: keep streaming
+                print(f'gripper cam: {prop} not set: {e}')
+        info = []
+        for prop in ('OB_PROP_LASER_CONTROL_INT', 'OB_PROP_LASER_BOOL'):
+            try:
+                pid = getattr(P, prop)
+                info.append(f'{prop}=' + str(dev.get_int_property(pid) if prop.endswith('INT') else dev.get_bool_property(pid)))
+            except Exception:
+                pass
+        try:
+            info.append(f'preset={dev.get_current_preset_name()} of {list(dev.get_available_preset_list())}')
+        except Exception:
+            pass
+        self.depth_settings = ', '.join(info)
+        print('gripper cam depth settings:', self.depth_settings)
+
     def _run(self):
         import pyorbbecsdk as ob
         w, h = self.cfg.get('size', [1280, 720])
@@ -222,6 +247,7 @@ class OrbbecCamera(UVCCamera):
         conf.enable_stream(dp)
         conf.set_frame_aggregate_output_mode(ob.OBFrameAggregateOutputMode.FULL_FRAME_REQUIRE)
         pipe.start(conf)
+        self._laser_on(ob, pipe.get_device())
         try:
             align = ob.AlignFilter(align_to_stream=ob.OBStreamType.COLOR_STREAM)
             self.size = [w, h]
