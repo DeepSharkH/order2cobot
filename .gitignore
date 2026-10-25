@@ -227,3 +227,7 @@ out/
 # Generated results
 results/
 datasets/
+# local artifacts
+Log/
+.claude/worktrees/
+.deps/
