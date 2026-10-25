@@ -1,0 +1,13 @@
+# Claude CLI agent: one prompt through the logged-in `claude` CLI (claude.ai login, no API key),
+# streamed live and recorded under results/. Run with scripts/run_agent.py.
+# A relative cwd is resolved against this file's folder.
+model: claude-opus-5-5
+effort: high
+max_turns: 200
+timeout_s: 3600
+cwd: ../..                 # the repository root
+permission_mode: default   # in print mode, tools outside allowed_tools are denied
+allowed_tools: [Read, Glob, Grep, WebSearch, WebFetch]
+disallowed_tools: []
+stream_partial: true       # stream text as it is generated
+record_partial: false      # keep only full messages in the recorded events

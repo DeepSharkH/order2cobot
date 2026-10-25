@@ -1,6 +1,8 @@
-# Simple agent: one model builds one program on the robot, then it is saved as .urpx.
+# Simple agent: one model plans one program locally; it is then built and validated on the
+# robot in one pass and saved as .urpx.
 # File references are relative to this file; override the model with --llm.
 robot: ../robot.yaml
 llm: ../llm/claude_cli.yaml
 max_turns: 2000       # model turns before giving up
 timeout_s: 3600      # whole build, all model and tool turns
+repair_rounds: 2     # robot validation reports sent back to the model for a corrected draft

@@ -1,0 +1,47 @@
+# Ethernet (RJ45) experiment, unattended: the Claude CLI agent runs the rj45-insert skill in the
+# rj45-port-qa worktree with no permission prompts. Used by scripts/run_ethernet_exp.py; the
+# transcript and camera videos still go to this repo's results/.
+#
+# The worktree has the run history (data/runs, data/ports.yaml), the skill, the tool-log hook
+# (its .claude/settings.json is loaded) and a venv with the robot code's dependencies.
+model: claude-opus-5-5
+effort: high
+max_turns: 400
+timeout_s: 5400            # whole run
+cwd: /home/lab/order2cobot/.claude/worktrees/rj45-port-qa
+path: [/home/lab/order2cobot/.venv/bin]   # so `python -m porttest...` has scipy, requests, ...
+
+# Nobody can approve anything mid-run, so the skill's commands must be allowed up front: the
+# successful runs used shell variables, $(...), heredoc Python and background jobs, which
+# per-command rules cannot express. Denied rules win over allowed ones.
+permission_mode: default
+allowed_tools: [Bash, Read, Edit, Write, Glob, Grep, Skill, TodoWrite]
+disallowed_tools:
+  - Bash(rm -rf *)
+  - Bash(rm -fr *)
+  - Bash(rm -r *)
+  - Bash(sudo *)
+  - Bash(git push *)
+  - Bash(git reset *)
+  - Bash(git clean *)
+  - Bash(git checkout *)
+  - Bash(git restore *)
+  - Bash(git rebase *)
+  - Bash(git branch -D *)
+  - Edit(data/runs/**/*.jsonl)   # the run logs are append-only (rj45-insert skill)
+  - Write(data/runs/**/*.jsonl)
+  - WebFetch
+  - WebSearch
+# no MCP servers (no Gmail/Drive/...): the skill reaches the robot and dashboard from Python
+extra_args: [--strict-mcp-config]
+
+append_system_prompt: >-
+  This session runs unattended (claude -p) for a recorded experiment: there is no operator to
+  approve, answer or act during the run, and both cameras are already being recorded by the
+  caller, so do not start porttest.record. Where the skill says to ask the operator, or a
+  precondition fails, do not wait: leave the robot safe (no program pressing, flange TCP
+  restored), log it with porttest.runlog, close the run (telemetry stopped, runlog end and
+  trace) and report what is needed.
+
+stream_partial: true
+record_partial: false

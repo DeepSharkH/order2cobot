@@ -13,6 +13,8 @@ from agents.robot.config import RobotConfig
 class SimpleAgentConfig(AppModel):
     max_turns: int = Field(default=80, gt=0)
     timeout_s: float = Field(default=3600.0, gt=0)  # whole build, all model and tool turns
+    # times the robot's validation report goes back to the model for a corrected draft
+    repair_rounds: int = Field(default=2, ge=0)
     robot: RobotConfig
     llm: LLMConfig
 

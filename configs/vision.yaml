@@ -1,0 +1,33 @@
+# Workstation perception for the breadboard wire task (scripts/wire_from_cloud.py).
+# The fixed D435 is read through the calibration dashboard, which owns the camera.
+dashboard_url: http://127.0.0.1:8090
+camera: 0                      # 0 = fixed D435 (calibrated extrinsics), 1 = gripper cam
+depth_frames: 5                # depth frames averaged (median) per capture
+# Base pose in the world + fixed-camera pose, written by the dashboard's calibration
+scene_file: /home/lab/order2cobot/.claude/worktrees/rj45-port-qa/configs/calibration/scene.yaml
+
+# Base-frame search window for the table and the breadboard [m]
+work_area: {x: [-0.48, -0.18], y: [-0.10, 0.10]}
+
+board:
+  pitch: 0.00254
+  height_above_table: [0.005, 0.015]   # breadboard top lies this far above the table
+  min_rail_length: 0.04                # printed red/blue rail lines give the column axis
+  max_rail_spread_deg: 1.5             # rail directions must agree this well
+
+detection:
+  plane_tol: 0.0015            # point counts as board surface within this of the plane
+  object_height: [0.003, 0.045]  # object points above the board top (fingers hang higher)
+  object_touch_max: 0.008      # an object must reach down to this height (rejects the gripper)
+  object_min_points: 300      # depth-edge artefacts are thin lines of ~100 points
+  object_min_height: 0.010     # shorter blobs (tape folds) are not wires, but still block a target
+  object_rail_slack: 0.025     # objects may stand this far past the visible rail ends (under tape)
+  target_free_radius: 0.0025   # no foreign object point this close to the target hole
+  target_free_height: 0.012    # ... counting points up to this height above the board
+  target_seen_radius: 0.002    # board-surface points needed this close to the target hole
+  target_seen_min_points: 5
+  edge_margin: 0.002           # target hole must lie this far inside the board outline
+
+repeat:
+  captures: 3                  # independent captures per measure/apply
+  max_spread: 0.0005           # all wire positions must agree this well [m]
