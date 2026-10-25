@@ -21,6 +21,9 @@ qa_test {port, phase}, qa_reset {port?}.
 
 POST /api/claude {"prompt", "session"?, "mode"?}   Claude Code CLI on the subscription (claude_chat.py)
 
+GET /api/experiments[/{run}[/trace|/videos|/video/{file}]]   agent runs saved under results/
+    (experiments.py): videos and transcripts; config results_dir, experiments_cache
+
 GET /api/frame/0|1   latest full-resolution colour frame (PNG) of the fixed / gripper cam
 GET /api/depth/0|1   its aligned depth (.npy float32, metres, 0 = no reading)
 
@@ -49,6 +52,7 @@ from aiohttp import WSMsgType, web
 from . import calibration as cal
 from . import check_link
 from . import claude_chat
+from . import experiments
 from . import kinematics as kin
 from .cameras import OrbbecCamera, RealSenseCamera, UVCCamera, depth_to_cloud, remove_outliers
 from .ur_bridge import URBridge
@@ -680,6 +684,8 @@ def main():
     w.router.add_post('/api/qa/vlm', qa_vlm)
     w.router.add_post('/api/qa/{port}/{phase}', qa_post)
     w.router.add_routes(claude_chat.routes(ROOT))
+    w.router.add_routes(experiments.routes(ROOT / cfg.get('results_dir', 'results'),
+                                           ROOT / cfg.get('experiments_cache', 'data/cache/experiments')))
     w.router.add_static('/', WEB)
     port = a.port or cfg.get('port', 8090)
     print(f'calibration dashboard: http://localhost:{port}')

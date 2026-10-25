@@ -18,6 +18,7 @@
       <button data-tab="calib" class="on">Calibration</button>
       <button data-tab="qa">Port QA</button>
       <button data-tab="claude">Claude</button>
+      <button data-tab="exp">Experiments</button>
     </nav>
     <div class="status" id="status"></div>
   </header>
@@ -133,6 +134,26 @@
         <textarea id="cc-prompt" rows="3" placeholder="Ask Claude Code (Enter sends, Shift+Enter newline)"></textarea>
         <button id="cc-send" class="primary" type="submit">Send</button>
       </form>
+    </section>
+  </main>
+
+  <main class="exp-layout hidden" id="tab-exp">
+    <section class="section" id="exp-list">
+      <div class="section-head">
+        <h2>Experiments</h2>
+        <div class="legend" id="exp-dir"></div>
+        <div class="tools"><button id="exp-refresh">Refresh</button></div>
+      </div>
+      <div class="exp-grid" id="exp-grid"></div>
+    </section>
+    <section class="section hidden" id="exp-run">
+      <div class="section-head">
+        <h2 id="exp-title"></h2>
+        <div class="legend" id="exp-meta"></div>
+        <div class="tools"><button id="exp-back">All experiments</button></div>
+      </div>
+      <div class="exp-videos" id="exp-videos"></div>
+      <div class="exp-text" id="exp-text"></div>
     </section>
   </main>
 

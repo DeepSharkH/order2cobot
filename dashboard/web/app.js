@@ -466,13 +466,13 @@ document.addEventListener('keydown', (e) => {
 // ── tabs ────────────────────────────────────────────────────────────────────
 // one set of camera feeds, moved into whichever tab is showing
 function showTab(name) {
-  for (const t of ['calib', 'qa', 'claude']) $(`#tab-${t}`).classList.toggle('hidden', t !== name);
+  for (const t of ['calib', 'qa', 'claude', 'exp']) $(`#tab-${t}`).classList.toggle('hidden', t !== name);
   document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === name));
-  if (name !== 'claude') $(name === 'qa' ? '#qa-cams' : '#calib-cams').appendChild($('#feeds'));
-  history.replaceState(null, '', name === 'calib' ? location.pathname : `#${name}`);
+  if (name === 'calib' || name === 'qa') $(name === 'qa' ? '#qa-cams' : '#calib-cams').appendChild($('#feeds'));
+  if (name === 'exp') expShow(expOpen, expWithTrace);
+  else history.replaceState(null, '', name === 'calib' ? location.pathname : `#${name}`);
 }
 $('#tabs').onclick = (e) => { const b = e.target.closest('button'); if (b) showTab(b.dataset.tab); };
-if (location.hash === '#qa' || location.hash === '#claude') showTab(location.hash.slice(1));
 
 // ── port QA ─────────────────────────────────────────────────────────────────
 let qaSel = 1;
@@ -666,3 +666,276 @@ $('#cc-prompt').onkeydown = (e) => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('#cc-form').requestSubmit(); }
 };
 $('#cc-new').onclick = () => { ccSession = null; ccLog.textContent = ''; };
+
+// ── experiments ─────────────────────────────────────────────────────────────
+// agent runs under results/: a grid of runs; a run shows its camera videos, its final
+// output and, on request, the whole trace (text, tool calls and their results)
+let expOpen = null;               // run shown, or null for the grid
+let expWithTrace = false;         // open the run with its whole trace (#exp/<run>/trace)
+let expPoll = null;
+let expRun = null;                // detail of the open run
+
+const when = (iso) => {
+  const d = iso ? new Date(/[zZ]|[+-]\d\d:\d\d$/.test(iso) ? iso : `${iso}Z`) : null;
+  return d && !isNaN(d) ? d.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : '—';
+};
+const mmss = (s) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+
+// small Markdown subset: headings, lists, code blocks, bold, italics, inline code, paragraphs
+function md(text) {
+  const inline = (t) => esc(t)
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
+    .replace(/(^|[^*])\*([^*\s][^*]*)\*/g, '$1<i>$2</i>');
+  const out = [];
+  let list = null, para = [], code = null;
+  const flush = () => {
+    if (para.length) out.push(`<p>${para.map(inline).join('<br>')}</p>`);
+    para = [];
+    if (list) out.push(`</${list}>`);
+    list = null;
+  };
+  for (const line of String(text ?? '').split('\n')) {
+    if (code !== null) {
+      if (/^\s*```/.test(line)) { out.push(`<pre>${esc(code.join('\n'))}</pre>`); code = null; } else code.push(line);
+      continue;
+    }
+    if (/^\s*```/.test(line)) { flush(); code = []; continue; }
+    const h = line.match(/^(#{1,4})\s+(.*)/);
+    const li = line.match(/^\s*(?:([-*])|(\d+)\.)\s+(.*)/);
+    if (h) { flush(); out.push(`<h4>${inline(h[2])}</h4>`); } else if (li) {
+      const tag = li[1] ? 'ul' : 'ol';
+      if (para.length || list !== tag) flush();
+      if (!list) { out.push(`<${tag}>`); list = tag; }
+      out.push(`<li>${inline(li[3])}</li>`);
+    } else if (!line.trim()) flush();
+    else if (list && /^\s+/.test(line)) out[out.length - 1] = out[out.length - 1].replace(/<\/li>$/, ` ${inline(line.trim())}</li>`);
+    else { if (list) flush(); para.push(line); }
+  }
+  if (code !== null) out.push(`<pre>${esc(code.join('\n'))}</pre>`);
+  flush();
+  return out.join('');
+}
+
+async function getJSON(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+  return r.json();
+}
+
+function expShow(run, withTrace = false) {
+  expOpen = run;
+  expWithTrace = withTrace;
+  clearTimeout(expPoll);
+  $('#exp-list').classList.toggle('hidden', !!run);
+  $('#exp-run').classList.toggle('hidden', !run);
+  history.replaceState(null, '', run ? `#exp/${encodeURIComponent(run)}` : '#exp');
+  if (run) expLoadRun(run); else expLoadList();
+}
+
+async function expLoadList() {
+  const grid = $('#exp-grid');
+  try {
+    const { dir, runs } = await getJSON('/api/experiments');
+    $('#exp-dir').textContent = `${runs.length} runs · ${dir}`;
+    grid.innerHTML = runs.length ? runs.map((r) => {
+      const bad = r.error || (r.status && r.status !== 'success');
+      const chip = r.recording ? '<span class="chip quiet">Recording</span>'
+        : r.status ? `<span class="chip${bad ? ' bad' : ''}">${esc(r.status)}</span>` : '';
+      const has = [r.videos.length ? `${r.videos.length} videos` : null, r.transcript ? 'transcript' : null]
+        .filter(Boolean).join(' · ');
+      const nums = [r.duration_s ? `${mmss(r.duration_s)} min` : null, r.turns ? `${r.turns} turns` : null,
+        r.cost != null ? `$${fmt(r.cost)}` : null].filter(Boolean).join(' · ');
+      return `<button class="exp-card" data-run="${esc(r.run)}">
+        <div class="card-head"><h3>${esc(r.name || r.run)}</h3>${chip}</div>
+        <p class="exp-prompt">${esc(r.prompt || 'No transcript')}</p>
+        <div class="meta"><span><b>${esc(when(r.started_at))}</b></span><span>${esc(has)}</span>${nums ? `<span>${esc(nums)}</span>` : ''}</div>
+      </button>`;
+    }).join('') : '<p class="note">No runs with a transcript or videos yet.</p>';
+  } catch (e) {
+    grid.innerHTML = `<p class="msg err">Could not list the experiments: ${esc(e.message)}</p>`;
+  }
+}
+
+async function expLoadRun(run) {
+  $('#exp-title').textContent = run;
+  $('#exp-meta').textContent = '';
+  $('#exp-videos').innerHTML = '';
+  $('#exp-text').innerHTML = '<p class="note">Loading…</p>';
+  try {
+    expRun = await getJSON(`/api/experiments/${encodeURIComponent(run)}`);
+  } catch (e) {
+    $('#exp-text').innerHTML = `<p class="msg err">${esc(e.message)}</p>`;
+    return;
+  }
+  if (expOpen !== run) return;
+  const r = expRun;
+  $('#exp-title').textContent = r.name || run;
+  $('#exp-meta').textContent = [when(r.started_at), r.model, r.status,
+    r.duration_s ? `${mmss(r.duration_s)} min` : null, r.turns ? `${r.turns} turns` : null,
+    r.cost != null ? `$${fmt(r.cost)}` : null].filter(Boolean).join(' · ');
+  $('#exp-videos').classList.toggle('hidden', !r.videos.length);
+  $('#exp-videos').innerHTML = r.videos.map((v) => {
+    const cam = (r.recording_info?.cameras || []).find((c) => c.file === v);
+    return `<div class="exp-video" data-file="${esc(v)}">
+      <div class="exp-vbox"><div class="nosig">Checking video</div></div>
+      <div class="cap">${esc(cam?.name || v)}<span>${esc(v)}</span></div>
+    </div>`;
+  }).join('');
+  if (r.videos.length) expVideos(run);
+  if (!r.transcript) {
+    $('#exp-text').innerHTML = '<p class="note">No transcript for this run.</p>';
+    return;
+  }
+  $('#exp-text').innerHTML = `
+    <div class="exp-block">
+      <div class="exp-k">Prompt</div><pre class="exp-prompt-full">${esc(r.prompt)}</pre>
+      ${r.error ? `<div class="exp-k err">Error</div><pre>${esc(r.error)}</pre>` : ''}
+      <div class="exp-k">Final output</div>
+      <div class="exp-md">${r.final_output ? md(r.final_output) : '<p class="note">No final output.</p>'}</div>
+    </div>
+    <div class="exp-trace-head">
+      <button id="exp-trace-btn" class="primary">Show whole trace · ${r.steps} steps</button>
+    </div>
+    <div class="exp-trace" id="exp-trace"></div>`;
+  $('#exp-trace-btn').onclick = () => expTrace(run);
+  if (expWithTrace) expTrace(run);
+}
+
+// videos are converted to H.264 on the server the first time a run is opened
+async function expVideos(run) {
+  let st;
+  try {
+    st = await getJSON(`/api/experiments/${encodeURIComponent(run)}/videos`);
+  } catch (e) {
+    st = {};
+  }
+  if (expOpen !== run) return;
+  let pending = false;
+  for (const box of document.querySelectorAll('#exp-videos .exp-video')) {
+    const s = st[box.dataset.file] || { state: 'error', error: 'unknown' };
+    const vb = box.querySelector('.exp-vbox');
+    if (s.state === 'ready') {
+      if (!vb.querySelector('video')) {
+        vb.innerHTML = `<video controls preload="metadata" muted playsinline
+          src="/api/experiments/${encodeURIComponent(run)}/video/${encodeURIComponent(box.dataset.file)}"></video>`;
+        expSync();
+      }
+      continue;
+    }
+    pending = pending || s.state !== 'error';
+    const label = {
+      queued: 'Queued for conversion',
+      converting: `Converting for the browser · ${Math.round((s.progress || 0) * 100)} %`,
+      recording: 'Still recording',
+      error: `Cannot convert: ${s.error || ''}`,
+    }[s.state] || s.state;
+    vb.innerHTML = `<div class="nosig${s.state === 'error' ? ' err' : ''}">${esc(label)}</div>`;
+  }
+  if (pending) expPoll = setTimeout(() => expVideos(run), 2000);
+}
+
+// the cameras were recorded together: play, pause and seek them together
+function expSync() {
+  const vids = [...document.querySelectorAll('#exp-videos video')];
+  let busy = false;
+  const mirror = (src, fn) => {
+    if (busy) return;
+    busy = true;
+    for (const v of vids) if (v !== src) fn(v);
+    setTimeout(() => { busy = false; }, 50);
+  };
+  for (const v of vids) {
+    v.onplay = () => mirror(v, (o) => { o.currentTime = v.currentTime; o.play().catch(() => {}); });
+    v.onpause = () => mirror(v, (o) => o.pause());
+    v.onseeked = () => mirror(v, (o) => { if (Math.abs(o.currentTime - v.currentTime) > 0.3) o.currentTime = v.currentTime; });
+    v.onratechange = () => mirror(v, (o) => { o.playbackRate = v.playbackRate; });
+  }
+}
+
+function expSeek(at) {
+  const t = Date.parse(at);
+  for (const box of document.querySelectorAll('#exp-videos .exp-video')) {
+    const v = box.querySelector('video');
+    const cam = (expRun?.recording_info?.cameras || []).find((c) => c.file === box.dataset.file);
+    const t0 = Date.parse(cam?.started_at || expRun?.recording_info?.started_at || '');
+    if (v && !isNaN(t) && !isNaN(t0)) v.currentTime = Math.max(0, (t - t0) / 1000);
+  }
+  $('#exp-videos').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+const MAIN_ARG = { Bash: 'command', Read: 'file_path', Write: 'file_path', Edit: 'file_path', Glob: 'pattern',
+  Grep: 'pattern', WebFetch: 'url', WebSearch: 'query', Agent: 'description', Task: 'description', Skill: 'skill' };
+const resultText = (r) => (typeof r === 'string' ? r : Array.isArray(r)
+  ? r.map((b) => (b?.type === 'text' ? b.text : `[${b?.type || '?'}]`)).join('\n')
+  : r == null ? '' : JSON.stringify(r, null, 2));
+
+async function expTrace(run) {
+  const box = $('#exp-trace');
+  const btn = $('#exp-trace-btn');
+  if (box.childElementCount) {         // second click hides it again
+    box.innerHTML = '';
+    btn.textContent = `Show whole trace · ${expRun.steps} steps`;
+    history.replaceState(null, '', `#exp/${encodeURIComponent(run)}`);
+    return;
+  }
+  btn.textContent = 'Loading trace…';
+  let tr;
+  try {
+    tr = await getJSON(`/api/experiments/${encodeURIComponent(run)}/trace`);
+  } catch (e) {
+    btn.textContent = `Trace failed: ${e.message}`;
+    return;
+  }
+  if (expOpen !== run) return;
+  const t0 = Date.parse(tr.started_at || '');
+  const hasVideo = !!document.querySelector('#exp-videos video, #exp-videos .exp-video');
+  const stamp = (at) => {
+    const t = Date.parse(at || '');
+    const label = isNaN(t) || isNaN(t0) ? '--:--' : mmss(Math.max(0, (t - t0) / 1000));
+    return hasVideo && at ? `<button class="exp-t" data-at="${esc(at)}" title="Show this moment in the videos">${label}</button>`
+      : `<span class="exp-t">${label}</span>`;
+  };
+  box.innerHTML = tr.steps.map((s) => {
+    if (s.kind === 'text') {
+      return `<div class="exp-step">${stamp(s.at)}<div class="exp-md bot">${md(s.text)}</div></div>`;
+    }
+    if (s.kind === 'thinking') {
+      return s.text?.trim() ? `<div class="exp-step">${stamp(s.at)}<pre class="exp-think">${esc(s.text.trim())}</pre></div>` : '';
+    }
+    if (s.kind !== 'tool_use') return '';
+    const args = { ...(s.input || {}) };
+    const title = args.description;
+    delete args.description;
+    const key = MAIN_ARG[s.name];
+    let input = '';
+    if (key && typeof args[key] === 'string') { input = args[key]; delete args[key]; }
+    const rest = Object.entries(args).map(([k, v]) => `${k}: ${typeof v === 'string' ? v : JSON.stringify(v)}`);
+    input = [input, ...rest].filter(Boolean).join('\n');
+    const res = resultText(s.result).replace(/\s+$/, '') || '(no output)';
+    const lines = res.split('\n').length;
+    return `<div class="exp-step">${stamp(s.at)}<div class="exp-tool${s.is_error ? ' err' : ''}">
+      <div class="exp-tool-head"><b>${esc(s.name)}</b>${title ? `<span>${esc(title)}</span>` : ''}</div>
+      ${input ? `<pre class="exp-in">${esc(input)}</pre>` : ''}
+      <details${lines <= 6 ? ' open' : ''}><summary>${s.is_error ? 'Error' : 'Result'} · ${lines} lines</summary>
+        <pre class="exp-out">${esc(res)}</pre></details>
+    </div></div>`;
+  }).join('');
+  btn.textContent = 'Hide whole trace';
+  history.replaceState(null, '', `#exp/${encodeURIComponent(run)}/trace`);
+}
+
+{
+  $('#exp-grid').onclick = (e) => { const c = e.target.closest('.exp-card'); if (c) expShow(c.dataset.run); };
+  $('#exp-back').onclick = () => expShow(null);
+  $('#exp-refresh').onclick = () => expLoadList();
+  $('#exp-text').onclick = (e) => { const b = e.target.closest('button.exp-t'); if (b) expSeek(b.dataset.at); };
+}
+
+// open the tab named in the address: #qa, #claude, #exp, #exp/<run> or #exp/<run>/trace
+{
+  const h = decodeURIComponent(location.hash.slice(1));
+  const m = h.match(/^exp(?:\/([^/]+)(\/trace)?)?$/);
+  if (h === 'qa' || h === 'claude') showTab(h);
+  else if (m) { expOpen = m[1] || null; expWithTrace = !!m[2]; showTab('exp'); }
+}
