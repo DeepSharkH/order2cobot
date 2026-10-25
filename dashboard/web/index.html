@@ -32,45 +32,37 @@
           <span><i class="sw sw-gcam"></i>Gripper cam</span>
         </div>
         <div class="tools">
-          <button id="btn-edit" class="hidden" title="Place the robot base by hand">Edit base</button>
           <div class="seg" id="view-seg"><span class="lbl">View</span>
             <button data-view="free" class="on" title="Orbit freely (0)">Free</button>
             <button data-view="fixed" title="Look through the fixed D435 (1)">Fixed cam</button>
             <button data-view="gripper" title="Look through the gripper camera (2)">Gripper cam</button>
           </div>
-          <button id="btn-fimg" class="toggle hidden" title="Show each camera's live image on its glyph">Frustum images</button>
-          <button id="btn-cloud" class="toggle on" title="Point clouds from both cameras">Cloud</button>
-          <button id="btn-samples" class="toggle on hidden" title="Flange poses of the captured samples">Samples</button>
+          <button id="btn-cloud" class="toggle on" title="Depth clouds from both cameras">Cloud</button>
           <button id="btn-ovl" class="toggle on" title="Draw detections and the calibrated robot/board onto the feeds">Overlays</button>
           <button id="btn-view" title="Reset the view">Reset</button>
         </div>
       </div>
       <div id="viewport" class="viewport">
-        <div id="banner" class="banner hidden"></div>
         <div id="editor" class="editor hidden">
-          <div class="ed-title">Robot base<span id="ed-active"></span></div>
+          <div class="ed-title">Robot base</div>
           <div class="ed-row">
             <button data-mode="translate" class="on">Move<kbd>M</kbd></button>
             <button data-mode="rotate">Rotate<kbd>R</kbd></button>
           </div>
-          <div class="ed-size" id="ed-fields">
+          <div class="ed-size">
             <label>X <input type="number" step="1" data-k="x"></label>
             <label>Y <input type="number" step="1" data-k="y"></label>
-            <label>Z <input type="number" step="1" data-k="z"></label>
             <span>MM</span>
           </div>
           <div class="ed-size">
             <label>Yaw <input type="number" step="0.5" data-k="yaw"></label><span>DEG</span>
           </div>
-          <p class="ed-hint">Drag the arrows or the ring, or type values. World is the board centre (z up) once
-            calibrated, otherwise the grid. Line the drawn arm up with the real one in the point cloud and in the
-            camera overlays. A new Solve replaces the manual base.</p>
+          <p class="ed-hint">The base sits on the board plane (z = 0); world origin is the board centre.
+            Line the drawn arm up with the real one in the point clouds and the fixed-cam overlay.</p>
           <div class="ed-row ed-actions">
-            <button id="ed-calib" title="Drop the manual base and use the calibrated one">Use calibrated</button>
             <button id="ed-cancel">Cancel</button>
             <button id="ed-save" class="primary">Save</button>
           </div>
-          <div class="ed-msg" id="ed-msg"></div>
         </div>
       </div>
     </section>

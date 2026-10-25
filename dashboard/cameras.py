@@ -151,18 +151,13 @@ def find_uvc(name_match):
 
 
 class UVCCamera(Camera):
-    def __init__(self, cfg, intrinsics_file=None):
+    def __init__(self, cfg):
         super().__init__()
         self.cfg = cfg
         self.name = cfg.get('label', 'Gripper cam')
-        self.intrinsics_file = intrinsics_file
 
-    def load_intrinsics(self, intr=None):
-        """Calibrated intrinsics if we have them, else a pinhole guess from the HFOV."""
-        if intr and intr.get('size') == self.size:
-            self.K, self.dist = np.array(intr['K']), np.array(intr['dist']).ravel()
-            self.intrinsics_source = 'calibrated'
-            return
+    def guess_intrinsics(self):
+        """Pinhole guess from the HFOV (plain UVC has no factory intrinsics)."""
         w, h = self.size
         f = w / 2 / math.tan(math.radians(self.cfg.get('hfov_deg', 86)) / 2)
         self.K = np.array([[f, 0, w / 2], [0, f, h / 2], [0, 0, 1]])
@@ -184,8 +179,8 @@ class UVCCamera(Camera):
             if not ok:
                 raise RuntimeError(f'{dev}: no frames')
             self.size = [img.shape[1], img.shape[0]]
-            if self.K is None or self.intrinsics_source.startswith('guess'):
-                self.load_intrinsics(self._saved_intrinsics())
+            if self.K is None:
+                self.guess_intrinsics()
             self.error = None
             t0, n = time.time(), 0
             while not self._stop:
@@ -199,17 +194,10 @@ class UVCCamera(Camera):
         finally:
             cap.release()
 
-    def _saved_intrinsics(self):
-        import yaml
-        if self.intrinsics_file and Path(self.intrinsics_file).exists():
-            return (yaml.safe_load(Path(self.intrinsics_file).read_text()) or {}).get('gripper_intrinsics')
-        return None
-
-
 
 class OrbbecCamera(UVCCamera):
     """Gripper Gemini 335Lg through the Orbbec SDK: color + depth aligned to
-    color (every 1/depth_hz s), factory intrinsics unless calibrated ones exist."""
+    color (every 1/depth_hz s), factory intrinsics."""
 
     def _laser_on(self, ob, dev):
         """Active stereo needs the IR projector: without it plain surfaces (plate, switch)
@@ -251,15 +239,11 @@ class OrbbecCamera(UVCCamera):
         try:
             align = ob.AlignFilter(align_to_stream=ob.OBStreamType.COLOR_STREAM)
             self.size = [w, h]
-            saved = self._saved_intrinsics()
-            if saved and saved.get('size') == self.size:
-                self.load_intrinsics(saved)
-            else:
-                p = pipe.get_camera_param()
-                i, d = p.rgb_intrinsic, p.rgb_distortion
-                self.K = np.array([[i.fx, 0, i.cx], [0, i.fy, i.cy], [0, 0, 1]])
-                self.dist = np.array([d.k1, d.k2, d.p1, d.p2, d.k3])
-                self.intrinsics_source = 'factory'
+            p = pipe.get_camera_param()
+            i, d = p.rgb_intrinsic, p.rgb_distortion
+            self.K = np.array([[i.fx, 0, i.cx], [0, i.fy, i.cy], [0, 0, 1]])
+            self.dist = np.array([d.k1, d.k2, d.p1, d.p2, d.k3])
+            self.intrinsics_source = 'factory'
             depth_dt = 1.0 / self.cfg.get('depth_hz', 5)
             self.error = None
             t0, n, t_depth, t_last = time.time(), 0, 0.0, time.time()
@@ -288,6 +272,8 @@ class OrbbecCamera(UVCCamera):
                     self.fps, t0, n = n / (time.time() - t0), time.time(), 0
         finally:
             pipe.stop()
+
+
 def depth_to_cloud(color, depth, K, stride=4, max_range=2.0):
     """Subsampled colored point cloud in the camera optical frame."""
     d = depth[::stride, ::stride]
@@ -298,7 +284,6 @@ def depth_to_cloud(color, depth, K, stride=4, max_range=2.0):
     y = (v[m] - K[1, 2]) * z / K[1, 1]
     rgb = color[::stride, ::stride][m][:, ::-1]
     return np.c_[x, y, z].astype(np.float32), np.ascontiguousarray(rgb, dtype=np.uint8)
-
 
 
 def remove_outliers(xyz, rgb, k=8, std=2.0):
@@ -312,37 +297,3 @@ def remove_outliers(xyz, rgb, k=8, std=2.0):
     score = d[:, 1:].mean(1) / xyz[:, 2]
     keep = score < score.mean() + std * score.std()
     return xyz[keep], rgb[keep]
-def table_pose(xyz, prev=None, iters=200, tol=0.01, rng=np.random.default_rng(0)):
-    """T_world_cam for an uncalibrated scene camera: world z = normal of the
-    dominant plane in the cloud (the table, facing the camera), origin where the
-    optical axis meets it, x along the camera's x. Keeps prev if no plane is found."""
-    if len(xyz) < 500:
-        return prev
-    sub = xyz[rng.choice(len(xyz), min(len(xyz), 2000), replace=False)].astype(np.float64)
-    best, best_n = None, 0
-    for _ in range(iters):
-        a, b, c = sub[rng.choice(len(sub), 3, replace=False)]
-        n = np.cross(b - a, c - a)
-        if np.linalg.norm(n) < 1e-9:
-            continue
-        n /= np.linalg.norm(n)
-        k = np.count_nonzero(np.abs((sub - a) @ n) < tol)
-        if k > best_n:
-            best, best_n = (n, a), k
-    if best is None or best_n < 0.2 * len(sub):
-        return prev
-    n, a = best
-    inl = xyz[np.abs((xyz - a) @ n) < tol]
-    centroid = inl.mean(0)                     # least-squares refit on the inliers
-    n = np.linalg.eigh(np.cov((inl - centroid).T))[1][:, 0]
-    if n @ centroid > 0:                       # normal toward the camera
-        n = -n
-    z = n
-    x = np.array([1.0, 0, 0]) - z[0] * z
-    x /= np.linalg.norm(x)
-    R_cam_world = np.c_[x, np.cross(z, x), z]
-    o = np.array([0, 0, 1.0]) * (centroid @ n) / n[2]   # optical axis hits the plane
-    T = np.eye(4)
-    T[:3, :3] = R_cam_world.T
-    T[:3, 3] = -R_cam_world.T @ o
-    return T

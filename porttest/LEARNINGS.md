@@ -246,3 +246,20 @@ enough to test all 8 ports quickly. Add 3 if the switch has to be placed freely.
   touch reference). Tape the switch down.
 - After moving the switch, re-probe the top edge, left end and face yaw — every number in
   `porttest/geometry.py` belongs to the old setup.
+
+## Board-frame calibration (2026-10-25)
+
+The dashboard dropped hand-eye, sample capture, DH refinement and the depth-fit base
+alignment. World = checkerboard centre, z up; base = (x, y, yaw) on z = 0; gripper cam =
+base · FK · mount; fixed cam = board PnP. Stored in `configs/calibration/scene.yaml`.
+- Fixed D435 located from the board: 0.80 px over 8 frames. Its depth over the board fits
+  z = +1.7 mm with 0.3–0.8° tilt, so D435 depth and colour agree.
+- Gripper cam mount from one board view (with the old manual base): **the optical axis is
+  23.6° off the flange axis**, at (49, -20, 112) mm. The 10-24 hand-eye found 2.3°, so
+  the camera has been remounted or bumped. The photos show it tilted on the side arm. Redo
+  "Mount from board view" after setting the true base.
+- The Gemini depth is still wrong: along each ray, depth / board-plane distance = **1.44**
+  (D435: 0.99), and few depth points land on the board. This is the same problem as in
+  session 3: check the depth work mode and D2C alignment before using its cloud.
+- `porttest/locate.py` still reads `handeye_gripper.yaml` (the old mount), and
+  `handeye_capture.py` sent the dashboard's removed `capture` message.

@@ -11,16 +11,15 @@ cloud_outlier_std: 2.0       # drop points this many sigmas sparser than average
 
 robot:
   bridge_url: https://192.168.2.12/universal-robots/ai-agent-bridge/mcp/v1/
-  poll_s: 0.05
-  use_refined_dh: true     # draw with the refined DH table once a solve produced one
+  poll_s: 0.05             # FK uses the controller's DH table (bridge), nominal as fallback
 
 # Checkerboard in the middle of the table. Inner corners, not squares.
-# 7 x 8 inner corners and ~15 mm squares were measured with the D435 depth
-# (board partly out of view) — check with a ruler and fix here if needed.
+# It defines the world: origin at the board centre, x along the columns, z up.
+# 15.2 mm squares: best fit of the gripper-cam sweep (2026-10-24).
 board:
   cols: 8
   rows: 7
-  square: 0.015
+  square: 0.0152
 
 fixed_camera:              # RealSense D435 above the table
   label: Fixed D435
@@ -33,14 +32,12 @@ gripper_camera:            # Orbbec Gemini 335Lg on the gripper, color over UVC
   match: Orbbec            # first Orbbec V4L2 node that streams YUYV (was /dev/video6)
   size: [1280, 720]
   fps: 30
-  hfov_deg: 86             # only for the intrinsics guess before calibration
-  # flange -> camera [rx, ry, rz, x, y, z] used to draw the frustum before the
-  # hand-eye solve; a rough guess (camera beside the gripper, looking along the tool axis)
-  mount_guess: [0, 0, 0, 0.0, -0.07, 0.117]   # z: board PnP height from the table (2026-10-24)
+  hfov_deg: 86             # intrinsics guess for plain UVC only (the Orbbec SDK gives factory ones)
+  # flange -> camera optical frame [rx, ry, rz (rotvec), x, y, z (m)]. Gripper cam
+  # pose = base · FK · mount. From the 0.42 px hand-eye of 2026-10-24.
+  mount: [-0.0394, 0.0074, 0.0134, -0.0401, 0.1149, 0.0997]
 
-samples_dir: data/calib
-result_file: configs/calibration/result.yaml
-manual_base_file: configs/calibration/manual_base.yaml   # written by the base editor
+scene_file: configs/calibration/scene.yaml   # base x/y/yaw + fixed cam pose, written by the dashboard
 
 # Switch port QA (dashboard Port QA tab, dashboard/check_link.py). The robot
 # moves the cable from this Jetson port between the switch's ports.

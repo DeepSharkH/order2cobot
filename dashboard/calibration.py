@@ -1,4 +1,6 @@
-"""Checkerboard detection, sample storage and the calibration solver.
+"""Checkerboard detection + PnP (used by the dashboard), and the old joint
+hand-eye / DH solver (only used by the porttest scripts and tests; the
+dashboard no longer does hand-eye — see dashboard/server.py).
 
 Frames
   base     UR controller base frame (DH frame 0)
@@ -10,7 +12,7 @@ Frames
   world    board centre, z up (board rotated 180 deg about x); the dashboard's
            3D scene is drawn in this frame
 
-Unknowns, solved jointly by bundle adjustment over all samples
+Unknowns of the old solver, jointly by bundle adjustment over all samples
   T_flange_gcam   hand-eye of the gripper camera
   T_base_board    where the board lies in the robot base frame
   T_base_fcam     fixed camera extrinsics
@@ -22,9 +24,7 @@ Residuals are pixel reprojection errors of the board corners in both cameras
 how well robot kinematics + calibration explain what the cameras see.
 """
 
-import json
 import time
-from pathlib import Path
 
 import cv2
 import numpy as np
@@ -97,51 +97,6 @@ def solve_pnp(board, corners, K, dist):
     proj, _ = cv2.projectPoints(board.obj, rvec, tvec, K, dist)
     rms = float(np.sqrt(np.mean(np.sum((proj.reshape(-1, 2) - corners) ** 2, axis=1))))
     return T, rms
-
-
-# ── samples ─────────────────────────────────────────────────────────────────
-
-class SampleStore:
-    """One calibration session: data/calib/<stamp>/samples.json + images."""
-
-    def __init__(self, root):
-        self.root = Path(root)
-        self.root.mkdir(parents=True, exist_ok=True)
-        sessions = sorted(p for p in self.root.iterdir() if (p / 'samples.json').exists())
-        self.dir = sessions[-1] if sessions else None
-        self.samples = []
-        if self.dir:
-            self.samples = json.loads((self.dir / 'samples.json').read_text())
-        else:
-            self.new_session()
-
-    def new_session(self):
-        self.dir = self.root / time.strftime('%Y%m%d-%H%M%S')
-        self.dir.mkdir(parents=True, exist_ok=True)
-        self.samples = []
-        self._flush()
-
-    def add(self, q, images, detections):
-        """images/detections: {'gripper': bgr|None, 'fixed': bgr|None} / corners|None."""
-        idx = (max(s['id'] for s in self.samples) + 1) if self.samples else 0
-        s = {'id': idx, 'stamp': time.time(), 'q': [float(v) for v in q]}
-        for cam, img in images.items():
-            if img is not None:
-                name = f'{idx:03d}_{cam}.png'
-                cv2.imwrite(str(self.dir / name), img)
-                s[f'{cam}_image'] = name
-            c = detections.get(cam)
-            s[f'{cam}_corners'] = None if c is None else c.tolist()
-        self.samples.append(s)
-        self._flush()
-        return s
-
-    def remove(self, sid):
-        self.samples = [s for s in self.samples if s['id'] != sid]
-        self._flush()
-
-    def _flush(self):
-        (self.dir / 'samples.json').write_text(json.dumps(self.samples))
 
 
 # ── solver ──────────────────────────────────────────────────────────────────

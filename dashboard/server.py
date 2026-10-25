@@ -1,13 +1,23 @@
 """
 Camera + UR3e calibration dashboard — web server.
 
+World frame = the checkerboard: origin at the board centre, x along its
+columns, z up out of the table. Everything is placed in it:
+  fixed cam     T_world_fcam from the D435's view of the board (Locate button)
+  robot base    on the board plane (z = 0, upright): only x, y, yaw are set,
+                by hand in the base editor
+  gripper cam   base · forward kinematics · mount. The mount starts from
+                gripper_camera.mount in the config; "Mount from board view" sets
+                it from one still view of the board given the base — no hand-eye
+When the gripper cam sees the board, its board pose is compared with that chain.
+Saved in configs/calibration/scene.yaml.
+
 Serves web/ and streams to each browser over one websocket (/ws):
-  text   JSON {"type": "state", ...}            robot, cameras, calibration
-  text   JSON {"type": "result", ...}           after a solve
+  text   JSON {"type": "state", ...}            robot, cameras, scene
   binary [u8 1][u8 cam_index] + JPEG            camera frame (0 fixed, 1 gripper)
   binary [u8 2][u8 cam_index][2 pad][u32 n] + n*3 f32 xyz + n*3 u8 rgb   cloud in that camera's optical frame
-The browser sends {"type": ...}: capture, delete_sample {id}, new_session,
-solve {opts}, set_overlays {on}, qa_test {port, phase}, qa_reset {port?}.
+The browser sends {"type": ...}: locate_fixed, mount_from_view, set_base {x, y, yaw}, set_overlays {on},
+qa_test {port, phase}, qa_reset {port?}.
 
 Port QA for robot scripts (blocks until the link check finishes):
   GET  /api/qa                         all 8 ports + live link
@@ -31,12 +41,10 @@ import numpy as np
 import yaml
 from aiohttp import WSMsgType, web
 
-from . import base_align
 from . import calibration as cal
 from . import check_link
 from . import kinematics as kin
-from .cameras import OrbbecCamera, RealSenseCamera, UVCCamera, depth_to_cloud, remove_outliers, table_pose
-from .robot_model import UR3eSurface
+from .cameras import OrbbecCamera, RealSenseCamera, UVCCamera, depth_to_cloud, remove_outliers
 from .ur_bridge import URBridge
 
 cv2.setNumThreads(2)     # the detection, camera and robot threads share the CPU
@@ -53,9 +61,7 @@ class Robot:
         self.lock = threading.Lock()
         self.q = None
         self.q_stamp = 0.0
-        self.pose = None
         self.state = {}
-        self.status = {}
         self.dh = None
         self.error = None
         self.rate = 0.0
@@ -65,7 +71,6 @@ class Robot:
         while True:
             try:
                 b = URBridge(self.cfg['bridge_url'], client_name='order2cobot-dashboard')
-                self.status = b.call('bridge_my_status').get('data', {})
                 self.dh = kin.dh_from_bridge(b.call('robot_get_kinematic_info')['data'])
                 self.error = None
                 n, t0, i = 0, time.time(), 0
@@ -74,14 +79,8 @@ class Robot:
                     q = np.array([d[j] for j in kin.JOINT_NAMES])
                     with self.lock:
                         self.q, self.q_stamp = q, time.time()
-                    if i % 5 == 0:
-                        p = b.call('robot_get_pose')['data']
-                        self.pose = {'T': kin.pose_to_T(p['pose']['position'], p['pose']['orientation']),
-                                     'tcp': p.get('tcp', {}).get('name'),
-                                     'q': np.array([p['qNear'][j] for j in kin.JOINT_NAMES])}
                     if i % 20 == 0:
                         self.state = b.call('robot_get_state')['data']
-                        self.status = b.call('bridge_my_status').get('data', {})
                     i += 1
                     n += 1
                     if time.time() - t0 > 2:
@@ -198,69 +197,81 @@ class PortQA:
                 'cfg': {k: self.cfg.get(k, d) for k, d in (('timeout_s', 6.0), ('stable_s', 1.0), ('min_speed', 1000))}}
 
 
+def base_T(x, y, yaw):
+    """Robot base on the board plane: z = 0, upright, turned yaw [rad] about z."""
+    T = np.eye(4)
+    c, s = np.cos(yaw), np.sin(yaw)
+    T[:2, :2] = [[c, -s], [s, c]]
+    T[:2, 3] = x, y
+    return T
+
+
+def tilt_deg(R):
+    """Angle between a frame's z axis and world z."""
+    return float(np.degrees(np.arccos(np.clip(R[2, 2], -1, 1))))
+
+
 class App:
     def __init__(self, cfg):
         self.cfg = cfg
         b = cfg['board']
         self.board = cal.Board(b['cols'], b['rows'], b['square'])
-        self.result_file = ROOT / cfg['result_file']
-        self.result = yaml.safe_load(self.result_file.read_text()) if self.result_file.exists() else None
-        self.manual_file = ROOT / cfg.get('manual_base_file', 'configs/calibration/manual_base.yaml')
-        self.manual = yaml.safe_load(self.manual_file.read_text()) if self.manual_file.exists() else None
+        self.T_world_board = kin.inv(self.board.T_board_world)
+        self.scene_file = ROOT / cfg.get('scene_file', 'configs/calibration/scene.yaml')
+        self.scene = (yaml.safe_load(self.scene_file.read_text()) if self.scene_file.exists() else None) or {}
+        self.scene.setdefault('base', {'x': 0.0, 'y': 0.0, 'yaw_deg': 0.0})
+        self.mount = (np.array(self.scene['T_flange_gcam']) if self.scene.get('T_flange_gcam') is not None
+                      else kin.vec_to_T(np.array(cfg['gripper_camera']['mount'], float)))
         self.robot = Robot(cfg['robot'])
         self.qa = PortQA(cfg.get('qa', {}))
         self.cams = [RealSenseCamera(cfg['fixed_camera']).start(),
-                     _gripper_cam_class()(cfg['gripper_camera'], self.result_file).start()]
-        self.store = cal.SampleStore(ROOT / cfg['samples_dir'])
+                     _gripper_cam_class()(cfg['gripper_camera']).start()]
         self.det = [{} for _ in self.cams]           # latest detection per camera
         self.frames = [(0, None) for _ in self.cams]
         self.cloud_msgs = [(0, None) for _ in self.cams]
-        self.fcam_table = None   # T_world_fcam with the table on z = 0 (until calibrated)
+        self.plane = [None for _ in self.cams]       # depth on the board vs z = 0, per camera
         self.overlays = True
-        self.surface = UR3eSurface()
-        self._model_cache = (None, None)
-        self._ovl_cache = (None, None)
-        self.stream_ms = [0.0, 0.0]
         self.busy = None
         self.message = ''
         for i in range(len(self.cams)):
             threading.Thread(target=self._vision_loop, args=(i,), daemon=True).start()
-        for i in range(len(self.cams)):
             threading.Thread(target=self._cloud_loop, args=(i,), daemon=True).start()
 
-    # ── calibration-derived transforms ────────────────────────────────────
-    def transforms(self):
-        r = self.result or {}
-        T = {k: np.array(r[k]) for k in ('T_flange_gcam', 'T_base_board', 'T_base_fcam', 'T_world_base')
-             if r.get(k) is not None}
-        if self.manual and self.manual.get('active'):
-            Twb = np.array(self.manual['T_world_base'])
-            # the fixed cam (and its cloud) stays put in the world while the base is slid
-            if 'T_base_fcam' in T:
-                T['T_base_fcam'] = kin.inv(Twb) @ T.get('T_world_base', np.eye(4)) @ T['T_base_fcam']
-            T['T_world_base'] = Twb
-        return T
-
-    def base_source(self):
-        if self.manual and self.manual.get('active'):
-            return 'manual'
-        return 'calibrated' if self.result and self.result.get('T_world_base') else 'none'
-
-    def set_manual_base(self, T, active=True):
-        if T is None and self.manual:
-            T = self.manual['T_world_base']
-        if T is None:
-            return 'no manual base saved'
-        self.manual = {'T_world_base': np.asarray(T, float).tolist(), 'active': bool(active),
-                       'stamp': time.strftime('%Y-%m-%dT%H:%M:%S')}
-        self.manual_file.parent.mkdir(parents=True, exist_ok=True)
-        self.manual_file.write_text(yaml.safe_dump(self.manual, sort_keys=False))
-        return 'manual base saved' if active else 'using the calibrated base'
+    # ── poses in the world (board) frame ──────────────────────────────────
+    def T_world_base(self):
+        b = self.scene['base']
+        return base_T(b['x'], b['y'], np.radians(b['yaw_deg']))
 
     def dh(self):
-        if self.result and self.result.get('dh_refined') and self.cfg['robot'].get('use_refined_dh', True):
-            return np.array(self.result['dh_refined'])
         return self.robot.dh if self.robot.dh is not None else kin.UR3E_NOMINAL_DH
+
+    def cam_pose(self, idx, q=None):
+        """T_world_cam, or None if the camera can't be placed."""
+        if idx == 0:
+            T = self.scene.get('T_world_fcam')
+            return None if T is None else np.array(T)
+        if q is None:
+            q, _ = self.robot.joints()
+        return None if q is None else self.T_world_base() @ kin.fk(q, self.dh()) @ self.mount
+
+    def board_view(self, idx):
+        """T_world_cam from this camera's live view of the board, or None."""
+        p = self.det[idx].get('pnp')
+        return None if p is None else self.T_world_board @ kin.inv(p[0])
+
+    def gripper_check(self):
+        """Gripper cam: FK chain vs its live board view. The base that would make
+        them agree is reported too; with a right mount its z and tilt are ~0."""
+        d = self.det[1]
+        Tb, q = self.board_view(1), d.get('q')
+        if Tb is None or q is None:
+            return None
+        Tf = self.cam_pose(1, q)
+        dp, dr = kin.pose_error(Tf, Tb)
+        Wb = Tb @ kin.inv(kin.fk(q, self.dh()) @ self.mount)     # implied T_world_base
+        return {'dpos_mm': dp * 1000, 'drot_deg': np.degrees(dr),
+                'base': {'x': Wb[0, 3], 'y': Wb[1, 3], 'z_mm': Wb[2, 3] * 1000,
+                         'yaw_deg': np.degrees(np.arctan2(Wb[1, 0], Wb[0, 0])), 'tilt_deg': tilt_deg(Wb[:3, :3])}}
 
     # ── per-camera detection (rate-limited) + overlay + JPEG ──────────────
     def _detect_loop(self, idx):
@@ -275,9 +286,10 @@ class App:
             seq, img, _ = cam.latest()
             if img is not None and seq != last:
                 last = seq
+                q, _ = self.robot.joints()
                 gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
                 corners = self.board.detect(gray, fast=True)
-                d = {'seq': seq, 'stamp': time.time(), 'corners': corners, 'pnp': None,
+                d = {'seq': seq, 'stamp': time.time(), 'q': q, 'corners': corners, 'pnp': None,
                      'partial': self.det[idx].get('partial')}
                 if corners is not None:
                     d['partial'] = None
@@ -314,23 +326,11 @@ class App:
             ok, jpg = cv2.imencode('.jpg', out, [cv2.IMWRITE_JPEG_QUALITY, 75])
             if ok:
                 self.frames[idx] = (seq, bytes([1, idx]) + jpg.tobytes())
-            self.stream_ms[idx] = 0.9 * self.stream_ms[idx] + 0.1 * (time.time() - now) * 1000
-
-    def _cam_pose_in_base(self, idx, guess=False):
-        """T_base_cam for the current robot pose, if calibrated (or, with guess,
-        from the configured gripper-cam mount before calibration)."""
-        T = self.transforms()
-        if idx == 0:
-            return T.get('T_base_fcam')
-        q, _ = self.robot.joints()
-        if q is None:
-            return None
-        X = T.get('T_flange_gcam')
-        if X is None and guess:
-            X = kin.vec_to_T(np.array(self.cfg['gripper_camera'].get('mount_guess', [0, 0, 0, 0, 0, 0.05]), float))
-        return None if X is None else kin.fk(q, self.dh()) @ X
 
     def _draw(self, idx, img, d):
+        """Detected corners + board axes; then, from the scene calibration, the
+        robot's joint chain (cream) and the board corners (cyan rings) — both
+        should sit on the real ones."""
         cam = self.cams[idx]
         if d['corners'] is not None:
             cv2.drawChessboardCorners(img, (self.board.cols, self.board.rows),
@@ -339,99 +339,31 @@ class App:
                 T, _ = d['pnp']
                 rv, _ = cv2.Rodrigues(T[:3, :3])
                 cv2.drawFrameAxes(img, cam.K, cam.dist, rv, T[:3, 3], self.board.square * 3, 3)
-        T_base_cam = self._cam_pose_in_base(idx)
         q, _ = self.robot.joints()
-        if T_base_cam is None or cam.K is None:
+        Tw = self.cam_pose(idx, q)
+        if Tw is None or cam.K is None:
             return img
-        Ti = kin.inv(T_base_cam)
-        # robot skeleton from calibrated FK (projected into this camera)
-        if q is not None:
-            pts = self._skeleton(q)
-            P = (Ti[:3, :3] @ pts.T).T + Ti[:3, 3]
-            if np.all(P[:, 2] > 0.05):
-                uv = cal._project(P, cam.K, cam.dist).astype(int)
+        Ti = kin.inv(Tw)
+
+        def project(P):
+            P = (Ti[:3, :3] @ P.T).T + Ti[:3, 3]
+            return cal._project(P, cam.K, cam.dist).astype(int) if np.all(P[:, 2] > 0.05) else None
+
+        if q is not None and idx == 0:          # the gripper cam rides on the arm: no chain to see
+            Tb = self.T_world_base()
+            P = np.array([(Tb @ F)[:3, 3] for F in kin.fk_frames(q, self.dh())])
+            uv = project(P)
+            if uv is not None:
                 for a, b in zip(uv[:-1], uv[1:]):
                     cv2.line(img, tuple(a), tuple(b), (218, 245, 254), 3, cv2.LINE_AA)
                 for p in uv:
                     cv2.circle(img, tuple(p), 6, (60, 72, 210), -1, cv2.LINE_AA)
-        # robot surface model on the fixed cam: should cover the real arm
-        if idx == 0 and q is not None:
-            key = (tuple(np.round(q, 3)), Ti.tobytes(), img.shape)
-            if self._ovl_cache[0] != key:          # re-project only when the robot or calibration moves
-                P = self._model_points(q)
-                P = (Ti[:3, :3] @ P.T).T + Ti[:3, 3]
-                P = P[P[:, 2] > 0.05]
-                uv = cal._project(P, cam.K, cam.dist).astype(int) if len(P) else np.zeros((0, 2), int)
-                h, w = img.shape[:2]
-                ok = (uv[:, 0] >= 0) & (uv[:, 0] < w) & (uv[:, 1] >= 0) & (uv[:, 1] < h)
-                self._ovl_cache = (key, uv[ok])
-            uv = self._ovl_cache[1]
-            img[uv[:, 1], uv[:, 0]] = (93, 161, 201)
-        # predicted board corners from the calibration (cyan): should sit on the real ones
-        T = self.transforms()
-        if 'T_base_board' in T:
-            Y = T['T_base_board']
-            P = (Ti[:3, :3] @ ((Y[:3, :3] @ self.board.obj.T).T + Y[:3, 3]).T).T + Ti[:3, 3]
-            if np.all(P[:, 2] > 0.05):
-                for p in cal._project(P, cam.K, cam.dist).astype(int):
-                    cv2.circle(img, tuple(p), 4, (255, 220, 0), 1, cv2.LINE_AA)
+        Wb = self.T_world_board
+        uv = project((Wb[:3, :3] @ self.board.obj.T).T + Wb[:3, 3])
+        if uv is not None:
+            for p in uv:
+                cv2.circle(img, tuple(p), 4, (255, 220, 0), 1, cv2.LINE_AA)
         return img
-
-    def _model_points(self, q, n=3000):
-        key = tuple(np.round(q, 3))
-        if self._model_cache[0] != key:
-            P, _ = self.surface.points(q)
-            self._model_cache = (key, P[:: max(1, len(P) // n)])
-        return self._model_cache[1]
-
-    def align_base(self):
-        """Fixed camera + robot base from the D435 view of the board and the arm."""
-        cam = self.cams[0]
-        if cam.K is None or cam.error:
-            raise RuntimeError(f'fixed camera not ready ({cam.error})')
-        q1, _ = self.robot.joints()
-        if q1 is None:
-            raise RuntimeError('no joint data from the robot')
-        depths, last, t0 = [], 0, time.time()
-        while len(depths) < 10 and time.time() - t0 < 4:
-            _, color, depth = cam.latest()
-            seq = cam.depth_seq
-            if depth is not None and seq != last:
-                last = seq
-                depths.append(np.where(depth > 0, depth, np.nan))
-            time.sleep(0.02)
-        q2, _ = self.robot.joints()
-        if np.max(np.abs(q2 - q1)) > 2e-4:
-            raise RuntimeError('robot moved during the capture; hold still and retry')
-        with np.errstate(all='ignore'):
-            depth = np.nan_to_num(np.nanmedian(np.stack(depths), axis=0))   # 10-frame median: less depth noise
-        log = []
-        out = base_align.align(color, depth, cam.K, cam.dist, self.board, q2, self.surface, log.append)
-        np.savez_compressed(self.store.dir / f'base_align_{time.strftime("%H%M%S")}.npz',
-                            color=color, depth=depth, q=q2, K=cam.K)
-        r = dict(self.result or {'fits': {}, 'n_samples': 0, 'n_fixed': 0})
-        for k in ('T_base_fcam', 'T_base_board', 'T_world_base'):
-            r[k] = None if out[k] is None else out[k].tolist()   # no board in view: drop the stale board pose
-        r['fixed_intrinsics'] = {'K': cam.K.tolist(), 'dist': cam.dist.tolist(), 'size': cam.size}
-        r['base_align'] = {**out['stats'], 'stamp': time.strftime('%Y-%m-%dT%H:%M:%S'), 'q': q2.tolist()}
-        r['stamp'] = r['base_align']['stamp']
-        r['board'] = self.board.describe()
-        r['log'] = log
-        self.result_file.parent.mkdir(parents=True, exist_ok=True)
-        self.result_file.write_text(yaml.safe_dump(r, sort_keys=False))
-        self.result = r
-        if self.manual and self.manual.get('active'):
-            self.set_manual_base(None, active=False)
-        st = out['stats']
-        return (f'base aligned: {st["inlier_frac"] * 100:.0f}% model points within 1 cm, '
-                f'rms {base_align.fmt_mm(st["inlier_rms_mm"])} mm, tilt {st["tilt_deg"]:.1f}° — saved')
-
-    def _skeleton(self, q):
-        """Joint chain for drawing: nominal DH origins (they lie on the arm, unlike
-        the calibrated table's), shifted so the flange matches the calibrated FK."""
-        nom = kin.fk_frames(q, kin.UR3E_NOMINAL_DH)
-        off = kin.fk(q, self.dh())[:3, 3] - nom[6][:3, 3]
-        return np.array([F[:3, 3] for F in nom]) + off * np.linspace(0, 1, 7)[:, None]
 
     def _cloud_loop(self, idx):
         cam = self.cams[idx]
@@ -442,73 +374,102 @@ class App:
             if depth is None or seq == last or cam.K is None:
                 continue
             last = seq
+            q, _ = self.robot.joints()
             xyz, rgb = depth_to_cloud(color, depth, cam.K, self.cfg.get('cloud_stride', 4))
             xyz, rgb = remove_outliers(xyz, rgb, self.cfg.get('cloud_outlier_k', 8), self.cfg.get('cloud_outlier_std', 2.0))
-            if idx == 0 and 'T_base_fcam' not in self.transforms():
-                self.fcam_table = table_pose(xyz, self.fcam_table)
+            self.plane[idx] = self._board_plane(xyz, self.cam_pose(idx, q))
             self.cloud_msgs[idx] = (seq, struct.pack('<BBxxI', 2, idx, len(xyz)) + xyz.tobytes() + rgb.tobytes())
 
-    # ── actions ───────────────────────────────────────────────────────────
-    def capture(self):
-        """Store a sample once the arm has stopped (joints steady for 0.3 s)."""
-        q1, _ = self.robot.joints()
-        if q1 is None:
-            raise RuntimeError('no joint data from the robot')
-        time.sleep(0.3)
-        q2, _ = self.robot.joints()
-        if np.max(np.abs(q2 - q1)) > 2e-4:
-            raise RuntimeError('robot is moving; hold still and capture again')
-        imgs = {'fixed': self.cams[0].latest()[1], 'gripper': self.cams[1].latest()[1]}
-        # accurate full-resolution detection, once, on the frames taken after the robot stopped
-        dets = {k: None if im is None else self.board.detect(cv2.cvtColor(im, cv2.COLOR_BGR2GRAY))
-                for k, im in imgs.items()}
-        s = self.store.add(q2, imgs, dets)
-        seen = [k for k in ('gripper', 'fixed') if s[f'{k}_corners']]
-        return f'sample {s["id"]} stored (board seen by: {", ".join(seen) or "nobody"})'
+    def _board_plane(self, xyz, Tw):
+        """Plane fitted to the depth points over the board (in the world frame):
+        height at the board centre and tilt. Both ~0 when the camera is placed right."""
+        if Tw is None or len(xyz) == 0:
+            return None
+        P = (Tw[:3, :3] @ xyz.T).T + Tw[:3, 3]
+        hx, hy = (self.board.cols + 1) * self.board.square / 2, (self.board.rows + 1) * self.board.square / 2
+        P = P[(np.abs(P[:, 0]) < hx) & (np.abs(P[:, 1]) < hy)]
+        if len(P) < 30:
+            return None
+        P = P[np.abs(P[:, 2] - np.median(P[:, 2])) < 0.02]       # the board, not the arm above it
+        A = np.c_[P[:, 0], P[:, 1], np.ones(len(P))]
+        (a, b, c), *_ = np.linalg.lstsq(A, P[:, 2], rcond=None)        # z = a x + b y + c
+        return {'z_mm': float(c * 1000), 'tilt_deg': float(np.degrees(np.arctan(np.hypot(a, b)))),
+                'rms_mm': float(np.std(P[:, 2] - A @ [a, b, c]) * 1000), 'n': int(len(P))}
 
-    def solve(self, opts):
-        g, f = self.cams[1], self.cams[0]
-        if g.K is None:
-            raise RuntimeError('gripper camera not ready')
-        dh = self.robot.dh if self.robot.dh is not None else kin.UR3E_NOMINAL_DH
-        res = cal.solve(self.store.samples, self.board,
-                        {'K': g.K, 'dist': g.dist, 'size': g.size},
-                        {'K': f.K, 'dist': f.dist, 'size': f.size} if f.K is not None else None,
-                        dh, opts)
-        res['session'] = str(self.store.dir.relative_to(ROOT))
-        self.result_file.parent.mkdir(parents=True, exist_ok=True)
-        self.result_file.write_text(yaml.safe_dump(res, sort_keys=False))
-        self.result = res
-        if self.manual and self.manual.get('active'):
-            self.set_manual_base(None, active=False)
-        if res.get('gripper_intrinsics'):
-            g.load_intrinsics(res['gripper_intrinsics'])
-        return res
+    # ── actions ───────────────────────────────────────────────────────────
+    def _save_scene(self):
+        self.scene_file.parent.mkdir(parents=True, exist_ok=True)
+        self.scene_file.write_text(yaml.safe_dump(self.scene, sort_keys=False))
+
+    def _board_views(self, idx, n=8, timeout=6):
+        """Full-accuracy board views of a camera: [(T_world_cam, rms_px, q)]."""
+        cam = self.cams[idx]
+        if cam.K is None or cam.error:
+            raise RuntimeError(f'{cam.name} not ready ({cam.error})')
+        out, last, t0 = [], 0, time.time()
+        while len(out) < n and time.time() - t0 < timeout:
+            seq, img, _ = cam.latest()
+            q, _ = self.robot.joints()
+            if img is not None and seq != last:
+                last = seq
+                c = self.board.detect(cv2.cvtColor(img, cv2.COLOR_BGR2GRAY))
+                p = c is not None and cal.solve_pnp(self.board, c, cam.K, cam.dist)
+                if p:
+                    out.append((self.T_world_board @ kin.inv(p[0]), p[1], q))
+            time.sleep(0.05)
+        if len(out) < 3:
+            raise RuntimeError(f'{cam.name} does not see the whole board')
+        return out
+
+    @staticmethod
+    def _average(Ts):
+        T = kin.mean_T(Ts)
+        return T, max(kin.pose_error(T, t)[0] for t in Ts) * 1000
+
+    def locate_fixed(self):
+        """Fixed cam pose from its view of the board, averaged over several frames."""
+        views = self._board_views(0)
+        T, spread = self._average([v[0] for v in views])
+        rms = float(np.mean([v[1] for v in views]))
+        cam = self.cams[0]
+        self.scene['T_world_fcam'] = T.tolist()
+        self.scene['fcam'] = {'stamp': time.strftime('%Y-%m-%dT%H:%M:%S'), 'frames': len(views),
+                              'rms_px': rms, 'spread_mm': float(spread), 'K': cam.K.tolist(), 'size': cam.size}
+        self._save_scene()
+        return f'fixed cam located: {len(views)} frames, {rms:.2f} px, spread {spread:.1f} mm — saved'
+
+    def mount_from_view(self):
+        """Gripper cam mount from a still view of the board, given the base:
+        mount = (base · FK)^-1 · board view. Redo it after moving the base."""
+        views = self._board_views(1)
+        qs = np.array([v[2] for v in views])
+        if np.ptp(qs, axis=0).max() > 2e-4:
+            raise RuntimeError('robot moved during the capture; hold still and retry')
+        Tb = self.T_world_base()
+        M, spread = self._average([kin.inv(Tb @ kin.fk(q, self.dh())) @ T for T, _, q in views])
+        rms = float(np.mean([v[1] for v in views]))
+        self.mount = M
+        self.scene['T_flange_gcam'] = M.tolist()
+        self.scene['gcam'] = {'stamp': time.strftime('%Y-%m-%dT%H:%M:%S'), 'frames': len(views), 'rms_px': rms,
+                              'spread_mm': float(spread), 'q': qs[0].tolist(), 'base': dict(self.scene['base'])}
+        self._save_scene()
+        return f'gripper cam mount set: {len(views)} frames, {rms:.2f} px, spread {spread:.1f} mm — saved'
+
+    def set_base(self, x, y, yaw_deg):
+        self.scene['base'] = {'x': float(x), 'y': float(y), 'yaw_deg': float(yaw_deg)}
+        self._save_scene()
+        return f'base at {x * 1000:.0f}, {y * 1000:.0f} mm, yaw {yaw_deg:.1f}° — saved'
 
     # ── state for the browser ─────────────────────────────────────────────
     def state(self):
         r = self.robot
         q, q_stamp = r.joints()
-        T = self.transforms()
-        dh = self.dh()
         robot = {'connected': r.error is None and q is not None, 'error': r.error,
-                 'tier': r.status.get('tier'), 'mode': r.state.get('robotmode'),
-                 'control': r.state.get('controlmode'), 'safety': r.state.get('safetymode'),
-                 'rate': round(r.rate, 1), 'age': round(time.time() - q_stamp, 2) if q is not None else None}
+                 'mode': r.state.get('robotmode'), 'control': r.state.get('controlmode'),
+                 'rate': round(r.rate, 1), 'dh': 'controller' if r.dh is not None else 'nominal'}
         if q is not None:
-            frames = kin.fk_frames(q, dh)
             robot['q'] = q.tolist()
-            robot['flange'] = frames[-1].tolist()
-            if r.pose is not None:
-                ctrl = r.pose['T']
-                robot['tcp'] = r.pose['tcp']
-                robot['tcp_pose'] = ctrl.tolist()
-                pq = r.pose['q']
-                if r.dh is not None:
-                    robot['fk_err_ctrl'] = kin.pose_error(kin.fk(pq, r.dh), ctrl)
-                robot['fk_err_nominal'] = kin.pose_error(kin.fk(pq, kin.UR3E_NOMINAL_DH), ctrl)
-                if self.result and self.result.get('dh_refined'):
-                    robot['fk_err_refined'] = kin.pose_error(kin.fk(pq, np.array(self.result['dh_refined'])), ctrl)
+            robot['flange'] = kin.fk(q, self.dh()).tolist()     # in the base frame
         cams = []
         for i, c in enumerate(self.cams):
             d = self.det[i]
@@ -517,27 +478,20 @@ class App:
                              'rms': None if not d.get('pnp') else round(d['pnp'][1], 3),
                              'dist': None if not d.get('pnp') else float(np.linalg.norm(d['pnp'][0][:3, 3])),
                              'partial': d.get('partial')}
-            Tc = self._cam_pose_in_base(i, guess=True)
-            info['T_base_cam'] = None if Tc is None else Tc.tolist()
-            info['pose_calibrated'] = self._cam_pose_in_base(i) is not None
-            if i == 0 and self.fcam_table is not None:
-                info['T_world_cam_table'] = self.fcam_table.tolist()
+            Tw = self.cam_pose(i, q)
+            info['T_world_cam'] = None if Tw is None else Tw.tolist()
+            info['plane'] = self.plane[i]
             cams.append(info)
-        samples = []
-        for s in self.store.samples:
-            Tf = kin.fk(np.array(s['q']), dh)
-            samples.append({'id': s['id'], 'gripper': bool(s.get('gripper_corners')),
-                            'fixed': bool(s.get('fixed_corners')), 'flange': Tf.tolist()})
-        per = {p['id']: p['rms_px'] for p in (self.result or {}).get('per_sample', [])}
-        for s in samples:
-            s['rms'] = per.get(s['id'])
+        Tv = self.board_view(0)
+        cams[0]['live_vs_saved'] = None if Tv is None or self.scene.get('T_world_fcam') is None else dict(zip(
+            ('dpos_mm', 'drot_deg'), np.multiply(kin.pose_error(np.array(self.scene['T_world_fcam']), Tv), (1000, 57.2958))))
+        cams[0]['located'] = self.scene.get('fcam')
+        cams[1]['check'] = self.gripper_check()
+        cams[1]['mount'] = kin.T_to_vec(self.mount).tolist()
+        cams[1]['mount_set'] = self.scene.get('gcam')
         return {'type': 'state', 't': time.time(), 'robot': robot, 'cams': cams,
-                'board': self.board.describe(), 'base_source': self.base_source(),
-                'calib': {k: v.tolist() for k, v in T.items()},
-                'result': None if not self.result else {k: self.result.get(k) for k in (
-                    'stamp', 'n_samples', 'n_fixed', 'fits', 'dh_used', 'fk_refined_vs_controller',
-                    'fk_nominal_vs_controller_mm', 'gripper_intrinsics', 'dh_delta', 'log', 'session', 'base_align')},
-                'samples': samples, 'session': self.store.dir.name,
+                'board': self.board.describe(), 'base': self.scene['base'],
+                'T_world_base': self.T_world_base().tolist(),
                 'busy': self.busy, 'message': self.message, 'overlays': self.overlays,
                 'qa': self.qa.state()}
 
@@ -552,9 +506,10 @@ def _gripper_cam_class():
 
 
 def _no_nan(o):
-    """NaN/inf -> None: the browser's JSON.parse rejects them and drops the whole state."""
-    if isinstance(o, float):
-        return o if np.isfinite(o) else None
+    """NaN/inf -> None, numpy scalars -> float: the browser's JSON.parse rejects
+    NaN and drops the whole state."""
+    if isinstance(o, (float, np.floating)):
+        return float(o) if np.isfinite(o) else None
     if isinstance(o, dict):
         return {k: _no_nan(v) for k, v in o.items()}
     if isinstance(o, (list, tuple)):
@@ -591,12 +546,7 @@ async def _run_action(app, name, fn, *args):
         return
     app.busy = name
     try:
-        out = await asyncio.get_running_loop().run_in_executor(None, fn, *args)
-        app.message = out if isinstance(out, str) else (
-            f'solved: gripper {out["fits"][out["dh_used"]]["gripper_rms_px"]:.2f}px'
-            + (f', fixed {out["fits"][out["dh_used"]]["fixed_rms_px"]:.2f}px'
-               if out['fits'][out['dh_used']]['fixed_rms_px'] is not None else '')
-            + ' — saved')
+        app.message = await asyncio.get_running_loop().run_in_executor(None, fn, *args)
     except Exception as e:
         app.message = f'{name} failed: {e}'
     finally:
@@ -617,20 +567,12 @@ async def ws_handler(request):
             except json.JSONDecodeError:
                 continue
             t = req.get('type')
-            if t == 'capture':
-                asyncio.create_task(_run_action(app, 'capture', app.capture))
-            elif t == 'align_base':
-                asyncio.create_task(_run_action(app, 'align base', app.align_base))
-            elif t == 'solve':
-                asyncio.create_task(_run_action(app, 'solve', app.solve, req.get('opts') or {}))
-            elif t == 'delete_sample':
-                app.store.remove(int(req['id']))
-                app.message = f'sample {req["id"]} removed'
-            elif t == 'new_session':
-                app.store.new_session()
-                app.message = f'new session {app.store.dir.name}'
-            elif t == 'set_manual_base':
-                app.message = app.set_manual_base(req.get('T_world_base'), req.get('active', True))
+            if t == 'locate_fixed':
+                asyncio.create_task(_run_action(app, 'locate fixed cam', app.locate_fixed))
+            elif t == 'mount_from_view':
+                asyncio.create_task(_run_action(app, 'gripper cam mount', app.mount_from_view))
+            elif t == 'set_base':
+                app.message = app.set_base(float(req['x']), float(req['y']), float(req['yaw']))
             elif t == 'set_overlays':
                 app.overlays = bool(req.get('on'))
             elif t == 'qa_test':
