@@ -579,5 +579,26 @@
     ["E62", "F62"],
     ["E63", "F63"],
     ["E64", "F64"]
-  ]
+  ],
+  "geometry": {
+    "unit": "hole_pitch",
+    "column_positions": {
+      "A": 0,
+      "B": 1,
+      "C": 2,
+      "D": 3,
+      "E": 4,
+      "F": 8,
+      "G": 9,
+      "H": 10,
+      "I": 11,
+      "J": 12
+    },
+    "rows": {
+      "first": 1,
+      "last": 64,
+      "first_position": 0,
+      "spacing": 1
+    }
+  }
 }

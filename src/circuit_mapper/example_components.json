@@ -103,7 +103,8 @@
       "pins": [
         "1",
         "2"
-      ]
+      ],
+      "pin_spacing": 1
     },
     {
       "part_id": "capacitor_electrolytic_10uf",
@@ -117,7 +118,8 @@
       "pins": [
         "positive",
         "negative"
-      ]
+      ],
+      "pin_spacing": 1
     },
     {
       "part_id": "led_red_gap_0",
@@ -253,7 +255,8 @@
             ]
           ]
         }
-      ]
+      ],
+      "pin_spacing": 1
     },
     {
       "part_id": "pushbutton_normally_open",
@@ -281,7 +284,8 @@
             ]
           ]
         }
-      ]
+      ],
+      "pin_spacing": 1
     },
     {
       "part_id": "switch_spdt",
@@ -315,7 +319,8 @@
             ]
           ]
         }
-      ]
+      ],
+      "pin_spacing": 1
     },
     {
       "part_id": "transistor_npn_generic",
@@ -357,7 +362,8 @@
         "end_1",
         "wiper",
         "end_2"
-      ]
+      ],
+      "pin_spacing": 1
     },
     {
       "part_id": "diode_generic",
@@ -367,7 +373,8 @@
       "pins": [
         "anode",
         "cathode"
-      ]
+      ],
+      "pin_spacing": 1
     },
     {
       "part_id": "jumper_rigid_1_pitch",
@@ -430,8 +437,8 @@
       "pin_spacing": 3
     },
     {
-      "part_id": "jumper_rigid_center_gap",
-      "name": "Rigid jumper - center gap",
+      "part_id": "jumper_rigid_4_pitch",
+      "name": "Rigid jumper - 3 gap",
       "type": "jumper",
       "parameters": {
         "rigid": true,
@@ -447,7 +454,7 @@
           "2"
         ]
       ],
-      "pin_spacing": "center_gap"
+      "pin_spacing": 4
     },
     {
       "part_id": "power_connector_2pin",
@@ -458,7 +465,7 @@
         "positive",
         "negative"
       ],
-      "pin_spacing": "1"
+      "pin_spacing": 1
     }
   ]
 }

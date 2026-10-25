@@ -1,0 +1,23 @@
+{
+  "circuit_id": "led_circuit",
+  "board_id": "breadboard_830",
+  "status": "OPTIMAL",
+  "pin_to_hole": {
+    "J_POWER.positive": "E56",
+    "J_POWER.negative": "E57",
+    "R1.1": "A59",
+    "R1.2": "A58",
+    "D1.anode": "B58",
+    "D1.cathode": "B57"
+  },
+  "jumpers": [
+    {
+      "part_id": "jumper_rigid_3_pitch",
+      "pins": {
+        "1": "B56",
+        "2": "B59"
+      },
+      "net": "VCC"
+    }
+  ]
+}
