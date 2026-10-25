@@ -1,0 +1,390 @@
+<title>RJ45 Grip Shell</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;600&display=swap">
+<style>
+/* Layout: main stage (3D model or dimensioned drawing, tabbed) with a compact spec rail; rail stacks below on phones */
+:root {
+  --bg: #eef1f3; --panel: #ffffff; --fg: #1b2228; --muted: #5d6973; --line: #d3dae0;
+  --part: #e2711d; --cover: #2f8f83; --accent: #1f6fb2; --paper: #fbfcfd; --dim: #1f6fb2;
+  --sans: "IBM Plex Sans", system-ui, sans-serif; --mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #12171b; --panel: #1a2127; --fg: #e3e8ec; --muted: #8e9aa4; --line: #2c363e;
+  --part: #f08a3c; --cover: #4fb3a5; --accent: #5aa7e6; --paper: #151b20; --dim: #6cb4ee; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #12171b; --panel: #1a2127; --fg: #e3e8ec; --muted: #8e9aa4; --line: #2c363e;
+  --part: #f08a3c; --cover: #4fb3a5; --accent: #5aa7e6; --paper: #151b20; --dim: #6cb4ee; color-scheme: dark }
+html, body { height: 100%; }
+body { background: var(--bg); color: var(--fg); font-family: var(--sans); }
+.app { height: 100%; display: grid; grid-template-columns: minmax(0,1fr) 300px; }
+.stage { position: relative; min-height: 0; min-width: 0; display: flex; flex-direction: column; }
+.tabs { display: flex; gap: 4px; padding-block: 10px 0; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: 16px; border-bottom: 1px solid var(--line); }
+.tab { border: 1px solid transparent; border-bottom: 0; border-radius: 4px 4px 0 0; background: transparent; padding: 8px 14px; margin-bottom: -1px; }
+.tab[aria-selected="true"] { background: var(--paper); border-color: var(--line); color: var(--accent); }
+.pane { position: relative; flex: 1; min-height: 0; }
+#view canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+.hint { position: absolute; left: max(16px, env(safe-area-inset-left, 0px)); bottom: 12px; font: 12px var(--mono); color: var(--muted); }
+#drawing { background: var(--paper); overflow: auto; }
+#drawing svg { display: block; width: 100%; height: 100%; min-width: 560px; color: var(--fg); }
+aside { background: var(--panel); border-left: 1px solid var(--line); overflow-y: auto;
+  padding-block: 20px; padding-left: max(20px, env(safe-area-inset-left, 0px)); padding-right: max(20px, env(safe-area-inset-right, 0px));
+  display: flex; flex-direction: column; gap: 20px; }
+h1 { font-size: 18px; margin: 0; text-wrap: balance; }
+.sub { color: var(--muted); margin: 4px 0 0; line-height: 1.45; }
+h2 { font: 500 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0 0 8px; }
+.toggles, .views { display: flex; flex-wrap: wrap; gap: 8px; }
+.toggles label { display: flex; align-items: center; gap: 6px; cursor: pointer; width: 100%; }
+.sw { width: 12px; height: 12px; border-radius: 2px; border: 1px solid var(--line); }
+button { font: 500 12px var(--mono); padding: 6px 10px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); border-radius: 4px; cursor: pointer; }
+button:hover { border-color: var(--accent); }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+dl { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; margin: 0; }
+dt { color: var(--muted); }
+dd { margin: 0; font: 13px var(--mono); font-variant-numeric: tabular-nums; text-align: right; }
+.note { font-size: 13px; color: var(--muted); line-height: 1.5; margin: 0; }
+.only3d[hidden] { display: none; }
+/* drawing line types */
+.of { fill: var(--paper) !important; }
+.sec { fill: url(#hatch) !important; }
+.sec2 { fill: url(#hatch2) !important; stroke: var(--cover) !important; }
+.o { fill: none; stroke: currentColor; stroke-width: .45; stroke-linejoin: round; }
+.t { fill: none; stroke: currentColor; stroke-width: .25; }
+.h { fill: none; stroke: currentColor; stroke-width: .22; stroke-dasharray: 1.4 .7; opacity: .8; }
+.c { fill: none; stroke: currentColor; stroke-width: .15; stroke-dasharray: 5 1 1 1; opacity: .6; }
+.ph { fill: none; stroke: var(--muted); stroke-width: .22; stroke-dasharray: 4 .8 .8 .8 .8 .8; }
+.d { fill: none; stroke: var(--dim); stroke-width: .16; }
+.dt { fill: var(--dim); font: 500 2.5px var(--mono); }
+.lbl { fill: currentColor; font: 600 2.6px var(--sans); letter-spacing: .12px; }
+.small { fill: var(--muted); font: 2.1px var(--sans); }
+#arrow path { fill: var(--dim); }
+@media (max-width: 760px) {
+  .app { grid-template-columns: 1fr; grid-template-rows: 70vh auto; height: auto; }
+  aside { border-left: 0; border-top: 1px solid var(--line); padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+}
+</style>
+
+<div class="app">
+  <div class="stage">
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" id="tab-3d" aria-selected="true">3D model</button>
+      <button class="tab" role="tab" id="tab-dwg" aria-selected="false">Drawing</button>
+    </div>
+    <div class="pane" id="view"><div class="hint">drag to orbit · scroll to zoom · right-drag to pan</div></div>
+    <div class="pane" id="drawing" hidden></div>
+  </div>
+  <aside>
+    <div>
+      <h1>RJ45 grip shell</h1>
+      <p class="sub">Shell and snap-on bottom cover for a latch-cut plug. A Robotiq Hand-E drops its fingertips into the two notches of the H; the flared leg ends funnel them in. It closes on the crossbar and pushes the plug horizontally into the switch port.</p>
+    </div>
+    <div class="only3d" id="side3d">
+      <h2>Show</h2>
+      <div class="toggles">
+        <label><input type="checkbox" id="t-plug" checked><span class="sw" style="background:#c9d3da"></span>Plug and cable</label>
+        <label><input type="checkbox" id="t-cover" checked><span class="sw" style="background:var(--cover)"></span>Bottom cover</label>
+        <label><input type="checkbox" id="t-explode"><span class="sw" style="border-style:dashed"></span>Pull cover off</label>
+        <label><input type="checkbox" id="t-router" checked><span class="sw" style="background:#56616a"></span>Switch port face</label>
+        <label><input type="checkbox" id="t-fingers" checked><span class="sw" style="background:#7aa6c8"></span>Hand-E fingertips</label>
+      </div>
+    </div>
+    <div class="only3d" id="views3d">
+      <h2>View</h2>
+      <div class="views">
+        <button id="v-iso">3D</button><button id="v-side">Side</button><button id="v-top">Top</button><button id="v-front">From cable</button>
+      </div>
+    </div>
+    <div>
+      <h2>Part (mm)</h2>
+      <dl id="spec"></dl>
+    </div>
+    <p class="note">The orange shell and green cover are the actual STLs, printed as two parts. Plug, cable, switch face and fingertips are reference shapes for checking clearance. The drawing uses third-angle projection and is generated from the same numbers as the STL.</p>
+  </aside>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/STLLoader.js"></script>
+<script>
+const STL_B64 = "__STL__", COVER_B64 = "__COVER__";
+// part frame (mm): x along cable from shell front, y across, z up from shell bottom (= plug bottom)
+const D = __DIMS__;
+const f1 = v => (+v).toFixed(1);
+
+document.getElementById('spec').innerHTML = [
+  ['Shell L × W × H', `${f1(D.L)} × ${f1(D.Wall)} × ${f1(D.H)}`],
+  ['Cover L × W × T', `${f1(D.L)} × ${f1(D.coverW)} × ${f1(D.coverT)}`],
+  ['Grip span (crossbar)', f1(D.crossW)],
+  ['Fingertip notch (L × depth)', `${f1(D.notchX1 - D.notchX0)} × ${f1((D.W - D.crossW) / 2)}`],
+  ['Funnel mouth', f1(D.mouth)],
+  ['Flare (x × y)', `${f1(D.flareDX)} × ${f1(D.flareDY)}`],
+  ['Plug squeeze by cover ribs', (D.snug - 0.2).toFixed(2)],
+  ['Crossbar height', f1(D.crossH)],
+  ['Leg thickness', f1(D.legT)],
+  ['Front leg to port face', f1(D.clear)],
+  ['Bare plug length', f1(D.bare)],
+  ['Fingertip (W × T)', `${f1(D.fingerW)} × ${f1(D.fingerT)}`],
+].map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
+
+/* ---------- 3D ---------- */
+const view = document.getElementById('view');
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+view.prepend(renderer.domElement);
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(35, 1, 1, 2000);
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+scene.add(new THREE.HemisphereLight(0xffffff, 0x445566, 0.9));
+const sun = new THREE.DirectionalLight(0xffffff, 0.7); sun.position.set(40, 80, 60); scene.add(sun);
+
+const world = new THREE.Group(); world.rotation.x = -Math.PI / 2; scene.add(world);
+const stl = b => new THREE.STLLoader().parse(Uint8Array.from(atob(b), c => c.charCodeAt(0)).buffer);
+const geom = stl(STL_B64);
+const partMat = new THREE.MeshStandardMaterial({ color: css('--part'), roughness: 0.6, metalness: 0.05 });
+const part = new THREE.Mesh(geom, partMat);
+part.add(new THREE.LineSegments(new THREE.EdgesGeometry(geom, 20), new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.35 })));
+world.add(part);
+const coverGeom = stl(COVER_B64);
+const coverMat = new THREE.MeshStandardMaterial({ color: css('--cover'), roughness: 0.6, metalness: 0.05 });
+const coverMesh = new THREE.Mesh(coverGeom, coverMat);
+coverMesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(coverGeom, 20), new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.35 })));
+coverMesh.position.z = -D.coverT;   // STL sits on its print bed; snapped on, its top meets the shell bottom
+world.add(coverMesh);
+
+function box(x0, x1, y0, y1, z0, z1, color, opacity) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, y1 - y0, z1 - z0),
+    new THREE.MeshStandardMaterial({ color, transparent: opacity < 1, opacity, roughness: 0.8, depthWrite: opacity >= 1 }));
+  m.position.set((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
+  return m;
+}
+const plugX0 = D.faceX - D.bare, plugX1 = plugX0 + D.plugLen;
+const pz0 = 0, pz1 = D.plugH;
+const plugGrp = new THREE.Group();
+plugGrp.add(box(plugX0, plugX1, -D.plugW / 2, D.plugW / 2, pz0, pz1, 0xc9d3da, 0.55));
+const cab = new THREE.Mesh(new THREE.CylinderGeometry(D.cable / 2, D.cable / 2, 70, 24),
+  new THREE.MeshStandardMaterial({ color: 0x3b7dd8, roughness: 0.7 }));
+cab.rotation.z = Math.PI / 2; cab.position.set(plugX1 + 35, 0, (pz0 + pz1) / 2);
+plugGrp.add(cab); world.add(plugGrp);
+
+const routerGrp = new THREE.Group();
+routerGrp.add(box(D.faceX - 40, D.faceX, -45, 45, -6, 22, 0x56616a, 0.25));
+routerGrp.add(box(D.faceX - 0.6, D.faceX, -45, 45, -6, 22, 0x56616a, 0.5));
+world.add(routerGrp);
+
+// fingertips dropped into the H notches, closed on the crossbar, boxed in by the legs
+const fingerGrp = new THREE.Group();
+const fz0 = D.shellH + 1, fz1 = D.H + 25, cw = D.crossW / 2;
+const fx0 = D.notchX0 + (D.notchX1 - D.notchX0 - D.fingerW) / 2;
+fingerGrp.add(box(fx0, fx0 + D.fingerW, cw, cw + D.fingerT, fz0, fz1, 0x7aa6c8, 0.6));
+fingerGrp.add(box(fx0, fx0 + D.fingerW, -cw - D.fingerT, -cw, fz0, fz1, 0x7aa6c8, 0.6));
+world.add(fingerGrp);
+
+const grid = new THREE.GridHelper(160, 32, 0x888888, 0x888888);
+grid.material.transparent = true; grid.material.opacity = 0.18; grid.position.y = -6; scene.add(grid);
+
+const center = new THREE.Vector3(18, 10, 0);
+const views = { iso: [80, 60, 95], side: [18, 12, 130], top: [18, 140, 0.01], front: [140, 20, 0] };
+function setView(k) { const [x, y, z] = views[k]; camera.position.set(x, y, z); controls.target.copy(center); controls.update(); }
+['iso', 'side', 'top', 'front'].forEach(k => document.getElementById('v-' + k).onclick = () => setView(k));
+setView('iso');
+const bind = (id, obj) => { const el = document.getElementById(id); el.onchange = () => obj.visible = el.checked; };
+bind('t-plug', plugGrp); bind('t-router', routerGrp); bind('t-fingers', fingerGrp); bind('t-cover', coverMesh);
+const ex = document.getElementById('t-explode');
+ex.onchange = () => coverMesh.position.z = -D.coverT - (ex.checked ? 14 : 0);
+const recolor = () => { partMat.color.set(css('--part')); coverMat.color.set(css('--cover')); };
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', recolor);
+new MutationObserver(recolor).observe(document.documentElement, { attributes: true });
+function resize() {
+  const w = view.clientWidth, h = view.clientHeight;
+  if (!w || !h) return;
+  renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+}
+new ResizeObserver(resize).observe(view); resize();
+(function loop() { controls.update(); renderer.render(scene, camera); requestAnimationFrame(loop); })();
+
+/* ---------- drawing (third-angle, mm) ---------- */
+function drawing() {
+  const out = [];
+  const add = s => out.push(s);
+  const rect = (x, y, w, h, c) => add(`<rect class="${c}" x="${x}" y="${y}" width="${w}" height="${h}"/>`);
+  const line = (x1, y1, x2, y2, c) => add(`<line class="${c}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`);
+  const poly = (pts, c) => add(`<path class="${c}" d="M${pts.map(p => p.join(' ')).join(' L')} Z"/>`);
+  const text = (x, y, s, c, anchor = 'middle', rot) =>
+    add(`<text class="${c}" x="${x}" y="${y}" text-anchor="${anchor}"${rot ? ` transform="rotate(${rot} ${x} ${y})"` : ''}>${s}</text>`);
+  const G = .8, X = 1.2; // extension-line gap from part, overshoot past dim line
+  // horizontal dimension between x1..x2 measured from feature at yRef, dim line at yDim
+  function dimH(x1, x2, yRef, yDim, label) {
+    const s = Math.sign(yDim - yRef);
+    for (const x of [x1, x2]) line(x, yRef + s * G, x, yDim + s * X, 'd');
+    line(x1, yDim, x2, yDim, 'd" marker-start="url(#arrow)" marker-end="url(#arrow)');
+    const narrow = Math.abs(x2 - x1) < 7;
+    if (narrow) text(Math.max(x1, x2) + 1.2, yDim + .9, label, 'dt', 'start');
+    else text((x1 + x2) / 2, yDim - .8, label, 'dt');
+  }
+  function dimV(y1, y2, xRef, xDim, label) {
+    const s = Math.sign(xDim - xRef);
+    for (const y of [y1, y2]) line(xRef + s * G, y, xDim + s * X, y, 'd');
+    line(xDim, y1, xDim, y2, 'd" marker-start="url(#arrow)" marker-end="url(#arrow)');
+    const narrow = Math.abs(y2 - y1) < 7;
+    if (narrow) text(xDim + (s > 0 ? 1 : -1), Math.min(y1, y2) - 1.2, label, 'dt', s > 0 ? 'start' : 'end');
+    else text(xDim - .8, (y1 + y2) / 2, label, 'dt', 'middle', -90);
+  }
+
+  const { L, W, H, Wall, shellW, shellH, crossH, crossW, leg1X0, notchX0, notchX1, leg2X1, pocketL, pocketW, pocketH, cableW, zipX0, zipW, zipD,
+          fingerW, fingerT, flareDX: fdx, flareDY: fdy, coverT, coverW, snug, ribY, ribW, armT, armClr, armX0, armX1, hookZ0, hookZ1, hookD, hookIn, chamfer } = D;
+  const zipX1 = zipX0 + zipW, pocketTop = pocketH;
+  const s0 = (W - shellW) / 2, s1 = W - s0, c0 = (W - crossW) / 2, c1 = W - c0;
+  const fx0 = notchX0 + (notchX1 - notchX0 - fingerW) / 2;
+  const LB = -coverT - 25; // view label offset below each view
+
+  /* TOP VIEW: origin (TX, TY), x right, y' down; legs span 0..W, flares beyond */
+  const TX = 44, TY = 32;
+  const tx = x => TX + x, ty = y => TY + y;
+  poly([[tx(0), ty(s0)], [tx(zipX0), ty(s0)], [tx(zipX0), ty(s0 + zipD)], [tx(zipX1), ty(s0 + zipD)], [tx(zipX1), ty(s0)], [tx(L), ty(s0)],
+        [tx(L), ty(s1)], [tx(zipX1), ty(s1)], [tx(zipX1), ty(s1 - zipD)], [tx(zipX0), ty(s1 - zipD)], [tx(zipX0), ty(s1)], [tx(0), ty(s1)]], 'o');
+  line(tx(zipX0), ty(s0 + zipD), tx(zipX0), ty(s1 - zipD), 't'); line(tx(zipX1), ty(s0 + zipD), tx(zipX1), ty(s1 - zipD), 't');
+  rect(tx(notchX0), ty(c0), notchX1 - notchX0, crossW, 'o of');
+  // legs with their flared ends: front leg flares toward the port, rear leg toward the cable
+  for (const [a, b, d] of [[leg1X0, notchX0, -fdx], [notchX1, leg2X1, fdx]]) {
+    poly([[tx(a + d), ty(-fdy)], [tx(b + d), ty(-fdy)], [tx(b), ty(0)], [tx(b), ty(W)], [tx(b + d), ty(W + fdy)],
+          [tx(a + d), ty(W + fdy)], [tx(a), ty(W)], [tx(a), ty(0)]], 'o of');
+    line(tx(a), ty(0), tx(b), ty(0), 't'); line(tx(a), ty(W), tx(b), ty(W), 't');
+  }
+  rect(tx(0), ty((W - pocketW) / 2), pocketL, pocketW, 'h');
+  line(tx(pocketL), ty((W - cableW) / 2), tx(L), ty((W - cableW) / 2), 'h');
+  line(tx(pocketL), ty((W + cableW) / 2), tx(L), ty((W + cableW) / 2), 'h');
+  rect(tx(fx0), ty(c0 - fingerT), fingerW, fingerT, 'ph'); rect(tx(fx0), ty(c1), fingerW, fingerT, 'ph');
+  text(tx(fx0 + fingerW / 2), ty(c0 - fingerT / 2) + .8, 'FINGERTIP', 'small');
+  text(tx(fx0 + fingerW / 2), ty(c1 + fingerT / 2) + .8, 'FINGERTIP', 'small');
+  line(tx(-3), ty(W / 2), tx(L + 3), ty(W / 2), 'c');
+  dimH(tx(notchX0 - fdx), tx(notchX1 + fdx), ty(-fdy), ty(-fdy - 4), f1(D.mouth) + ' MOUTH');
+  dimH(tx(notchX0), tx(notchX1), ty(0), ty(-fdy - 10), f1(notchX1 - notchX0));
+  dimH(tx(leg1X0), tx(notchX0), ty(0), ty(-fdy - 16), f1(notchX0 - leg1X0));
+  dimH(tx(notchX1), tx(leg2X1), ty(0), ty(-fdy - 16), f1(leg2X1 - notchX1));
+  dimH(tx(leg1X0 - fdx), tx(leg1X0), ty(W + fdy), ty(W + fdy + 5), f1(fdx));
+  dimH(tx(0), tx(L), ty(s1), ty(W + fdy + 11), f1(L));
+  dimV(ty(-fdy), ty(W + fdy), tx(0), tx(-14), f1(Wall));
+  dimV(ty(0), ty(W), tx(leg1X0), tx(-8), f1(W));
+  dimV(ty(s0), ty(s1), tx(0), tx(-3), f1(shellW));
+  dimV(ty(0), ty(c0), tx(leg2X1), tx(L + 5), f1(c0));
+  dimV(ty(W), ty(W + fdy), tx(leg2X1 + fdx), tx(L + 5), f1(fdy));
+  dimV(ty(c0), ty(c1), tx(notchX1), tx(L + 11), f1(crossW));
+  text(tx(L / 2), ty(W + fdy + 18), 'TOP', 'lbl');
+
+  /* SIDE VIEW: x right, z up, base line SB = shell bottom; cover below it */
+  const SB = TY + W + fdy + 44 + H;
+  const sx = x => TX + x, sz = z => SB - z;
+  const fX0 = leg1X0 - fdx, fX1 = leg2X1 + fdx;  // flare tips set the side silhouette
+  poly([[sx(0), sz(0)], [sx(L), sz(0)], [sx(L), sz(shellH)], [sx(zipX1), sz(shellH)], [sx(zipX1), sz(shellH - zipD)],
+        [sx(zipX0), sz(shellH - zipD)], [sx(zipX0), sz(shellH)], [sx(fX1), sz(shellH)], [sx(fX1), sz(H)],
+        [sx(fX0), sz(H)], [sx(fX0), sz(shellH)], [sx(0), sz(shellH)]], 'o');
+  for (const x of [fX0, leg1X0, notchX0 - fdx, notchX0, notchX1, notchX1 + fdx, leg2X1, fX1]) line(sx(x), sz(0), sx(x), sz(H), 'o');
+  line(sx(zipX0), sz(0), sx(zipX0), sz(shellH - zipD), 't'); line(sx(zipX1), sz(0), sx(zipX1), sz(shellH - zipD), 't');
+  rect(sx(0), sz(pocketTop), pocketL, pocketTop, 'h');
+  line(sx(pocketL), sz(pocketTop), sx(L), sz(pocketTop), 'h');
+  // cover: plate with zip groove underneath, snap arm in front of the shell wall
+  const cz = -coverT, gz = cz + .5;
+  poly([[sx(0), sz(cz)], [sx(zipX0), sz(cz)], [sx(zipX0), sz(gz)], [sx(zipX1), sz(gz)], [sx(zipX1), sz(cz)], [sx(L), sz(cz)],
+        [sx(L), sz(0)], [sx(0), sz(0)]], 'o of');
+  rect(sx(armX0), sz(hookZ1), armX1 - armX0, hookZ1 - cz, 'o of');
+  rect(sx(armX0 - .3), sz(hookZ1 + .2), armX1 - armX0 + .6, hookZ1 + .2 - hookZ0, 'h');
+  rect(sx(D.ribX0), sz(snug), D.ribX1 - D.ribX0, snug, 'h');
+  text(sx((armX0 + armX1) / 2), sz(hookZ0 / 2) + .8, 'COVER ARM', 'small');
+  const bx0 = (armX0 + armX1) / 2;  // section B-B
+  line(sx(bx0), sz(cz - 3), sx(bx0), sz(H + 13), 'c');
+  text(sx(bx0) + 1, sz(cz - 3) + 2, 'B', 'lbl', 'start'); text(sx(bx0) + 1, sz(H + 12), 'B', 'lbl', 'start');
+  rect(sx(fx0), sz(H + 10), fingerW, H + 10 - (shellH + 1), 'ph');
+  text(sx(fx0 + fingerW / 2), sz(H + 6), 'FINGERTIP', 'small');
+  // reference: plug, cable, switch port face
+  const pX0 = D.faceX - D.bare;
+  rect(sx(pX0), sz(D.plugH), D.plugLen, D.plugH, 'ph');
+  line(sx(pX0 + D.plugLen), sz(D.plugH / 2 + D.cable / 2), sx(L + 8), sz(D.plugH / 2 + D.cable / 2), 'ph');
+  line(sx(pX0 + D.plugLen), sz(D.plugH / 2 - D.cable / 2), sx(L + 8), sz(D.plugH / 2 - D.cable / 2), 'ph');
+  line(sx(D.faceX), sz(cz - 4), sx(D.faceX), sz(H + 4), 'ph');
+  text(sx(D.faceX), sz(H + 5.2), 'PORT FACE', 'small', 'end');
+  text(sx(pX0 + 1), sz(D.plugH / 2) + .8, 'PLUG', 'small', 'start');
+  dimV(sz(cz), sz(H), sx(0), sx(pX0 - 6), f1(H - cz));
+  dimV(sz(0), sz(shellH), sx(0), sx(pX0 - 1.5), f1(shellH));
+  dimV(sz(shellH), sz(H), sx(fX1), sx(L + 6), f1(crossH));
+  dimV(sz(0), sz(pocketTop), sx(L), sx(L + 12), f1(pocketH));
+  dimV(sz(cz), sz(0), sx(L), sx(L + 18), f1(coverT));
+  dimH(sx(pX0), sx(D.faceX), sz(0), sz(cz - 6), f1(D.bare));
+  dimH(sx(D.faceX), sx(leg1X0), sz(cz), sz(cz - 6), f1(leg1X0 - D.faceX));
+  dimH(sx(0), sx(pocketL), sz(cz), sz(cz - 12), f1(pocketL));
+  dimH(sx(armX0), sx(armX1), sz(cz), sz(cz - 17), f1(armX1 - armX0) + ' ARM');
+  dimH(sx(zipX0), sx(zipX1), sz(cz), sz(cz - 6), f1(zipW));
+  text(sx(L / 2), sz(LB), 'SIDE', 'lbl');
+
+  /* VIEW A: from the plug end, u across (legs 0..W), z up */
+  const EX = TX + L + 34 + fdy;
+  const eu = u => EX + u, m = W / 2;
+  rect(eu(-fdy), sz(H), Wall, H, 'o');
+  line(eu(0), sz(0), eu(0), sz(H), 'o'); line(eu(W), sz(0), eu(W), sz(H), 'o');
+  rect(eu(s0), sz(shellH), shellW, shellH, 'o of');
+  rect(eu(c0), sz(H), crossW, H - shellH, 'h');
+  const pu0 = (W - pocketW) / 2;
+  poly([[eu(pu0), sz(0)], [eu(pu0), sz(pocketTop)], [eu(W - pu0), sz(pocketTop)], [eu(W - pu0), sz(0)]], 'o of');
+  rect(eu((W - cableW) / 2), sz(pocketTop), cableW, pocketTop, 't');
+  rect(eu(m - coverW / 2), sz(0), coverW, coverT, 'o of');
+  for (const r of [-ribY, ribY]) rect(eu(m + r - ribW / 2), sz(snug), ribW, snug, 'o of');
+  for (const s of [-1, 1]) {
+    const a = m + s * (shellW / 2 + armClr), b = m + s * (coverW / 2);
+    rect(eu(Math.min(a, b)), sz(hookZ1), Math.abs(b - a), hookZ1, 'h');
+  }
+  line(eu(m), sz(cz - 3), eu(m), sz(H + 3), 'c');
+  dimH(eu(-fdy), eu(W + fdy), sz(H), sz(H + 5), f1(Wall));
+  dimH(eu(pu0), eu(W - pu0), sz(pocketTop), sz(H + 11), f1(pocketW));
+  dimH(eu(s0), eu(s1), sz(cz), sz(cz - 5), f1(shellW));
+  dimH(eu(m - coverW / 2), eu(m + coverW / 2), sz(cz), sz(cz - 10), f1(coverW));
+  dimH(eu((W - cableW) / 2), eu((W + cableW) / 2), sz(cz), sz(cz - 15), f1(cableW));
+  dimV(sz(0), sz(snug), eu(W + fdy), eu(W + fdy + 5), snug.toFixed(1) + ' RIB');
+  text(eu(m), sz(LB), 'VIEW A · PLUG END', 'lbl');
+
+  /* SECTION B-B through the snap arms (cable channel), hatched */
+  const BX = EX + W + fdy + 24 + coverW / 2;
+  const bu = u => BX + u, yo = shellW / 2, yc = cableW / 2, cw = crossW / 2, ya = yo + armClr, yA = coverW / 2, yt = yo - hookIn;
+  const half = [[yc, 0], [yo - chamfer, 0], [yo, chamfer], [yo, hookZ0], [yo - hookD, hookZ0], [yo - hookD, hookZ1 + .2], [yo, hookZ1 + .2], [yo, shellH], [cw, shellH], [cw, H]];
+  const shellSec = [...half, ...half.slice().reverse().map(([u, z]) => [-u, z]), [-yc, pocketTop], [yc, pocketTop]];
+  poly(shellSec.map(([u, z]) => [bu(u), sz(z)]), 'o sec');
+  const coverSec = [[-yA, cz], [yA, cz], [yA, hookZ1], [ya, hookZ1], [yt, hookZ0 + .3], [yt, hookZ0], [ya, hookZ0], [ya, 0],
+                    [-ya, 0], [-ya, hookZ0], [-yt, hookZ0], [-yt, hookZ0 + .3], [-ya, hookZ1], [-yA, hookZ1]];
+  poly(coverSec.map(([u, z]) => [bu(u), sz(z)]), 'o sec2');
+  line(bu(0), sz(cz - 3), bu(0), sz(H + 3), 'c');
+  dimV(sz(0), sz(hookZ0), bu(-yA), bu(-yA - 5), f1(hookZ0));
+  dimV(sz(hookZ0), sz(hookZ1), bu(yA), bu(yA + 4), f1(hookZ1 - hookZ0));
+  dimH(bu(yt), bu(yo), sz(hookZ1 + .2), sz(H - 2), hookIn.toFixed(1) + ' HOOK');
+  dimH(bu(-yA), bu(-yo), sz(cz), sz(cz - 5), f1(armT + armClr));
+  text(bu(0), sz(LB), 'SECTION B-B · SNAP ARMS', 'lbl');
+
+  /* title block */
+  const bx = 8, by = SB + 34, bw = BX + yA + 16 - bx;
+  rect(bx, by, bw, 12, 't');
+  line(bx + bw * .5, by, bx + bw * .5, by + 12, 't');
+  text(bx + 2, by + 4.6, 'RJ45 GRIP SHELL + BOTTOM COVER · HAND-E', 'lbl', 'start');
+  text(bx + 2, by + 9.2, `Latch-cut RJ45 plug · fingertips ${f1(D.fingerW)} × ${f1(D.fingerT)} mm · funnel mouth ${f1(D.mouth)} mm`, 'small', 'start');
+  text(bx + bw * .5 + 2, by + 4.6, 'UNITS mm · THIRD-ANGLE PROJECTION', 'small', 'start');
+  text(bx + bw * .5 + 2, by + 9.2, 'GENERAL TOL ±0.2 · PETG / PLA · NOT TO SCALE ON SCREEN', 'small', 'start');
+
+  const vbW = bx + bw + 8, vbH = by + 16;
+  return `<svg viewBox="0 0 ${vbW} ${vbH}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Dimensioned drawing of the RJ45 grip shell and bottom cover">
+    <defs><pattern id="hatch" width="1.6" height="1.6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="1.6" stroke="currentColor" stroke-width=".18"/></pattern><pattern id="hatch2" width="1.6" height="1.6" patternUnits="userSpaceOnUse" patternTransform="rotate(-45)"><line x1="0" y1="0" x2="0" y2="1.6" stroke="var(--cover)" stroke-width=".22"/></pattern><marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="2.2" markerHeight="2.2" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0 1.5 L10 5 L0 8.5 Z"/></marker></defs>
+    ${out.join('\n')}</svg>`;
+}
+document.getElementById('drawing').innerHTML = drawing();
+
+/* ---------- tabs ---------- */
+const panes = { '3d': view, dwg: document.getElementById('drawing') };
+function show(k) {
+  for (const [id, el] of Object.entries(panes)) {
+    el.hidden = id !== k;
+    document.getElementById('tab-' + id).setAttribute('aria-selected', id === k);
+  }
+  document.querySelectorAll('.only3d').forEach(el => el.hidden = k !== '3d');
+  if (k === '3d') resize();
+  if (location.hash.slice(1) !== (k === 'dwg' ? 'drawing' : 'model')) history.replaceState(null, '', k === 'dwg' ? '#drawing' : '#model');
+}
+document.getElementById('tab-3d').onclick = () => show('3d');
+document.getElementById('tab-dwg').onclick = () => show('dwg');
+show(location.hash === '#drawing' ? 'dwg' : '3d');
+</script>
