@@ -160,6 +160,11 @@ Port 1 seated by the robot without hints: link up 1000 Mb/s full, 0 flaps.
 - **Never end a program while pressing:** ending at 40 N in the port raised a protective
   stop (C153). `urlib.insert` backs off 0.5 mm after seating. Clearing a protective stop
   is the operator's job (the agent's unlock was blocked).
+- **Check the cable, not just the plug tip, for clearance:** a low tilted camera-view pose
+  (flange z 0.15, plug tip 3.6 cm above the plate) drove the cable, which leaves the shell
+  rear and droops, into the table and raised a protective stop. Keep the shell rear ≥ 10 cm
+  above the plate in any pose; for face views prefer a longer, shallower view (≈30 cm,
+  30° down) with the flange high. Recover by moving straight up first.
 - **The switch must be fixed solidly:** insertion pushes ~25 N and pulling out a seated
   RJ45 takes a similar force. A taped switch slid along with the plug (port 2 extraction
   dragged the whole switch); it looked like "the plug stayed in". After any movement of
