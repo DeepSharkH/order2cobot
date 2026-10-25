@@ -134,7 +134,7 @@ function setFrustum(f, K, size) {
   // the geometries started empty: their cached (empty) bounding spheres would cull them forever
   f.lines.geometry.computeBoundingSphere();
   f.face.geometry.computeBoundingSphere();
-  f.l.obj.position.copy(up).add(new THREE.Vector3(0, -0.03, 0));
+  f.l.obj.position.copy(up).add(new THREE.Vector3(0, -0.2 * d, 0));
 }
 function frustumImage(f, img) {
   if (f.canvas.width !== img.naturalWidth || f.canvas.height !== img.naturalHeight) {
@@ -145,8 +145,8 @@ function frustumImage(f, img) {
   f.canvas.getContext('2d').drawImage(img, 0, 0);
   f.tex.needsUpdate = true;
 }
-const fcam = frustum(C.grey, 'Fixed D435', 0.14);
-const gcam = frustum(C.brass, 'Gripper cam', 0.08);
+const fcam = frustum(C.grey, 'Fixed D435', 0.07);
+const gcam = frustum(C.brass, 'Gripper cam', 0.04);
 const cams = [fcam, gcam];
 
 // point clouds, each in its camera's optical frame
