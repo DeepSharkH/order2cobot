@@ -1,0 +1,470 @@
+{
+  "session": {
+    "title": "RJ45 port QA — Claude Code session (dashboard cleanup, recalibration, port-1 attempts)",
+    "date": "2026-10-25",
+    "goal": "Clean up the calibration dashboard, calibrate both cameras in the checkerboard frame, then restart RJ45 insertion",
+    "setup": "Start of this chat (after /clear, ~11:45): UR3e + Hand-E with Gemini 335Lg on a side bracket, fixed D435 (off at first), dashboard on :8090 from the main checkout. Uncommitted result.yaml/handeye_gripper.yaml held a diverged solve (538 px). porttest scripts existed (survey2, qa_run, urlib peck/grid/force-mode) from earlier sessions; ports 1-2 had been seated this morning (per LEARNINGS), before the switch slid and the camera was remounted.",
+    "notes": "Times are from git commits, file mtimes and shot JSON stamps; boundaries are approximate. Earlier work in the same job (09:35-11:23, yesterday evening) is before /clear and not in this chat, so it is not traced."
+  },
+  "episodes": [
+    {
+      "title": "Dashboard cleanup, board-frame world",
+      "time": "11:45-12:00 (~15 min)",
+      "trigger": "user request",
+      "ask": "Clean up the random axes, Hestia-style camera glyphs, align the board plane with XY, base on that plane, drop hand-eye and the right-panel stuff",
+      "interpretation": "World = board centre z up; base x/y/yaw with z=0; gripper cam = base·FK·mount; fixed cam = board PnP. Rewrite server/app.js, delete base_align/samples/solver UI. Kept cal.solve for porttest scripts.",
+      "actions": [
+        "rewrote dashboard/server.py, web/app.js, index.html, css",
+        "git rm base_align.py, robot_model.py, collision STLs",
+        "killed the main-checkout dashboard, ran the worktree one",
+        "used the 10-24 hand-eye as mount, then 'mount from one view'",
+        "Locate fixed cam (8 frames PnP)",
+        "cloud-vs-board ratio check per camera"
+      ],
+      "observed": [
+        "gripper FK chain vs board view: 162 mm / 96°, implied base tilt 26°",
+        "fixed cam located 0.80 px; depth on board +1.6 mm, 0.3-0.8°",
+        "after one-view mount: chain = view (0.2 mm), but gripper depth/plane ratio 1.44"
+      ],
+      "outcome": {
+        "status": "partial",
+        "summary": "Dashboard clean, fixed cam good; gripper cam wrong, and I blamed the Gemini depth",
+        "cost": { "wall_time": "~15 min", "protective_stops": 0 }
+      },
+      "assumptions": [
+        { "text": "base origin lies on the board plane (z=0)", "status": "false" },
+        { "text": "10-24 hand-eye mount still valid", "status": "false" },
+        { "text": "ratio 1.44 = bad Gemini depth", "status": "false" },
+        { "text": "one-view mount holds at other poses", "status": "false" },
+        { "text": "old Hestia glyph code renders", "status": "false" }
+      ],
+      "human": "Mid-task: 'Fixed camera is online now'. Sent setup photos confirming both cams are tilted."
+    },
+    {
+      "title": "Dashboard dead in browser",
+      "time": "12:00-12:03 (~3 min)",
+      "trigger": "user report",
+      "ask": "'dashboard is not up' / 'look at latest screenshot it is fully dead' + pasted console error",
+      "interpretation": "Server was healthy (200 on all IPs); the console error pointed at a cached old app.js. Added no-cache headers and restarted.",
+      "actions": [
+        "curl/ss checks on :8090",
+        "read the user's screenshot",
+        "added no_cache middleware, restarted server"
+      ],
+      "observed": [
+        "TypeError at old app.js:282 (#btn-samples missing)",
+        "server streaming state fine"
+      ],
+      "outcome": {
+        "status": "success",
+        "summary": "Hard reload fixed it; no-cache prevents a repeat",
+        "cost": { "wall_time": "~3 min" }
+      },
+      "assumptions": [
+        { "text": "a headless screenshot can check the UI (it can't: WebGL/ws)", "status": "false" }
+      ],
+      "human": "Pasted the browser console error, which gave the cause directly."
+    },
+    {
+      "title": "Fix depth, recalibrate cameras",
+      "time": "12:05-12:26 (~20 min)",
+      "trigger": "user request",
+      "ask": "fix the depth and recalibrate cameras; use the photos as the initial guess for the gripper cam",
+      "interpretation": "Probe the Gemini depth in isolation first; then solve mount + base from the morning's 18 board views, starting from a photo-based guess. Base z kept at 0.",
+      "actions": [
+        "gemini_probe.py alone, with D435 emitter on, via dashboard class",
+        "clouddbg: cloud with chain pose vs view pose",
+        "wrote dashboard/scene_solve.py (mount 6 + base x/y/yaw)",
+        "solved on data/calib/20261025-111444, saved",
+        "re-located fixed cam"
+      ],
+      "observed": [
+        "Gemini depth/plane 0.99 in every probe",
+        "solve: 17 views 1.78 px, tilt 23.8°, base (26, 374) mm",
+        "holdout at new pose 6.7 mm / 1.0°; fixed cam 0.73 px"
+      ],
+      "outcome": {
+        "status": "partial",
+        "summary": "Depth was never broken; calibration usable but base height still wrong",
+        "cost": { "wall_time": "~20 min", "bridge_steps": 0 }
+      },
+      "assumptions": [
+        { "text": "base z = 0 on the board plane", "status": "false" },
+        { "text": "morning samples taken with today's mount", "status": "unverified" },
+        { "text": "sample joints were fresh (not stale)", "status": "unverified" },
+        { "text": "1.78 px / 6.7 mm holdout is good enough", "status": "false" }
+      ],
+      "human": "Gave the photos and the instruction to use them for the initial guess."
+    },
+    {
+      "title": "Frustums, UI polish",
+      "time": "12:27-12:31 (~5 min)",
+      "trigger": "user requests (3)",
+      "ask": "glyph lines not visible like Hestia; make them 50% smaller; cleaner side panel (screenshot)",
+      "interpretation": "Lines culled by a stale empty bounding sphere; then size and CSS tweaks.",
+      "actions": [
+        "computeBoundingSphere after setFromPoints",
+        "halved frustum depths",
+        "card padding, nowrap joint names, short chips"
+      ],
+      "observed": [
+        "node --check passes; never seen rendered by me"
+      ],
+      "outcome": {
+        "status": "success",
+        "summary": "User confirmed both cameras look good afterwards",
+        "cost": { "wall_time": "~5 min" }
+      },
+      "assumptions": [
+        { "text": "culling was the cause (not browser-tested)", "status": "verified" }
+      ],
+      "human": "Screenshots of the UI; later: 'Both cameras look good'."
+    },
+    {
+      "title": "Restore base after operator edit",
+      "time": "~12:35 (~3 min)",
+      "trigger": "user request",
+      "ask": "'I fucked up and moved the robot base twice, reset it.' then 'push'",
+      "interpretation": "Re-send the solved base through the server (it holds the scene in memory).",
+      "actions": [
+        "set_base over websocket to the solved values",
+        "git push (already up to date)"
+      ],
+      "observed": [
+        "base back to (26.1, 374.3) mm, 90.54°; chain-vs-view 6.7 mm again"
+      ],
+      "outcome": {
+        "status": "success",
+        "summary": "Restored and confirmed",
+        "cost": { "wall_time": "~3 min" }
+      },
+      "assumptions": [],
+      "human": ""
+    },
+    {
+      "title": "Restart RJ45: preflight",
+      "time": "~13:50-14:05 (~15 min)",
+      "trigger": "user request",
+      "ask": "'Both cameras look good. can we start again the rj45 insertion?'",
+      "interpretation": "Re-read memory/LEARNINGS, point porttest at the new mount, check robot state, then plan a survey. Asked for the cable-neutral wrist 3 before moving.",
+      "actions": [
+        "read status/geometry/cable memories, LEARNINGS",
+        "locate.py: mount from scene.yaml",
+        "preflight: tier, mode, TCP, joints",
+        "full frames from both cams"
+      ],
+      "observed": [
+        "move tier, REMOTE, TCP Tool_flange",
+        "elbow 0.04 rad (near straight), wrist 3 -4.97",
+        "qa_run.P1 from 09:49 = before the switch slid"
+      ],
+      "outcome": {
+        "status": "success",
+        "summary": "Ready; asked the operator about the cable",
+        "cost": { "wall_time": "~15 min", "bridge_steps": 0 }
+      },
+      "assumptions": [
+        { "text": "plug still gripped as on 10-24 (tip +y)", "status": "false" },
+        { "text": "port work is all in base frame, only the mount changed", "status": "verified" },
+        { "text": "the 10:19 survey is distorted by the old mount", "status": "verified" }
+      ],
+      "human": "'the cable looks relaxed' at wrist 3 = -4.97."
+    },
+    {
+      "title": "Move to survey view",
+      "time": "~14:05-14:10 (~5 min)",
+      "trigger": "own plan",
+      "ask": "(own initiative after the cable answer)",
+      "interpretation": "plan_views for a 32 cm / 30° view of the port row with cable and clearance checks, then a checked joint move.",
+      "actions": [
+        "plan_views (IK only): 7 plans pass",
+        "wrote go_view.py; printed joints first",
+        "move_checked to the survey view",
+        "grabbed gripper-cam frame"
+      ],
+      "observed": [
+        "moved fine (max joint change 0.98 rad)",
+        "the plug's own cable lies across the port row"
+      ],
+      "outcome": {
+        "status": "partial",
+        "summary": "View reached, ports occluded by the cable",
+        "cost": { "wall_time": "~5 min", "bridge_steps": 2 }
+      },
+      "assumptions": [
+        { "text": "cable hangs clear of the view", "status": "false" }
+      ],
+      "human": "Re-routed the plug cable away from the switch."
+    },
+    {
+      "title": "Port detection at full res",
+      "time": "14:10-14:16 (~6 min)",
+      "trigger": "own initiative + user correction",
+      "ask": "user: 'why is it 960x540 when the camera is 1280x720' and 'save that to learnings, use the full res'",
+      "interpretation": "Add GET /api/frame (the survey's capture action had been removed by me). Tune detection on the full-res frame; tried a 'comb' fit.",
+      "actions": [
+        "added /api/frame/{cam}; capture_png uses it",
+        "detect_rotated tests on g.png",
+        "wrote detect_comb (later deleted)",
+        "LEARNINGS + memory: use full-res frames"
+      ],
+      "observed": [
+        "box detector merged ports / took black tape",
+        "comb: right x spacing once, then latched on face edge"
+      ],
+      "outcome": {
+        "status": "partial",
+        "summary": "Endpoint good; comb detector unreliable",
+        "cost": { "wall_time": "~6 min" }
+      },
+      "assumptions": [
+        { "text": "960px stream frames are fine to judge", "status": "false" },
+        { "text": "survey2 still works after my dashboard cleanup", "status": "false" }
+      ],
+      "human": "Pointed out the 960x540 frames."
+    },
+    {
+      "title": "Port survey x3, base height",
+      "time": "14:13-14:30 (~17 min)",
+      "trigger": "own retries",
+      "ask": "(own initiative)",
+      "interpretation": "Survey 3-4 views ±3/±5 cm; accept only 8 evenly spaced boxes. When z disagreed with this morning's touch, free the base height in the solve.",
+      "actions": [
+        "survey #1 (comb fallback)",
+        "dropped comb, survey #2 box-only",
+        "scene_solve --free-z, saved",
+        "survey #3 with the new mount"
+      ],
+      "observed": [
+        "#1: ray rms 10 mm, pitch 16 mm, yaw 10° (wrong)",
+        "#2: rms 0.1-0.5 mm, pitch 14.54 but z 16 vs touch 27",
+        "free z: 0.33 px, base 9.1 mm under the board",
+        "#3: rms 0.1-0.4, pitch 14.51, port 1 (-324.6,118.9,21.3)"
+      ],
+      "outcome": {
+        "status": "success",
+        "summary": "Trustworthy relative port positions; absolute z improved",
+        "cost": { "wall_time": "~17 min", "bridge_steps": 15 }
+      },
+      "assumptions": [
+        { "text": "base z = 0 (now dropped)", "status": "false" },
+        { "text": "triangulated port centres absolute to ~2 mm", "status": "unverified" },
+        { "text": "switch hasn't moved since 10:19", "status": "unverified" }
+      ],
+      "human": ""
+    },
+    {
+      "title": "Board touch: cable range #2",
+      "time": "~14:31-14:33 (~2 min)",
+      "trigger": "own plan",
+      "ask": "(own initiative: measure plug height by touching the board)",
+      "interpretation": "Insertion orientation (0, π, 0) with plug +y; move_checked rejected wrist 3 -2.0. Asked to re-route the cable for -2.0.",
+      "actions": [
+        "touch_board.py (move_checked + peck)",
+        "commit + push"
+      ],
+      "observed": [
+        "move rejected: wrist3 -2.00 vs ref -4.97"
+      ],
+      "outcome": {
+        "status": "aborted",
+        "summary": "Blocked by the cable check (correctly)",
+        "cost": { "wall_time": "~2 min", "bridge_steps": 1 }
+      },
+      "assumptions": [
+        { "text": "insertion orientation is (0, π, 0), plug along flange +y", "status": "false" }
+      ],
+      "human": "Re-routed the camera cable to be relaxed at -2.0 (based on my wrong orientation)."
+    },
+    {
+      "title": "Plug height by touch",
+      "time": "~14:33-14:35 (~3 min)",
+      "trigger": "own plan",
+      "ask": "(own initiative)",
+      "interpretation": "Guarded descent onto the board centre; contact z minus board top = plug's lowest point.",
+      "actions": [
+        "move_checked 5 cm above the board centre",
+        "peck down 5 mm/s, 15 N, then back off 2 cm",
+        "full frames; D435 depth around the point"
+      ],
+      "observed": [
+        "contact at flange z 212.7 (expected ~199)",
+        "checkerboard removed; breadboard in its place",
+        "breadboard top ≈ 15.4 mm by D435 depth"
+      ],
+      "outcome": {
+        "status": "partial",
+        "summary": "Plug centre ≈193 mm under flange (±1.5 mm, via depth)",
+        "cost": { "wall_time": "~3 min", "bridge_steps": 2 }
+      },
+      "assumptions": [
+        { "text": "the checkerboard is still on the table", "status": "false" },
+        { "text": "shell 0.8 + plug 4 mm below the centre line (old STL)", "status": "unverified" },
+        { "text": "D435 depth bias on the breadboard = on the board", "status": "unverified" }
+      ],
+      "human": "(Someone had swapped the board for a breadboard without telling me.)"
+    },
+    {
+      "title": "Port 1 attempt 1",
+      "time": "~14:35-14:37 (~3 min)",
+      "trigger": "own plan",
+      "ask": "(own initiative)",
+      "interpretation": "Flange = port centre - (0, 35 mm, -193 mm); peck grid x ±2.5, z ±2 mm, 10 mm standoff; force-mode seat; link check.",
+      "actions": [
+        "find_port1.py; approach rejected (9.9 cm clearance), raised 1 cm",
+        "grid_search + insert_fm(25 N, 12 mm)",
+        "POST /api/qa/1/insert"
+      ],
+      "observed": [
+        "'found' on the very first peck (>13 mm travel)",
+        "insert_fm 12.2 mm in 1.2 s (speed cap = free)",
+        "no link after 6 s"
+      ],
+      "outcome": {
+        "status": "failure",
+        "summary": "Plug slid along the face, past the switch's left end",
+        "cost": { "wall_time": "~3 min", "bridge_steps": 3, "protective_stops": 0 }
+      },
+      "assumptions": [
+        { "text": "plug points flange +y, tip 35 mm ahead", "status": "false" },
+        { "text": "plug centred in flange x", "status": "false" },
+        { "text": "travel > back+3 mm means a port", "status": "false" },
+        { "text": "survey face y matches the tip reach", "status": "unverified" }
+      ],
+      "human": ""
+    },
+    {
+      "title": "Diagnose the miss, regrip",
+      "time": "~14:37-14:43 (~6 min)",
+      "trigger": "previous failure",
+      "ask": "user mid-way: 'i forgot to tell you that i rotated the grip of the rj45 so the camera looks to the side of the insertion'",
+      "interpretation": "Measure the plug axis from gripper-cam pixels via the mount; turn the tool +90°; IK for wrist 3; ask for the cable again.",
+      "actions": [
+        "projected predicted tip/ports into the fixed cam (inconclusive)",
+        "plug_axis.py: tip and shell pixels -> flange frame",
+        "IK for the tool turned 0/±90°",
+        "retract 30 mm, up 10 cm; update find_port1"
+      ],
+      "observed": [
+        "plug axis flange -x (-1.00, -0.01), tip 41.7 mm out",
+        "lateral offset -5 ±4 mm (depth ambiguity)",
+        "insertion needs wrist 3 -3.78"
+      ],
+      "outcome": {
+        "status": "partial",
+        "summary": "Grip understood; lateral offset still ±4 mm",
+        "cost": { "wall_time": "~6 min", "bridge_steps": 1 }
+      },
+      "assumptions": [
+        { "text": "plug centre line at 193 mm (for the y offset)", "status": "unverified" },
+        { "text": "plug pins still face down after the regrip", "status": "unverified" }
+      ],
+      "human": "Told me about the regrip; re-routed the cable to -3.78 (third routing)."
+    },
+    {
+      "title": "Port 1 attempt 2",
+      "time": "~14:44-14:49 (~5 min)",
+      "trigger": "own plan",
+      "ask": "'cable rerouted, relaxed at -3.78 now'",
+      "interpretation": "Same search with the turned tool, tip offset (5.3, 41.7, -193) mm, grid x ±4 mm (17 cols), z ±2 mm.",
+      "actions": [
+        "move_checked approach (wrist 3 -> -3.78)",
+        "grid_search: found at x +1 mm, z -2 mm",
+        "insert_fm(25 N) with x/z held within 1 mm",
+        "link check"
+      ],
+      "observed": [
+        "peck >13 mm, ending ~3 mm past the surveyed face",
+        "C157 then protective stop (log 14:4x)",
+        "no link; robot left in LOCAL/MANUAL after recovery"
+      ],
+      "outcome": {
+        "status": "failure",
+        "summary": "Protective stop in force mode; not seated",
+        "cost": { "wall_time": "~5 min", "bridge_steps": 2, "protective_stops": 1 }
+      },
+      "assumptions": [
+        { "text": "travel > back+3 mm means entry", "status": "false" },
+        { "text": "face y / tip reach known to ~1 mm", "status": "false" },
+        { "text": "stiff x/z (1 mm) is OK while seating", "status": "false" },
+        { "text": "port z from survey within the ±2 mm grid", "status": "unverified" }
+      ],
+      "human": "'there was a fault' - operator cleared the protective stop and moved the arm away."
+    },
+    {
+      "title": "Stop poking: approach pictures",
+      "time": "~14:50-14:58 (~8 min)",
+      "trigger": "user request",
+      "ask": "'before we continue we need to give some thought to this. take some pictures ... before approaching and during approach. then we will try to solve the poking problem offline.'",
+      "interpretation": "Full-res colour + depth from both cams plus pose JSON at 30/15/8/5 mm in front of port 1 and ±3 mm in x; no contact. Skipped the survey view (outside the cable range).",
+      "actions": [
+        "added GET /api/depth/{cam}",
+        "wrote approach_shots.py; snap at parked pose",
+        "3 tries blocked: controller still LOCAL",
+        "ran 7 waypoints at 1 cm/s; contact sheet",
+        "commit 36aa4fe"
+      ],
+      "observed": [
+        "gripper cam: side view of the face edge, tip-face gap visible",
+        "fixed cam: Hand-E hides the port row from 30 mm",
+        "±3 mm x shift barely visible in either camera"
+      ],
+      "outcome": {
+        "status": "success",
+        "summary": "Picture set saved; neither camera sees tip vs opening",
+        "cost": { "wall_time": "~8 min", "bridge_steps": 8, "protective_stops": 0 }
+      },
+      "assumptions": [
+        { "text": "front05mm leaves >= 2 mm real clearance", "status": "verified" }
+      ],
+      "human": "Switched the pendant to Remote (took three tries before the controller reported REMOTE)."
+    },
+    {
+      "title": "Path + LEARNINGS",
+      "time": "~15:00-15:10 (~10 min)",
+      "trigger": "user request",
+      "ask": "'give me real path' / 'please also update learnings.md'",
+      "interpretation": "Absolute path of the picture set; fix the stale wrist-3 note; add 'where the port work stopped' + open questions.",
+      "actions": [
+        "edited porttest/LEARNINGS.md",
+        "commit ef8fc4e, push"
+      ],
+      "observed": [
+        "LEARNINGS still said wrist 3 -2.0 (stale)"
+      ],
+      "outcome": {
+        "status": "success",
+        "summary": "Learnings current, path documented",
+        "cost": { "wall_time": "~10 min" }
+      },
+      "assumptions": [],
+      "human": ""
+    }
+  ],
+  "summary": {
+    "time_sinks": [
+      "Calibration chased three wrong causes (old mount, 'bad depth', base z=0) before free-z fixed it",
+      "Three cable re-routes and three Remote-mode round trips waiting on the operator",
+      "Port detection tuning (comb detector built and dropped)"
+    ],
+    "failure_patterns": [
+      "Acting on an unverified plug/grip model (direction, tip reach, centring)",
+      "'Free travel > threshold = port' accepted without a measured face reference",
+      "Defaults kept from older sessions (P1, TIP, z=0, the old mount) instead of being re-measured",
+      "Explaining a mismatch with the sensor (depth) instead of the pose chain"
+    ],
+    "missing_capabilities": [
+      "A camera view of the plug tip vs the opening during approach",
+      "A measured grip model (tip offset, axis) after every regrip, from the gripper cam",
+      "A face-y touch reference before pecking for the opening",
+      "Being told about physical changes (regrip, board removed, cable re-routed)",
+      "Compliant search / seating instead of stiff force mode"
+    ],
+    "keep": [
+      "move_checked (IK, elbow, wrist-3 cable, clearance) refused unsafe moves 3 times",
+      "Board-frame scene + multi-view free-z solve (0.33 px)",
+      "Survey quality gates: 8 evenly spaced boxes, ray rms, pitch, yaw",
+      "Full-res frames and depth endpoints; link state as ground truth"
+    ]
+  }
+}

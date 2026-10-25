@@ -231,3 +231,4 @@ datasets/
 Log/
 .claude/worktrees/
 .deps/
+data/

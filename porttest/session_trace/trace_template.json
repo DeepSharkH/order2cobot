@@ -1,0 +1,42 @@
+{
+  "session": {
+    "title": "RJ45 port QA — Claude Code session",
+    "date": "2026-10-25",
+    "goal": "What the team wanted out of the whole session, in one line",
+    "setup": "Hardware/software state at the start: cameras, calibration, grip, scripts available"
+  },
+  "episodes": [
+    {
+      "title": "Short name, e.g. 'Survey ports'",
+      "time": "14:05-14:40 (~35 min)",
+      "trigger": "Why this episode started: user request / previous failure / own initiative",
+      "ask": "The user's instruction, quoted or closely paraphrased",
+      "interpretation": "How Claude understood the ask and the plan it chose (and alternatives it rejected)",
+      "actions": [
+        "Tool/script calls in order, e.g. 'wrote porttest/survey2.py'",
+        "'ran survey2 (5 views, 4 bridge steps)'",
+        "'program: guarded touch on face, 6 N'"
+      ],
+      "observed": [
+        "What came back: numbers, images, log lines, errors (e.g. 'ray rms 10 mm, pitch 16 mm')"
+      ],
+      "outcome": {
+        "status": "success | partial | failure | aborted",
+        "summary": "Result in one or two lines",
+        "cost": { "wall_time": "35 min", "bridge_steps": 12, "protective_stops": 0 }
+      },
+      "assumptions": [
+        { "text": "Something Claude relied on without checking", "status": "unverified" },
+        { "text": "Something that was checked and held", "status": "verified" },
+        { "text": "Something that later turned out wrong", "status": "false" }
+      ],
+      "human": "What the operator did or said: correction, physical help, hint, stop recovery. Empty if none."
+    }
+  ],
+  "summary": {
+    "time_sinks": ["Where most wall time went"],
+    "failure_patterns": ["Failures that repeated across episodes"],
+    "missing_capabilities": ["Tool, sensor view or information that would have avoided a failure"],
+    "keep": ["What worked and should stay"]
+  }
+}

@@ -1,0 +1,15 @@
+# TP-Link LS108G, measured by plug-tip touches + the seated position (rj45-insert run
+# 20261025-184457, port 1 seated, link 1000/full). Offsets are in the robot's tip
+# coordinates (base frame, ports facing -y), so they include the tip-model error of
+# configs/grip.yaml (stamp 2026-10-25T19:05): re-measure after a regrip.
+stamp: '2026-10-25T19:11'
+pitch: 0.01451                 # port survey (data/ports.yaml), x per port
+# touch references (raw tip coordinates where the touch fired)
+touch:
+  left_end_pass_x: -0.35944    # sliding -x on the face: the tip falls past the left end here
+  top_pass_z: 0.03506          # sliding +z on the face: the tip passes the top edge here
+  face_y: 0.11885
+# seated port-1 tip centre relative to the touch references
+port1_from_left_pass_x: 0.03248   # port1 x = left_end_pass_x + this
+port1_below_top_pass_z: 0.01536   # port1 z = top_pass_z - this
+seat_depth: 0.013                 # past the face, at 25 N

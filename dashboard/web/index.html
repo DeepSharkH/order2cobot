@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>UR3e Calibration</title>
+  <link rel="preload" href="vendor/fonts/open-sauce-one-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="vendor/fonts/open-sauce-one-latin-900-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="style.css">
+  <script type="importmap">
+    { "imports": { "three": "./vendor/three.module.js" } }
+  </script>
+</head>
+<body>
+  <header class="top">
+    <div class="kicker">order2cobot</div>
+    <nav class="tabs" id="tabs">
+      <button data-tab="calib" class="on">Calibration</button>
+      <button data-tab="qa">Port QA</button>
+      <button data-tab="claude">Claude</button>
+    </nav>
+    <div class="status" id="status"></div>
+  </header>
+
+  <main class="layout" id="tab-calib">
+    <section class="section scene">
+      <div class="section-head">
+        <h2>Scene</h2>
+        <div class="legend">
+          <span><i class="sw sw-arm"></i>UR3e</span>
+          <span><i class="sw sw-board"></i>Board</span>
+          <span><i class="sw sw-cam"></i>Fixed cam</span>
+          <span><i class="sw sw-gcam"></i>Gripper cam</span>
+        </div>
+        <div class="tools">
+          <div class="seg" id="view-seg"><span class="lbl">View</span>
+            <button data-view="free" class="on" title="Orbit freely (0)">Free</button>
+            <button data-view="fixed" title="Look through the fixed D435 (1)">Fixed cam</button>
+            <button data-view="gripper" title="Look through the gripper camera (2)">Gripper cam</button>
+          </div>
+          <button id="btn-cloud" class="toggle on" title="Depth clouds from both cameras">Cloud</button>
+          <button id="btn-ovl" class="toggle on" title="Draw detections and the calibrated robot/board onto the feeds">Overlays</button>
+          <button id="btn-view" title="Reset the view">Reset</button>
+        </div>
+      </div>
+      <div id="viewport" class="viewport">
+        <div id="editor" class="editor hidden">
+          <div class="ed-title">Robot base</div>
+          <div class="ed-row">
+            <button data-mode="translate" class="on">Move<kbd>M</kbd></button>
+            <button data-mode="rotate">Rotate<kbd>R</kbd></button>
+          </div>
+          <div class="ed-size">
+            <label>X <input type="number" step="1" data-k="x"></label>
+            <label>Y <input type="number" step="1" data-k="y"></label>
+            <span>MM</span>
+          </div>
+          <div class="ed-size">
+            <label>Yaw <input type="number" step="0.5" data-k="yaw"></label><span>DEG</span>
+          </div>
+          <p class="ed-hint">The base is upright at its calibrated height; world origin is the board centre.
+            Line the drawn arm up with the real one in the point clouds and the fixed-cam overlay.</p>
+          <div class="ed-row ed-actions">
+            <button id="ed-cancel">Cancel</button>
+            <button id="ed-save" class="primary">Save</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section cams" id="calib-cams">
+      <div class="section-head"><h2>Cameras</h2></div>
+      <div class="feeds" id="feeds"></div>
+    </section>
+
+    <section class="section side">
+      <div class="section-head"><h2>Calibration</h2></div>
+      <div class="cards" id="cards"></div>
+    </section>
+  </main>
+
+  <main class="layout hidden" id="tab-qa">
+    <section class="section scene">
+      <div class="section-head">
+        <h2>Switch</h2>
+        <div class="legend">
+          <span><i class="sw sw-pass"></i>Pass</span>
+          <span><i class="sw sw-fail"></i>Fail</span>
+          <span><i class="sw sw-untested"></i>Untested</span>
+        </div>
+        <div class="tools">
+          <button id="qa-insert" class="primary" title="Wait for the link to come up and hold at full speed">Check insert</button>
+          <button id="qa-extract" title="Wait for the link to drop">Check extract</button>
+          <button id="qa-reset-port">Reset port</button>
+          <button id="qa-reset-all">Reset all</button>
+          <button id="qa-view" title="Reset the view">View</button>
+        </div>
+      </div>
+      <div class="switch-panel">
+        <div class="linkbar" id="qa-link"></div>
+        <div class="switch3d" id="qa-3d"></div>
+        <div class="ports" id="qa-ports"></div>
+      </div>
+    </section>
+    <section class="section cams" id="qa-cams">
+      <div class="section-head"><h2>Cameras</h2></div>
+    </section>
+    <section class="section side">
+      <div class="section-head"><h2>Port QA</h2></div>
+      <div class="cards" id="qa-cards">
+        <div class="card dark" id="qa-c-link"></div>
+        <div class="card" id="qa-c-port"></div>
+        <div class="card" id="qa-c-run"></div>
+      </div>
+    </section>
+  </main>
+
+  <main class="layout chat-layout hidden" id="tab-claude">
+    <section class="section chat">
+      <div class="section-head">
+        <h2>Claude</h2>
+        <div class="tools">
+          <select id="cc-mode" title="Permission mode: tools that need approval are denied in default">
+            <option value="default">default</option>
+            <option value="acceptEdits">acceptEdits</option>
+            <option value="plan">plan</option>
+          </select>
+          <button id="cc-new" title="Start a new session">New</button>
+        </div>
+      </div>
+      <div class="chat-log" id="cc-log"></div>
+      <form class="chat-in" id="cc-form">
+        <textarea id="cc-prompt" rows="3" placeholder="Ask Claude Code (Enter sends, Shift+Enter newline)"></textarea>
+        <button id="cc-send" class="primary" type="submit">Send</button>
+      </form>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <span>Fixed D435 · Gripper Gemini 335Lg · UR3e via AI Agent Bridge</span>
+    <span class="clock" id="clock">--:--:--</span>
+  </footer>
+
+  <div id="conn" class="conn">Connecting to the dashboard server</div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
