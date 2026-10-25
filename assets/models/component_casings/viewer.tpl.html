@@ -94,7 +94,7 @@ dd { margin: 0; font: 13px var(--mono); font-variant-numeric: tabular-nums; text
       <h2>Selected (mm)</h2>
       <dl id="spec"></dl>
     </div>
-    <p class="note">Halves and parts are the actual geometry from casings.py: the orange half is half 1 (y &lt; 0), the teal one half 2. Print each half lying on its outer face, split face up, no supports. Parts are standard sizes: 1/4 W resistor, 1N4148, 5 mm LED, TO-92, 5 mm disc, 5 × 11 mm electrolytic. The sparks are for show only.</p>
+    <p class="note">Halves and parts are the actual geometry from casings.py: the orange half is half 1 (y &lt; 0), the teal one half 2. Print each half lying on its outer face, split face up, no supports. Parts are the kit's, at standard sizes: 1/4 W resistor, 5 mm LED, RGB LED, TO-92 S8050/S8550, 104 disc, 12 mm buzzers (active 9.5 mm, passive 8.5 mm tall). The buzzer casings are thicker so the block covers the buzzer. The sparks are for show only.</p>
   </aside>
 </div>
 
@@ -104,8 +104,8 @@ dd { margin: 0; font: 13px var(--mono); font-variant-numeric: tabular-nums; text
 <script>
 const ITEMS = __ITEMS__;
 const f1 = v => (+v).toFixed(1), f2 = v => (+v).toFixed(2);
-const NAMES = { jumper: 'Jumper', resistor: 'Resistor', diode: 'Diode', led: 'LED', rgb_led: 'RGB LED', bjt: 'Transistor TO-92',
-  capacitor_ceramic: 'Ceramic capacitor', capacitor_electrolytic: 'Electrolytic capacitor' };
+const NAMES = { jumper: 'Jumper', resistor: 'Resistor', led: 'LED', rgb_led: 'RGB LED', bjt: 'Transistor S8050/S8550',
+  capacitor_ceramic: 'Ceramic capacitor 104', buzzer_active: 'Active buzzer', buzzer_passive: 'Passive buzzer' };
 const label = it => `${NAMES[it.kind]} · spacing ${it.s} (${f2(it.s * 2.54)} mm)`;
 
 const view = document.getElementById('view');
@@ -134,7 +134,7 @@ let DY = 26, mode = 'closed';
 const floor = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), M(css('--floor'), { roughness: 0.9 }));
 world.add(floor);
 function bodyMat(it) {
-  const c = { resistor: 0xd8c39a, diode: 0x2b2b2b, rgb_led: 0xe8eef2, bjt: 0x2a2a2a, capacitor_ceramic: 0xd9892b, capacitor_electrolytic: 0x26395e, jumper: 0xc0c6cc }[it.kind]
+  const c = { resistor: 0x6f9fd8, rgb_led: 0xe8eef2, bjt: 0x2a2a2a, capacitor_ceramic: 0xd9892b, buzzer_active: 0x1e1e1e, buzzer_passive: 0x2f6b3a, jumper: 0xc0c6cc }[it.kind]
     ?? [0xe5322d, 0x2fbf4f, 0x2f6fe5][it.s % 3];
   return it.kind === 'led' || it.kind === 'rgb_led' ? M(c, { roughness: 0.25, emissive: c, emissiveIntensity: 0.25, transparent: true, opacity: 0.92 })
     : M(c, it.kind === 'jumper' ? { metalness: 0.5, roughness: 0.35 } : {});

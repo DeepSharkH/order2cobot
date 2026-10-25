@@ -35,7 +35,7 @@ def stl_b64(m):
 channel, w0, _ = c.jumper_channels()
 items = []
 builds = [("jumper", s, c.jumper_casing(s, channel, w0), c.jumper_shape(s), 2) for s in (1, 2, 3, 4)]
-builds += [(k, s, c.part_casing(body, n, s), c.part_shape(body, n, s), n) for k, (body, n, sp) in c.PARTS.items() for s in sp]
+builds += [(k, s, c.part_casing(body, n, s, wrap), c.part_shape(body, n, s), n) for k, (body, n, sp, wrap) in c.PARTS.items() for s in sp]
 for kind, s, (m, w, t), (body, leads), n in builds:
     h1, h2 = c.split(m, t)
     items.append({"kind": kind, "s": s, "w": round(w, 2), "t": round(t, 2), "h": c.H, "pins": n,

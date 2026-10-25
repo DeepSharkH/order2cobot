@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Glue-together casings that turn every part into the same kind of block for the Hand-E:
-a 25 mm tall box split through the lead plane, with the leads leaving the bottom on the 2.54 mm
+a 20 mm tall box split through the lead plane, with the leads leaving the bottom on the 2.54 mm
 grid. The jumper casing is the 5 mm pitch design in this folder with its two pin channels moved
 to pin_spacing * 2.54 mm; the part casings use the same box with a pocket for the body and a
 channel per lead from the body down to its exit hole.
@@ -32,6 +32,7 @@ EXIT_D, EXIT_H = 0.8, 3.0    # lead exit hole at the bottom (Ø as in the jumper
 LEAD_D = 1.2         # lead channel from the body down to the exit
 HALF_T = 2.0         # thickness of each half; bodies thicker than the casing stick out of the faces
 WINDOW_D = 3.5       # LED light window through both faces
+BUZZ_WALL = 1.2      # buzzer casing: wall over the buzzer on each face
 
 
 def seg(r):
@@ -131,12 +132,16 @@ def disc_body(f_xs):
     return cav, 2.95, 1.45
 
 
-def elko_body(xs):
-    zb = EXIT_H + 2.5
-    cav = [zcyl(0, 0, 2.5 + CL, zb, zb + 11.3)]
-    for a, b in zip((-1.0, 1.0), xs):
-        cav += lead_path(a, zb, b)
-    return cav, 2.7, 2.7
+def buzzer_body(height):
+    """12 mm buzzer standing on its pins (7.6 mm apart). It is far thicker than a plain casing, so
+    this casing wraps it with BUZZ_WALL on both faces."""
+    def f(xs):
+        zb = EXIT_H + max(2.0, max(abs(a - b) for a, b in zip((-3.8, 3.8), xs)) + 1.0)
+        cav = [zcyl(0, 0, 6.0 + CL, zb, zb + height + CL)]
+        for a, b in zip((-3.8, 3.8), xs):
+            cav += lead_path(a, zb, b)
+        return cav, 6.0 + CL, 6.0 + CL
+    return f
 
 
 def to92_body(xs):
@@ -162,22 +167,23 @@ def jumper_casing(s, channel, w0):
     return box(-w / 2, w / 2, -t / 2, t / 2, 0, H) - union(cav), w, t
 
 
-def part_casing(body, n, s):
+def part_casing(body, n, s, wrap=False):
+    """wrap: the casing is thick enough to cover the body on both faces instead of 2 * HALF_T."""
     xs = exits(n, s)
     cav, hx, hy = body(xs)
     w = max(14.0, 2 * max(hx, max(abs(x) for x in xs) + EXIT_D / 2 + LEAD_D) + 2 * WALL)
-    t = 2 * HALF_T
+    t = 2 * (hy + BUZZ_WALL) if wrap else 2 * HALF_T
     return box(-w / 2, w / 2, -t / 2, t / 2, 0, H) - union(cav), w, t
 
 
-PARTS = {   # part type -> (body, pin count, spacings)
-    "resistor": (axial_body(1.25, 6.5), 2, (1, 2, 4)),
-    "diode": (axial_body(0.95, 3.9), 2, (1, 2, 4)),
-    "led": (led_body(2, 2.54), 2, (1, 2, 4)),
-    "rgb_led": (led_body(4, 1.1), 4, (1, 2)),
-    "bjt": (to92_body, 3, (1,)),
-    "capacitor_ceramic": (disc_body, 2, (1,)),
-    "capacitor_electrolytic": (elko_body, 2, (1,)),
+PARTS = {   # the kit's parts (assets/images): part type -> (body, pin count, spacings, wrap)
+    "resistor": (axial_body(1.25, 6.5), 2, (1, 2, 4), False),        # 1/4 W, 10 ohm .. 1 Mohm
+    "led": (led_body(2, 2.54), 2, (1, 2, 4), False),                  # 5 mm, all colours
+    "rgb_led": (led_body(4, 1.1), 4, (1, 2), False),
+    "bjt": (to92_body, 3, (1,), False),                                # S8050 / S8550
+    "capacitor_ceramic": (disc_body, 2, (1,), False),                  # 104
+    "buzzer_active": (buzzer_body(9.5), 2, (2, 3, 4), True),          # sealed top, 12 x 9.5
+    "buzzer_passive": (buzzer_body(8.5), 2, (2, 3, 4), True),         # open PCB bottom, 12 x 8.5
 }
 
 
@@ -244,7 +250,7 @@ if __name__ == "__main__":
     channel, w0, t0 = jumper_channels()
     out = []
     builds = [(f"jumper_s{s}", jumper_casing(s, channel, w0), 2, s) for s in (1, 2, 3, 4)]
-    builds += [(f"{k}_s{s}", part_casing(body, n, s), n, s) for k, (body, n, sp) in PARTS.items() for s in sp]
+    builds += [(f"{k}_s{s}", part_casing(body, n, s, wrap), n, s) for k, (body, n, sp, wrap) in PARTS.items() for s in sp]
     for name, (m, w, t), n, s in builds:
         check(name, m, w, t, n, s)
         h1, h2 = split(m, t)
