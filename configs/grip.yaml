@@ -1,0 +1,16 @@
+# Tool model of the gripped RJ45 plug, flange frame, metres. Re-measure after every regrip
+# (porttest/tag_test.py on the shell tag: ArUco DICT_4X4_50 id 0, 12 mm).
+stamp: '2026-10-25T19:05'
+source: >-
+  shell tag (12 mm) from the gripper cam + tip pixel, cross-checked by triangulating the tip
+  from both cameras (-38, -2, 187 mm) and the old breadboard touch (-41.7, -5.3, 193 mm).
+  Uncertainty about +-4 mm; the tip touches (S5) cancel it for targeting.
+tcp_tip: [-0.041, -0.002, 0.189, 0.0, 0.0, 0.0]   # plug tip centre, plug points along flange -x
+tag_centre: [0.0009, 0.0081, 0.1927]               # gripper-cam chain (fixed cam: 0.0046, -0.0042, 0.1923)
+tag_normal: [-0.045, 0.988, -0.148]
+tag_to_tip: null                                    # set after the touches refine the tip
+collision_points:                                   # lowest/outermost parts, for clearance checks
+  tip: [-0.041, -0.002, 0.193]
+  shell_front: [-0.0255, -0.002, 0.198]
+  shell_rear: [0.012, -0.002, 0.198]
+  cable_exit: [0.016, -0.002, 0.189]

@@ -1,11 +1,18 @@
 """URScript helpers prepended to every step. Results are reported with textmsg()."""
 
 LIB = '''
+def tel(flim, phase):
+  # telemetry for porttest.telemetry (RTDE): force limit in use and phase code
+  write_output_float_register(24, flim)
+  write_output_float_register(25, phase)
+end
+
 def fnorm(F):
   return sqrt(F[0]*F[0] + F[1]*F[1] + F[2]*F[2])
 end
 
 def guarded(d, maxd, fmax, v):
+  tel(fmax, 9)
   # move along the unit vector d (base) at v m/s until |F| > fmax or maxd travelled
   zero_ftsensor()
   sleep(0.3)
@@ -31,6 +38,7 @@ def guarded(d, maxd, fmax, v):
 end
 
 def guarded_axial(d, maxd, fmax, v):
+  tel(fmax, 9)
   # like guarded(), but only the reaction against the motion counts (cable pull sideways is ignored)
   zero_ftsensor()
   sleep(0.5)
@@ -82,6 +90,7 @@ def creep(d, maxd, step, fmax, v):
 end
 
 def insert_fm(fy, depth, tmax):
+  tel(fy, 6)
   # seat the plug with the controller's force mode: constant push fy [N] along base +y,
   # x/z held (max 1 mm deviation), speed capped at 10 mm/s. A speed-driven push into the
   # contacts lagged behind its path and raised C153 protective stops.
@@ -107,6 +116,7 @@ def insert_fm(fy, depth, tmax):
 end
 
 def peck(d, maxd, fmax, v):
+  tel(fmax, 9)
   # guarded move; the F/T sensor is re-zeroed at rest first (its reading drifts by several N
   # when the arm moves between pecks). Returns the distance travelled (maxd = no contact).
   sleep(0.2)
@@ -201,5 +211,266 @@ def peck_scan(step, n, back, depth, fmax, nfree):
     end
     i = i + 1
   end
+end
+# --- slide-in-contact insertion (rj45-insert skill). Poses are plug-tip poses (set_tcp). ---
+# n: unit face normal into the switch; a, b: in-plane unit vectors (base).
+
+def adv_along(n, ref):
+  q = get_actual_tcp_pose()
+  return q[0]*n[0] + q[1]*n[1] + q[2]*n[2] - ref
+end
+
+def along(q0, s):
+  q = get_actual_tcp_pose()
+  return (q[0]-q0[0])*s[0] + (q[1]-q0[1])*s[1] + (q[2]-q0[2])*s[2]
+end
+
+def seg(s, L, v, n, ref, adv):
+  # slide along s for L (in-plane) unless the tip advances along n by > adv; time-capped
+  q0 = get_actual_tcp_pose()
+  t = 0
+  while along(q0, s) < L and t < L / v * 3 + 1.0:
+    speedl([s[0]*v, s[1]*v, s[2]*v, 0, 0, 0], 0.2, 0.008)
+    t = t + 0.008
+    if adv_along(n, ref) > adv:
+      stopl(0.5)
+      return True
+    end
+  end
+  stopl(0.5)
+  return False
+end
+
+def contact(n, fn):
+  write_output_float_register(24, fn)   # force only: callers own the phase code
+  # force mode pressing fn along n (tip must already be within ~1 mm of the face); waits
+  # until the tip stops moving along n, returns the face coordinate along n
+  zero_ftsensor()
+  sleep(0.3)
+  force_mode(p[0, 0, 0, 0, 0, 0], [norm(n[0]), norm(n[1]), norm(n[2]), 0, 0, 0], [fn*n[0], fn*n[1], fn*n[2], 0, 0, 0], 2,
+             [0.01, 0.005, 0.01, 0.1, 0.1, 0.1])
+  c0 = adv_along(n, 0)
+  sleep(0.5)
+  t = 0
+  last = adv_along(n, 0)
+  c = last
+  while t < 6:
+    sleep(0.2)
+    t = t + 0.2
+    c = adv_along(n, 0)
+    if norm(c - last) < 0.00005:
+      break
+    end
+    if c - c0 > 0.004:
+      textmsg("no face")
+      break
+    end
+    last = c
+  end
+  textmsg(str_cat("face ", c))
+  return c
+end
+
+def found_face(n, c0, c):
+  # contact() ran more than 4 mm without meeting the face
+  return c - c0 <= 0.004
+end
+
+def back_off(n, d):
+  tel(0, 7)
+  end_force_mode()
+  q = get_actual_tcp_pose()
+  movel(pose_add(q, p[-d*n[0], -d*n[1], -d*n[2], 0, 0, 0]), a=0.1, v=0.005)
+end
+
+def slide_until_advance(n, fn, s, maxd, adv, v):
+  tel(fn, 9)
+  c0 = adv_along(n, 0)
+  ref = contact(n, fn)
+  if not found_face(n, c0, ref):
+    back_off(n, 0.004)
+    return False
+  end
+  hit = seg(s, maxd, v, n, ref, adv)
+  textmsg(str_cat("advance ", hit))
+  textmsg("pose ", get_actual_tcp_pose())
+  back_off(n, 0.002)
+  return hit
+end
+
+def spiral_search(n, fn, a, b, pitch, rmax, adv, v):
+  tel(fn, 3)
+  # contact, then a square spiral centre-out in a/b; stays in force mode on a hit
+  c0 = adv_along(n, 0)
+  ref = contact(n, fn)
+  if not found_face(n, c0, ref):
+    back_off(n, 0.004)
+    return False
+  end
+  return spiral_from(ref, n, a, b, pitch, rmax, adv, v)
+end
+
+def search_port(n, fn, face, ain, a, b, pitch, rmax, adv, v):
+  tel(fn, 3)
+  # like spiral_search, but with the touched face coordinate `face` along n: if the first
+  # contact already sits > ain past it, the tip entered the opening at the start point
+  # (port 1, 10-25: stalled 1.1-1.6 mm in at 4 N) -> candidate, still in force mode
+  ref = contact(n, fn)
+  if ref - face > ain:
+    textmsg(str_cat("entered at start ", ref - face))
+    textmsg("candidate ", get_actual_tcp_pose())
+    return True
+  end
+  if ref - face < -0.002:
+    textmsg("face not where expected")
+    back_off(n, 0.004)
+    return False
+  end
+  return spiral_from(ref, n, a, b, pitch, rmax, adv, v)
+end
+
+def spiral_from(ref, n, a, b, pitch, rmax, adv, v):
+  k = 1
+  d = 0
+  while k * pitch <= 2 * rmax:
+    s = a
+    if d % 4 == 1:
+      s = b
+    elif d % 4 == 2:
+      s = [-a[0], -a[1], -a[2]]
+    elif d % 4 == 3:
+      s = [-b[0], -b[1], -b[2]]
+    end
+    if seg(s, k * pitch, v, n, ref, adv):
+      textmsg("candidate ", get_actual_tcp_pose())
+      return True
+    end
+    if d % 2 == 1:
+      k = k + 1
+    end
+    d = d + 1
+  end
+  textmsg("not found")
+  textmsg("pose ", get_actual_tcp_pose())
+  back_off(n, 0.002)
+  return False
+end
+
+def lateral(s, amp, v):
+  # move amp along s, return the reaction force along s, come back
+  q0 = get_actual_tcp_pose()
+  t = 0
+  while along(q0, s) < amp and t < amp / v * 3 + 0.5:
+    speedl([s[0]*v, s[1]*v, s[2]*v, 0, 0, 0], 0.2, 0.008)
+    t = t + 0.008
+    F = get_tcp_force()
+    if -(F[0]*s[0] + F[1]*s[1] + F[2]*s[2]) > 8.0:
+      break
+    end
+  end
+  F = get_tcp_force()
+  stopl(0.5)
+  f = -(F[0]*s[0] + F[1]*s[1] + F[2]*s[2])
+  movel(q0, a=0.1, v=0.003)
+  return f
+end
+
+def wiggle_test(a, b, amp, fthr):
+  tel(fthr, 5)
+  # in force mode at a candidate: a wall on at least one side of a AND of b = inside the port.
+  # Use amp >= 0.8 mm: the plug has ~0.3 mm play and sits off-centre (port 2, 10-25: at 0.3 mm
+  # max 2.6 N, at 0.8 mm -a 5.05 N / +b 4.08 N with the opposite sides free)
+  fa1 = lateral(a, amp, 0.002)
+  fa2 = lateral([-a[0], -a[1], -a[2]], amp, 0.002)
+  fb1 = lateral(b, amp, 0.002)
+  fb2 = lateral([-b[0], -b[1], -b[2]], amp, 0.002)
+  textmsg(str_cat("wiggle ", str_cat(str_cat(fa1, str_cat(" ", fa2)), str_cat(" ", str_cat(fb1, str_cat(" ", fb2))))))
+  return (fa1 > fthr or fa2 > fthr) and (fb1 > fthr or fb2 > fthr)
+end
+
+def seat_compliant(n, fy, depth, tmax):
+  tel(fy, 6)
+  # x/z float at zero force (self-align), push fy along n; back off 0.5 mm before returning
+  end_force_mode()
+  q0 = get_actual_tcp_pose()
+  r0 = q0[0]*n[0] + q0[1]*n[1] + q0[2]*n[2]
+  force_mode(p[0, 0, 0, 0, 0, 0], [1, 1, 1, 0, 0, 0], [fy*n[0], fy*n[1], fy*n[2], 0, 0, 0], 2,
+             [0.003, 0.004, 0.003, 0.1, 0.1, 0.1])
+  t = 0
+  while t < tmax:
+    if adv_along(n, r0) > depth:
+      break
+    end
+    sync()
+    t = t + get_steptime()
+  end
+  dy = adv_along(n, r0)
+  textmsg("seatpose ", get_actual_tcp_pose())
+  release(n, 3.0, 0.001)
+  textmsg(str_cat("seated ", str_cat(dy, str_cat(" t ", t))))
+  return dy
+end
+
+def release(n, fmax, maxd):
+  # leave force mode and back off along -n in 0.1 mm steps until the push along n is < fmax
+  # (a fixed 0.5 mm back-off still left 12.3 N pressing on port 1); at most maxd
+  tel(fmax, 7)
+  end_force_mode()
+  q0 = get_actual_tcp_pose()
+  F = get_tcp_force()
+  while -(F[0]*n[0] + F[1]*n[1] + F[2]*n[2]) > fmax and -along(q0, n) < maxd:
+    q = get_actual_tcp_pose()
+    movel(pose_add(q, p[-0.0001*n[0], -0.0001*n[1], -0.0001*n[2], 0, 0, 0]), a=0.1, v=0.002)
+    sleep(0.1)
+    F = get_tcp_force()
+  end
+  textmsg(str_cat(str_cat("released ", -along(q0, n)), str_cat(" Fn ", -(F[0]*n[0] + F[1]*n[1] + F[2]*n[2]))))
+end
+
+def engage(n, fe, face, depth, tmax):
+  # from a candidate: push fe along n with x/z compliant (self-centring in the mouth) until the
+  # tip is `depth` past the measured face or tmax; 4 N stalls at the mouth (port 1: 1.1 mm in).
+  # Ends in force mode pushing 4 N along n only (x/z stiff again, for wiggle_test)
+  tel(fe, 4)
+  end_force_mode()
+  force_mode(p[0, 0, 0, 0, 0, 0], [1, 1, 1, 0, 0, 0], [fe*n[0], fe*n[1], fe*n[2], 0, 0, 0], 2,
+             [0.003, 0.004, 0.003, 0.1, 0.1, 0.1])
+  t = 0
+  while t < tmax and adv_along(n, face) < depth:
+    sync()
+    t = t + get_steptime()
+  end
+  d = adv_along(n, face)
+  end_force_mode()
+  force_mode(p[0, 0, 0, 0, 0, 0], [norm(n[0]), norm(n[1]), norm(n[2]), 0, 0, 0], [4.0*n[0], 4.0*n[1], 4.0*n[2], 0, 0, 0], 2,
+             [0.01, 0.005, 0.01, 0.1, 0.1, 0.1])
+  sleep(0.3)
+  textmsg(str_cat(str_cat("engaged ", d), str_cat(" t ", t)))
+  textmsg("engpose ", get_actual_tcp_pose())
+  return d
+end
+
+def seat_x(n, fy, depth, tmax):
+  # like seat_compliant, but z stays stiff (max 2 mm deviation): with z free the force loop's
+  # ~2 N vertical bias lifted the taped switch 7 mm during the port-4 seat. x stays compliant.
+  tel(fy, 6)
+  end_force_mode()
+  q0 = get_actual_tcp_pose()
+  r0 = q0[0]*n[0] + q0[1]*n[1] + q0[2]*n[2]
+  force_mode(p[0, 0, 0, 0, 0, 0], [1, 1, 0, 0, 0, 0], [fy*n[0], fy*n[1], fy*n[2], 0, 0, 0], 2,
+             [0.003, 0.004, 0.002, 0.1, 0.1, 0.1])
+  t = 0
+  while t < tmax:
+    if adv_along(n, r0) > depth:
+      break
+    end
+    sync()
+    t = t + get_steptime()
+  end
+  dy = adv_along(n, r0)
+  textmsg("seatpose ", get_actual_tcp_pose())
+  release(n, 3.0, 0.001)
+  textmsg(str_cat("seated ", str_cat(dy, str_cat(" t ", t))))
+  return dy
 end
 '''

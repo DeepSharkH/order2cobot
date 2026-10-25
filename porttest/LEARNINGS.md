@@ -4,6 +4,74 @@ Goal: UR3e + Robotiq Hand-E holding an RJ45 plug (3D-printed H shell, `~/rj45_gr
 tests the 8 ports of a TP-Link LS108G one by one; the Jetson checks the link on
 `enP7p1s0f0` (`dashboard/check_link.py`, 1000 Mb/s full duplex = pass).
 
+## Current state (2026-10-25 19:11, rj45-insert skill run 20261025-184457)
+
+- **Port 1 seated with the new grip, no alignment hints:** link up 1000 Mb/s full after 0.24 s,
+  0 flaps; extracted straight back (no blocking force) and the link dropped. One insert attempt,
+  0 false hits. Run log + trace: `data/runs/20261025-184457_rj45-port1/`.
+- **The shell tag is 12 mm**, not 15. With 15 mm both cameras put the tool 13–40 mm off. Tool
+  model in `configs/grip.yaml`: tip at flange (-41, -2, 189) mm, ±4 mm. The tip touches made
+  the remaining error irrelevant (face touch = survey face within 0.1 mm).
+- **Touch references** (tip, `slide_until_advance`, 3.5 N, 2 mm/s): face y 118.85, top edge pass
+  at tip z 35.06, left end pass at tip x -359.44; repeat within 0.1 mm. Measured port-1 offsets
+  from them are in `configs/products/ls108g.yaml` (port 1 = left pass +32.48 mm, top pass
+  -15.36 mm). Use them and a 1.5 mm spiral next time.
+- **Insertion:** at the target centre the tip went into the opening during the approach creep
+  (stopped by 4 N about 1.6 mm past the face). A 4 N force-mode push stalls there, ~1 mm in. The
+  compliant seat (`seat_compliant`, 25 N on y, x/z free) seated 13 mm in 3.3 s and self-aligned
+  by -1.5 mm in x and -1.0 mm in z. So: once inside, seat compliantly; don't wait for 4 N to go deep.
+  The wiggle test has not run inside a port yet (its depth gate was not reached).
+- **Bridge/controller facts found in this run:**
+  - `set_tcp` from a step persists: `robot_get_pose` **and the bridge IK** then use the tip TCP.
+    `move_checked` now detects the active TCP (nominal FK vs reported pose) and converts.
+  - URScript has no `abs()` (use `norm()`); `porttest/urscript_lint.py` runs in `URExec.run`.
+  - The controller is shared: another client can load/play its program between our node edit
+    and play. `run()` reloads `rj45_qa` right before play and ignores other programs' start/stop.
+  - Own bridge client `rj45-skill` (needs the move tier granted once on the pendant).
+- `find_port1.py` / `qa_run.py` / old LIB users assume a flange TCP inside steps; with the tip
+  TCP preamble they are wrong — use `porttest/rj45_skill.py` steps.
+
+- **Port 2 seated (19:20, run 20261025-191456):** link 1000/full after 0.74 s, extracted cleanly,
+  0 operator actions. Target from today's touches + `ls108g.yaml` + pitch was within 1.4 mm (x) /
+  0.5 mm (z) of the spiral candidate; seat self-aligned the rest.
+- **The switch slides under the seat:** between port 1 and port 2 it moved +2.25 mm in y and
+  -1.6 mm in x (touches; the fixed cam shows the same 6-7 px shift). Re-touch face / top / left end
+  before every port (one program, ~1 min), and touch the face right above the target port
+  (tip z ≈ 28.5, the strip between the openings and the top edge) for the local face y. A fixture
+  would make the touches confirmations instead of corrections.
+- **Wiggle test fixed:** with ~0.3 mm play and the plug off-centre, a ±0.3 mm wiggle reads free
+  in the port (max 2.6 N), so "both sides > 4 N" called port 2 a false hit at 7 mm depth. Now:
+  ±0.8 mm, a wall on at least one side of each axis (port 2: −a 5.05 N, +b 4.08 N). Depth past
+  the local face (> 4 mm) is the stronger evidence.
+- `search_port` (urlib) handles the tip entering at the start point; every step now ends with
+  `set_tcp(p[0,0,0,0,0,0])`.
+- `tag_test` rotation gate fails on noise for the 12 mm tag (first-frame normal 11.4° off the
+  axis); judge the grip by the tag position (repeats to 0.2 mm) and the touches.
+
+- **Port 3 seated (19:25, run 20261025-192243):** link 1000/full, found 0.7 mm from the target in
+  one program, wiggle (0.8 mm, one wall) 7.58 N. Drift diagnosis: robot and tool repeat (touches
+  0.1 mm, tag 0.2 mm, plug-in-shell < 0.3 mm in the gripper cam, fixed cam static by the plate
+  screws); the switch creeps under the seats and yaws: left-spot face 118.8 → 121.1 → 122.3 mm,
+  faces above ports 2/3 120.3/120.6 (≈ 2° yaw), fixed-cam switch region −6 then −14 px. Steps of
+  ~1–2 mm per seat are not visible by eye.
+
+- **Port 4 seated (20:04, run 20261025-200103, telemetry CSV in the run dir):** link 1000/full,
+  one program (search → engage 11 N → wiggle 0.8 → seat 18 N → release). The **seat lifts the
+  switch**: with z compliant at zero force the loop carries a ~+2 N vertical bias (payload model)
+  and the tip rose 17.4 → 24.3 mm in 2.4 s while 12 mm deep (operator: "slightly lifted from the
+  table"); it settled back after extraction (local top +0.26 mm) but the port end moved +1.0 mm in y.
+  Next: **seat with z stiff, x compliant only**; check the payload. Engage (0.9 s) barely moved z.
+  Wiggle at 0.8 mm: +a 3.38 / −a 0.47 / +b 0.01 / −b 4.87 N → the a axis missed 4 N; the depth
+  gate (6.9 mm past the measured face) decided. Tool orientation drifts ~0.7° in force mode and the
+  following moves keep it — reset the rotation to ROT in the approach move.
+
+- **Port 1 again, recorded (20:23, run 20261025-202013, video in data/recordings/20261025-201954_rj45-port1):**
+  link 1000/full in one program. **`seat_x` (z stiff, x compliant) fixed the lift:** in the seat z
+  moved only +1.0 mm (stiff z held a mean Fz of 10 N) instead of +6.9 mm; seat 3.4 s at 18 N.
+  Telemetry shows z dropped 3.4 mm during the *wiggle*: the 4 N force mode used for it has a 10 mm
+  deviation limit on x/z — tighten it to ~1 mm. Wiggle a-axis max 3.69 N (port 4: 3.38) → use
+  ~3 N for a, keep 4 N for b. The port-4 seat had moved the switch +0.4 mm (y) / +0.3 mm (x).
+
 ## Robot control through the AI Agent Bridge
 
 - The bridge (`https://192.168.2.12/universal-robots/ai-agent-bridge/mcp/v1/`, client

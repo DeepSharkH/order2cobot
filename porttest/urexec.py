@@ -13,13 +13,21 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from dashboard.ur_bridge import URBridge, BridgeError  # noqa: E402
 
+import yaml  # noqa: E402
+
 from porttest.urlib import LIB  # noqa: E402
+from porttest.urscript_lint import lint  # noqa: E402
 
 APP = 'rj45_qa'
-STATE = Path(__file__).resolve().parent.parent / 'data' / 'urexec.json'
+ROOT = Path(__file__).resolve().parent.parent
+STATE = ROOT / 'data' / 'urexec.json'
+CLIENT = 'rj45-skill'      # own name: the dashboard's session (order2cobot-calib) no longer drops ours
+GRIP = yaml.safe_load((ROOT / 'configs' / 'grip.yaml').read_text())
 
-# Hand-E (~1 kg) + UR camera mount with the Gemini (480 g) + plug shell; CoG ~6 cm out
-PREAMBLE = 'set_target_payload(1.5, [0.0, 0.0, 0.06])\n' + LIB
+# Hand-E (~1 kg) + UR camera mount with the Gemini (480 g) + plug shell; CoG ~6 cm out.
+# set_tcp: inside a step, get_actual_tcp_pose() and movel targets are plug-tip poses.
+PREAMBLE = ('set_target_payload(1.5, [0.0, 0.0, 0.06])\n'
+            f'set_tcp(p{[round(v, 5) for v in GRIP["tcp_tip"]]})\n' + LIB)
 
 
 def call(b, tool, **args):
@@ -47,7 +55,7 @@ def _guid(line):
 
 class URExec:
     def __init__(self):
-        self.b = URBridge(client_name='order2cobot-calib')
+        self.b = URBridge(client_name=CLIENT)
         self.app = self.guid = None
         self._ensure_app()
 
@@ -85,12 +93,21 @@ class URExec:
 
         Returns (msgs, pose): msgs are the step's textmsg() texts, read back from the
         controller log, which is also how the step reports results."""
-        expr = (PREAMBLE if preamble else '') + script
+        # restore the flange TCP at the end: set_tcp persists and the controller is shared
+        expr = (PREAMBLE if preamble else '') + script + ('\ntel(0, 0)\nset_tcp(p[0, 0, 0, 0, 0, 0])\n' if preamble else '')
+        problems = lint(expr)
+        if problems:
+            raise BridgeError('urscript_lint: ' + '; '.join(problems))
         r = call(self.b, 'program_update_node', appId=self.app, programId=self.app, guid=self.guid,
                  parameters={'expression': expr}, confirm=True)
         v = (r.get('data') or {}).get('validation') or {}
         if v and not v.get('valid', True):
             raise BridgeError(f'script invalid: {v}')
+        # the controller is shared: someone else may have loaded their app since our last step,
+        # and play would then start their program
+        if str(call(self.b, 'program_get_loaded')['data'].get('appId')) != str(self.app):
+            call(self.b, 'program_load', appId=self.app, confirm=True)
+            time.sleep(2)
         base = max(int(l['ts']) for l in self._log_list())
         for attempt in range(4):
             try:
@@ -110,6 +127,8 @@ class URExec:
             base = max([base] + [int(l['ts']) for l in new])
             for l in new:
                 m = l['message']
+                if ('PROGRAM_XXX_STARTED' in m or 'PROGRAM_XXX_STOPPED' in m) and APP not in m:
+                    continue        # another client's program
                 if 'PROGRAM_XXX_STARTED' in m:
                     started = True
                 elif m.startswith('text_msg'):
@@ -132,17 +151,18 @@ class URExec:
 
         Checks: bent elbow (|q2| >= min_elbow, a straight elbow faulted the shoulder), wrist 3
         within w3_tol of w3_ref (the camera cable winds up), plug tip and shell rear at least
-        min_clear above the plate (the cable droops behind the shell)."""
+        min_clear above the plate (the cable droops behind the shell); points from configs/grip.yaml."""
         import numpy as np
         from scipy.spatial.transform import Rotation as R
         J = ('base', 'shoulder', 'elbow', 'wrist1', 'wrist2', 'wrist3')
         q0 = [call(self.b, 'robot_get_joint_positions')['data'][k] for k in J]
         w3_ref = q0[5] if w3_ref is None else w3_ref
-        r = call(self.b, 'robot_inverse_kinematics', pose={'position': list(pose[:3]), 'orientation': list(pose[3:])},
+        ik_pose = self._in_active_tcp(pose, q0)
+        r = call(self.b, 'robot_inverse_kinematics', pose={'position': list(ik_pose[:3]), 'orientation': list(ik_pose[3:])},
                  qNear=q0)['data']
         q = [float(r[k]) for k in J]
         Rm = R.from_rotvec(pose[3:]).as_matrix()
-        low = min((np.array(pose[:3]) + Rm @ np.array(o))[2] for o in ((0, 0.035, 0.19), (0, -0.022, 0.19))) - 0.015
+        low = min((np.array(pose[:3]) + Rm @ np.array(o))[2] for o in GRIP['collision_points'].values()) - 0.005
         problems = []
         if abs(q[2]) < min_elbow:
             problems.append(f'elbow {q[2]:.2f} rad too straight')
@@ -154,6 +174,23 @@ class URExec:
             raise BridgeError('move rejected: ' + '; '.join(problems))
         self.run(f'movej({[round(v_, 5) for v_ in q]}, a=0.4, v={v})', timeout=150)
         return q
+
+    def _in_active_tcp(self, pose, q0):
+        """The bridge IK (and robot_get_pose) work in the controller's active TCP, which is the
+        plug tip after any step (the preamble's set_tcp persists). Detect which TCP is active by
+        comparing the reported pose with nominal FK, and convert the flange `pose` to it."""
+        import numpy as np
+        from scipy.spatial.transform import Rotation as R
+        from dashboard import kinematics as kin
+        F0 = kin.fk(q0, kin.UR3E_NOMINAL_DH)
+        rep = np.array(call(self.b, 'robot_get_pose')['data']['pose']['position'])
+        t = np.array(GRIP['tcp_tip'][:3])
+        if np.linalg.norm(rep - F0[:3, 3]) < 0.02:
+            return list(pose)
+        if np.linalg.norm(rep - (F0[:3, :3] @ t + F0[:3, 3])) < 0.02:
+            Rm = R.from_rotvec(pose[3:]).as_matrix()
+            return list(np.array(pose[:3]) + Rm @ t) + list(pose[3:])
+        raise BridgeError(f'active TCP unknown: reported {np.round(rep, 4)} vs flange FK {np.round(F0[:3, 3], 4)}')
 
     def stop(self):
         try:
