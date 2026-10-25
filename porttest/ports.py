@@ -47,14 +47,26 @@ def detect(img, roi=None, n=8, debug=None):
     return out
 
 
+def _even(det, tol=0.15):
+    """True if the detections are n evenly spaced boxes along the row."""
+    if len(det) < 2:
+        return False
+    x = np.array([d['centre'][0] for d in det])
+    gaps = np.diff(x)
+    return gaps.min() > 0 and np.abs(gaps / np.median(gaps) - 1).max() < tol
+
+
 def detect_rotated(img, angle, centre, half=(220, 70), n=8, debug=None):
     """detect() on the image rotated by `angle` deg (cv2 sense) about `centre` (u, v), so a
-    tilted port row becomes horizontal; results are mapped back to original pixels."""
+    tilted port row becomes horizontal; results are mapped back to original pixels.
+    Returns [] unless it finds n evenly spaced boxes (a merged or extra box is no port row)."""
     M = cv2.getRotationMatrix2D(centre, angle, 1.0)
     rot = cv2.warpAffine(img, M, (img.shape[1], img.shape[0]), flags=cv2.INTER_CUBIC)
     cu, cv = centre
     roi = (int(cu - half[0]), int(cv - half[1]), int(cu + half[0]), int(cv + half[1]))
     det = detect(rot, roi, n, debug)
+    if len(det) != n or not _even(det):
+        return []
     Mi = cv2.invertAffineTransform(M)
     back = lambda uv: tuple(Mi @ np.array([uv[0], uv[1], 1.0]))
     return [{'centre': back(d['centre']), 'bottom': back(d['bottom']), 'box': d['box']} for d in det]

@@ -35,7 +35,11 @@ def base_T(x, y, yaw):
 
 
 def unpack(p):
-    return base_T(*p[:3]), kin.vec_to_T(p[3:9])
+    """p = [x, y, yaw, mount rotvec (3), mount t (3)] (+ [base z] when the height is free)."""
+    T = base_T(*p[:3])
+    if len(p) > 9:
+        T[2, 3] = p[9]
+    return T, kin.vec_to_T(p[3:9])
 
 
 def residuals(p, views, board, K, dist, dh):
@@ -69,10 +73,11 @@ def starts(mount_view=None, base0=(0.0, 0.0, 0.0)):
                 yield np.r_[base0[0], base0[1], yaw, r.as_rotvec(), t]
 
 
-def solve(views, board, K, dist, dh, mount_view=None, base0=(0.0, 0.0, 0.0)):
+def solve(views, board, K, dist, dh, mount_view=None, base0=(0.0, 0.0, 0.0), free_z=False):
     args = (views, board, K, dist, dh)
     # screen every start briefly, refine the three best
-    short = sorted((least_squares(residuals, p0, args=args, loss='soft_l1', f_scale=5.0, max_nfev=25)
+    short = sorted((least_squares(residuals, np.r_[p0, [0.0] if free_z else []], args=args, loss='soft_l1',
+                                  f_scale=5.0, max_nfev=25)
                     for p0 in starts(mount_view, base0)), key=lambda r: r.cost)[:3]
     best = min((least_squares(residuals, r.x, args=args, loss='soft_l1', f_scale=2.0, max_nfev=400) for r in short),
                key=lambda r: r.cost)
@@ -87,6 +92,7 @@ def main():
     ap.add_argument('session')
     ap.add_argument('--save', action='store_true', help='write base + mount into configs/calibration/scene.yaml')
     ap.add_argument('--drop', type=float, default=3.0, help='drop views above this rms [px] and re-solve')
+    ap.add_argument('--free-z', action='store_true', help='also fit the base height (default: on the board plane)')
     a = ap.parse_args()
     cfg = yaml.safe_load((ROOT / 'configs/calib_dashboard.yaml').read_text())
     board = cal.Board(cfg['board']['cols'], cfg['board']['rows'], cfg['board']['square'])
@@ -100,22 +106,25 @@ def main():
     scene = yaml.safe_load(scene_file.read_text()) if scene_file.exists() else {}
     mv = np.array(scene['T_flange_gcam']) if scene.get('T_flange_gcam') else None
     b = scene.get('base', {'x': 0, 'y': 0, 'yaw_deg': 0})
-    x, per = solve(views, board, K, dist, dh, mv, (b['x'], b['y'], np.radians(b['yaw_deg'])))
+    x, per = solve(views, board, K, dist, dh, mv, (b['x'], b['y'], np.radians(b['yaw_deg'])), a.free_z)
     keep = per < a.drop
     if not keep.all():
         print('dropping views', [i for i, k in zip(ids, keep) if not k], np.round(per[~keep], 1))
         views = [v for v, k in zip(views, keep) if k]
         ids = [i for i, k in zip(ids, keep) if k]
-        x, per = solve(views, board, K, dist, dh, kin.vec_to_T(x[3:9]), (x[0], x[1], x[2]))
+        x, per = solve(views, board, K, dist, dh, kin.vec_to_T(x[3:9]), (x[0], x[1], x[2]), a.free_z)
     Tb, M = unpack(x)
     print(f'{len(views)} views, rms {np.sqrt(np.mean(per ** 2)):.2f} px, worst {per.max():.2f} px')
     print('per view', dict(zip(ids, np.round(per, 2))))
-    print(f'base x {x[0] * 1000:.1f} mm  y {x[1] * 1000:.1f} mm  yaw {np.degrees(x[2]):.2f} deg')
+    print(f'base x {x[0] * 1000:.1f} mm  y {x[1] * 1000:.1f} mm  yaw {np.degrees(x[2]):.2f} deg'
+          + (f'  z {x[9] * 1000:.1f} mm' if len(x) > 9 else ''))
     eul = R.from_matrix(M[:3, :3]).as_euler('xyz', degrees=True)
     print(f'mount t {np.round(M[:3, 3] * 1000, 1)} mm  rot xyz {np.round(eul, 1)} deg  '
           f'optical axis vs tool axis {np.degrees(np.arccos(M[2, 2])):.1f} deg')
     if a.save:
         scene['base'] = {'x': float(x[0]), 'y': float(x[1]), 'yaw_deg': float(np.degrees(x[2]))}
+        if len(x) > 9:
+            scene['base']['z'] = float(x[9])
         scene['T_flange_gcam'] = M.tolist()
         scene['gcam'] = {'stamp': meta.get('stamp'), 'session': str(sess), 'views': len(views),
                          'rms_px': float(np.sqrt(np.mean(per ** 2))), 'method': 'scene_solve (base + mount)'}

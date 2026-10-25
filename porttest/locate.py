@@ -1,8 +1,9 @@
 """Gripper-camera geometry with the hand-eye calibration: pixel -> ray / point in robot base.
 
-The camera pose comes from the current flange pose (bridge) and T_flange_gcam
-(configs/calibration/handeye_gripper.yaml). Intrinsics are the factory ones the
-calibration used (no distortion).
+The camera pose comes from the current flange pose (bridge) and T_flange_gcam from
+configs/calibration/scene.yaml (multi-view solve, dashboard/scene_solve.py; the camera
+sits on the side bracket, optical axis ~24 deg off the tool axis). Intrinsics are the
+factory ones (no distortion).
 """
 import asyncio
 import sys
@@ -19,10 +20,11 @@ from porttest.square_from_depth import _grab
 from porttest.urexec import URBridge, call
 
 ROOT = Path(__file__).resolve().parent.parent
-HE = yaml.safe_load((ROOT / 'configs/calibration/handeye_gripper.yaml').read_text())
-X = np.array(HE['T_flange_gcam'])
-K = np.array(HE['gripper_K'])
-SQUARE = HE['square']
+SCENE = yaml.safe_load((ROOT / 'configs/calibration/scene.yaml').read_text())
+CFG = yaml.safe_load((ROOT / 'configs/calib_dashboard.yaml').read_text())
+X = np.array(SCENE['T_flange_gcam'])
+K = np.array([[610.1984252929688, 0.0, 635.2977905273438], [0.0, 610.2023315429688, 364.4780578613281], [0.0, 0.0, 1.0]])
+SQUARE = CFG['board']['square']
 
 
 def flange(b=None):

@@ -267,3 +267,17 @@ kbd { font: 400 10px var(--font); opacity: .6; margin-left: 4px; }
 .api { font: 400 11px/1.5 ui-monospace, monospace; background: rgba(17,17,17,.08); padding: 8px 10px; margin: 6px 0 0;
   white-space: pre-wrap; word-break: break-all; text-transform: none; letter-spacing: 0; }
 @media (max-width: 1100px) { .ports { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+
+/* ── claude tab ───────────────────────────────────────────────── */
+.chat-layout { display: flex; }
+.chat { flex: 1; min-width: 0; }
+.chat-log { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 6px; }
+.msg { white-space: pre-wrap; word-break: break-word; padding: 10px 14px; max-width: 900px; }
+.msg.me { align-self: flex-end; background: var(--cream); color: var(--ink); }
+.msg.bot { background: #1c1c1c; }
+.msg.tool { font: 12px/1.35 ui-monospace, monospace; color: var(--grey); padding: 4px 14px; max-height: 12em; overflow: auto; }
+.msg.meta { font-size: 12px; color: var(--grey); text-transform: uppercase; letter-spacing: .04em; padding: 2px 14px; }
+.msg.err { color: var(--red); }
+.chat-in { display: flex; gap: 10px; margin-top: 12px; }
+.chat-in textarea { flex: 1; resize: vertical; background: #1c1c1c; color: var(--white); border: 1px solid var(--rule); font: inherit; padding: 10px; }
+#cc-mode { background: #1c1c1c; color: var(--white); border: 1px solid var(--rule); font: inherit; padding: 4px 6px; }

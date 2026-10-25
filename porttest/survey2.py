@@ -20,7 +20,7 @@ from porttest.urexec import URExec
 ROOT = Path(__file__).resolve().parent.parent
 
 
-def main(angle, cu, cv, du, dv, px_per_m, shifts=(0.0, 0.05, -0.05)):
+def main(angle, cu, cv, du, dv, px_per_m, shifts=(0.05, 0.03, -0.03, -0.05)):
     ex = URExec()
     p0, _ = ex.pose()
     row = np.array([du, dv]) / np.hypot(du, dv)          # image direction of base +x along the row
@@ -38,6 +38,8 @@ def main(angle, cu, cv, du, dv, px_per_m, shifts=(0.0, 0.05, -0.05)):
         if len(det) == 8:
             views.append((camera(flange(ex.b)), det))
     ex.run(f'movel({urpose(p0)}, a=0.2, v=0.03)', timeout=90)
+    if len(views) < 2:
+        raise SystemExit(f'only {len(views)} view(s) with 8 evenly spaced ports; ports.yaml unchanged')
     out = {}
     for key in ('centre', 'bottom'):
         P, rms = ports.triangulate(views, key)

@@ -21,12 +21,11 @@ ROOT = Path(__file__).resolve().parent.parent
 ROI = (300, 300, 1050, 420)
 
 
-def capture_png():
-    msg, _ = dash.action('capture', timeout=30)
-    st = dash.state()
-    sess = sorted((ROOT / 'data/calib').iterdir())[-1]
-    s = json.loads((sess / 'samples.json').read_text())[-1]
-    return cv2.imread(str(sess / s['gripper_image'])), msg
+def capture_png(cam=1):
+    """Latest full-resolution colour frame from the dashboard (GET /api/frame/{cam})."""
+    import urllib.request
+    png = urllib.request.urlopen(f'http://localhost:8090/api/frame/{cam}', timeout=10).read()
+    return cv2.imdecode(np.frombuffer(png, np.uint8), cv2.IMREAD_COLOR), 'frame'
 
 
 def main(shifts=(0.0, 0.05, -0.05)):

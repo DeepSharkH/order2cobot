@@ -286,7 +286,7 @@ function buildCards() {
       <div class="rows" id="gcam-rows"></div>
     </div>
     <div class="card" id="c-base">
-      <div class="card-head"><div><h3>Robot base</h3><p>On the board plane</p></div></div>
+      <div class="card-head"><div><h3>Robot base</h3><p>Upright, under the board plane</p></div></div>
       <div class="actions"><button id="b-edit">Edit base</button></div>
       <div class="rows" id="base-rows"></div>
       <div class="msg" id="msg"></div>
@@ -350,7 +350,8 @@ function renderCards(s) {
   const b = s.base;
   $('#base-rows').innerHTML = `
     <b>Position</b><span>${mm(b.x)}, ${mm(b.y)} mm</span>
-    <b>Yaw</b><span>${fmt(b.yaw_deg, 1)}°</span>`;
+    <b>Yaw</b><span>${fmt(b.yaw_deg, 1)}°</span>
+    <b>Height</b><span>${fmt((b.z ?? 0) * 1000, 1)} mm vs board</span>`;
   $('#msg').textContent = s.busy ? `${s.busy}…` : s.message;
 }
 
@@ -411,6 +412,7 @@ const editor = {
     this.active = true;
     baseGroup.matrix.decompose(baseGroup.position, baseGroup.quaternion, baseGroup.scale);
     baseGroup.matrixAutoUpdate = true;
+    this.z = baseGroup.position.z;          // the base height is fixed (calibrated), only x, y, yaw move
     gizmo.attach(baseGroup);
     this.mode('translate');
     $('#editor').classList.remove('hidden');
@@ -445,12 +447,12 @@ const editor = {
     const v = {};
     document.querySelectorAll('#editor input[data-k]').forEach((i) => { v[i.dataset.k] = parseFloat(i.value) || 0; });
     baseGroup.quaternion.setFromAxisAngle(new THREE.Vector3(0, 0, 1), (v.yaw * Math.PI) / 180);
-    baseGroup.position.set(v.x / 1000, v.y / 1000, 0);
+    baseGroup.position.set(v.x / 1000, v.y / 1000, this.z);
   },
 };
 document.querySelectorAll('#editor [data-mode]').forEach((b) => { b.onclick = () => editor.mode(b.dataset.mode); });
 document.querySelectorAll('#editor input[data-k]').forEach((i) => { i.oninput = () => editor.fromFields(); });
-gizmo.addEventListener('objectChange', () => { baseGroup.position.z = 0; editor.fields(); });
+gizmo.addEventListener('objectChange', () => { baseGroup.position.z = editor.z; editor.fields(); });
 $('#ed-cancel').onclick = () => editor.close();
 $('#ed-save').onclick = () => { send({ type: 'set_base', ...editor.values() }); editor.close(); };
 document.addEventListener('keydown', (e) => {
@@ -464,13 +466,13 @@ document.addEventListener('keydown', (e) => {
 // ── tabs ────────────────────────────────────────────────────────────────────
 // one set of camera feeds, moved into whichever tab is showing
 function showTab(name) {
-  for (const t of ['calib', 'qa']) $(`#tab-${t}`).classList.toggle('hidden', t !== name);
+  for (const t of ['calib', 'qa', 'claude']) $(`#tab-${t}`).classList.toggle('hidden', t !== name);
   document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === name));
-  $(name === 'qa' ? '#qa-cams' : '#calib-cams').appendChild($('#feeds'));
-  history.replaceState(null, '', name === 'qa' ? '#qa' : location.pathname);
+  if (name !== 'claude') $(name === 'qa' ? '#qa-cams' : '#calib-cams').appendChild($('#feeds'));
+  history.replaceState(null, '', name === 'calib' ? location.pathname : `#${name}`);
 }
 $('#tabs').onclick = (e) => { const b = e.target.closest('button'); if (b) showTab(b.dataset.tab); };
-if (location.hash === '#qa') showTab('qa');
+if (location.hash === '#qa' || location.hash === '#claude') showTab(location.hash.slice(1));
 
 // ── port QA ─────────────────────────────────────────────────────────────────
 let qaSel = 1;
@@ -584,3 +586,83 @@ function connect() {
 }
 connect();
 setInterval(() => { $('#clock').textContent = new Date().toLocaleTimeString('en-GB'); }, 1000);
+
+// ── claude ──────────────────────────────────────────────────────────────────
+// frontend to the local Claude Code CLI (server runs `claude -p` on the subscription)
+let ccSession = null;
+let ccAbort = null;
+const ccLog = $('#cc-log');
+
+function ccAdd(cls, text) {
+  const d = document.createElement('div');
+  d.className = `msg ${cls}`;
+  d.textContent = text;
+  ccLog.appendChild(d);
+  ccLog.scrollTop = ccLog.scrollHeight;
+  return d;
+}
+
+function ccEvent(ev) {
+  if (ev.type === 'system' && ev.subtype === 'init') ccSession = ev.session_id;
+  else if (ev.type === 'assistant') {
+    for (const c of ev.message.content || []) {
+      if (c.type === 'text' && c.text.trim()) ccAdd('bot', c.text);
+      else if (c.type === 'tool_use') ccAdd('tool', `▸ ${c.name} ${JSON.stringify(c.input).slice(0, 400)}`);
+    }
+  } else if (ev.type === 'user') {
+    for (const c of ev.message.content || []) {
+      if (c.type !== 'tool_result') continue;
+      const t = Array.isArray(c.content) ? c.content.map((x) => x.text || '').join('') : String(c.content ?? '');
+      ccAdd(c.is_error ? 'tool err' : 'tool', t.slice(0, 1200));
+    }
+  } else if (ev.type === 'result') {
+    if (ev.session_id) ccSession = ev.session_id;
+    const denied = (ev.permission_denials || []).map((p) => p.tool_name).join(', ');
+    ccAdd(ev.is_error ? 'meta err' : 'meta',
+      `${ev.subtype} · ${fmt((ev.duration_ms || 0) / 1000, 1)} s · ${ev.num_turns} turns${denied ? ` · denied: ${denied}` : ''}`);
+  }
+}
+
+async function ccSend(prompt) {
+  ccAdd('me', prompt);
+  ccAbort = new AbortController();
+  $('#cc-send').textContent = 'Stop';
+  try {
+    const r = await fetch('/api/claude', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: ccAbort.signal,
+      body: JSON.stringify({ prompt, session: ccSession, mode: $('#cc-mode').value }),
+    });
+    const rd = r.body.getReader(), dec = new TextDecoder();
+    let buf = '';
+    for (;;) {
+      const { value, done } = await rd.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let i;
+      while ((i = buf.indexOf('\n')) >= 0) {
+        const line = buf.slice(0, i).trim();
+        buf = buf.slice(i + 1);
+        if (!line) continue;
+        try { ccEvent(JSON.parse(line)); } catch { ccAdd('meta err', line); }
+      }
+    }
+    if (buf.trim() || !r.ok) ccAdd('meta err', `HTTP ${r.status} ${buf.trim()}`);
+  } catch (e) {
+    ccAdd('meta err', e.name === 'AbortError' ? 'stopped' : String(e));
+  }
+  ccAbort = null;
+  $('#cc-send').textContent = 'Send';
+}
+
+$('#cc-form').onsubmit = (e) => {
+  e.preventDefault();
+  if (ccAbort) { ccAbort.abort(); return; }
+  const p = $('#cc-prompt').value.trim();
+  if (!p) return;
+  $('#cc-prompt').value = '';
+  ccSend(p);
+};
+$('#cc-prompt').onkeydown = (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('#cc-form').requestSubmit(); }
+};
+$('#cc-new').onclick = () => { ccSession = null; ccLog.textContent = ''; };

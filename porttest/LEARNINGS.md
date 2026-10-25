@@ -271,3 +271,23 @@ base · FK · mount; fixed cam = board PnP. Stored in `configs/calibration/scene
   tilted poses should bring the gripper holdout under the current 6 mm.
 - `porttest/locate.py` still reads `handeye_gripper.yaml` (the old mount), and
   `handeye_capture.py` sent the dashboard's removed `capture` message.
+
+## Port survey with the remounted camera (2026-10-25 afternoon)
+
+- **Use full-resolution frames.** The dashboard's websocket stream is downscaled to 960x540
+  (`stream_width`), for display only. For judging an image, measuring pixels or detecting
+  ports, fetch the full 1280x720 colour frame: `GET http://localhost:8090/api/frame/1`
+  (gripper) or `/0` (fixed), which is what `port_survey.capture_png()` uses now.
+- The dashboard's `capture` action is gone; `capture_png()` uses the frame endpoint.
+- The plug cable hung across the port row from the survey pose (camera on the -y side,
+  32 cm, 30° down). The operator routed it back over the gripper; check for it first.
+- At 32 cm and 30° down, straight in front, the openings are ~30 px apart and the bezel
+  between them is nearly as dark as the openings: `ports.detect()` merged them or took the
+  black tape above the switch. The views shifted ±5 cm along x detected cleanly. A fitted
+  "comb" (evenly spaced columns at the pitch) was tried and dropped: it latched onto the
+  face edge and stretched the pitch. Now `detect_rotated()` returns nothing unless it finds 8
+  evenly spaced boxes, and `survey2` uses views at ±3 / ±5 cm and needs ≥ 2 good ones.
+- A wrong detection in one view wrecks the triangulation (10 mm ray rms, 16 mm pitch, 10°
+  yaw). Check ray rms (~0.1 mm when right), pitch (~14.5 mm) and yaw before using a survey.
+- The wrist-3 cable reference after the remount is -4.97 rad (cable relaxed, per the
+  operator); `porttest/go_view.py` keeps moves within ±0.8 rad of it.

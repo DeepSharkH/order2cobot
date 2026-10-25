@@ -4,8 +4,8 @@ Camera + UR3e calibration dashboard — web server.
 World frame = the checkerboard: origin at the board centre, x along its
 columns, z up out of the table. Everything is placed in it:
   fixed cam     T_world_fcam from the D435's view of the board (Locate button)
-  robot base    on the board plane (z = 0, upright): only x, y, yaw are set,
-                by hand in the base editor
+  robot base    upright, parallel to the board plane: x, y, yaw (base editor) and
+                a fixed height z (9 mm below the board, from scene_solve --free-z)
   gripper cam   base · forward kinematics · mount. The mount starts from
                 gripper_camera.mount in the config; "Mount from board view" sets
                 it from one still view of the board given the base — no hand-eye
@@ -18,6 +18,10 @@ Serves web/ and streams to each browser over one websocket (/ws):
   binary [u8 2][u8 cam_index][2 pad][u32 n] + n*3 f32 xyz + n*3 u8 rgb   cloud in that camera's optical frame
 The browser sends {"type": ...}: locate_fixed, mount_from_view, set_base {x, y, yaw}, set_overlays {on},
 qa_test {port, phase}, qa_reset {port?}.
+
+POST /api/claude {"prompt", "session"?, "mode"?}   Claude Code CLI on the subscription (claude_chat.py)
+
+GET /api/frame/0|1   latest full-resolution colour frame (PNG) of the fixed / gripper cam
 
 Port QA for robot scripts (blocks until the link check finishes):
   GET  /api/qa                         all 8 ports + live link
@@ -43,6 +47,7 @@ from aiohttp import WSMsgType, web
 
 from . import calibration as cal
 from . import check_link
+from . import claude_chat
 from . import kinematics as kin
 from .cameras import OrbbecCamera, RealSenseCamera, UVCCamera, depth_to_cloud, remove_outliers
 from .ur_bridge import URBridge
@@ -240,7 +245,9 @@ class App:
     # ── poses in the world (board) frame ──────────────────────────────────
     def T_world_base(self):
         b = self.scene['base']
-        return base_T(b['x'], b['y'], np.radians(b['yaw_deg']))
+        T = base_T(b['x'], b['y'], np.radians(b['yaw_deg']))
+        T[2, 3] = b.get('z', 0.0)          # fixed offset below the board plane (scene_solve --free-z)
+        return T
 
     def dh(self):
         return self.robot.dh if self.robot.dh is not None else kin.UR3E_NOMINAL_DH
@@ -456,7 +463,7 @@ class App:
         return f'gripper cam mount set: {len(views)} frames, {rms:.2f} px, spread {spread:.1f} mm — saved'
 
     def set_base(self, x, y, yaw_deg):
-        self.scene['base'] = {'x': float(x), 'y': float(y), 'yaw_deg': float(yaw_deg)}
+        self.scene['base'] = {**self.scene['base'], 'x': float(x), 'y': float(y), 'yaw_deg': float(yaw_deg)}
         self._save_scene()
         return f'base at {x * 1000:.0f}, {y * 1000:.0f} mm, yaw {yaw_deg:.1f}° — saved'
 
@@ -619,6 +626,16 @@ async def qa_vlm(request):
         return web.json_response({'ok': False, 'reason': f'expected {{"port": 1-{qa.n}}}: {e}'}, status=400)
 
 
+async def frame_get(request):
+    """Latest full-resolution colour frame of camera 0 (fixed) or 1 (gripper) as PNG."""
+    cam = request.app['app'].cams[int(request.match_info['cam'])]
+    _, img, _ = cam.latest()
+    if img is None:
+        return web.json_response({'ok': False, 'reason': cam.error or 'no frame'}, status=503)
+    ok, png = cv2.imencode('.png', img)
+    return web.Response(body=png.tobytes(), content_type='image/png')
+
+
 async def index(_):
     return web.FileResponse(WEB / 'index.html')
 
@@ -645,8 +662,10 @@ def main():
     w.router.add_get('/', index)
     w.router.add_get('/ws', ws_handler)
     w.router.add_get('/api/qa', qa_get)
+    w.router.add_get('/api/frame/{cam:[01]}', frame_get)
     w.router.add_post('/api/qa/vlm', qa_vlm)
     w.router.add_post('/api/qa/{port}/{phase}', qa_post)
+    w.router.add_routes(claude_chat.routes(ROOT))
     w.router.add_static('/', WEB)
     port = a.port or cfg.get('port', 8090)
     print(f'calibration dashboard: http://localhost:{port}')
