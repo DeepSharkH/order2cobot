@@ -25,7 +25,7 @@ from manifold3d import CrossSection, Manifold, Mesh, OpType  # noqa: E402
 
 JUMPER = os.path.join(HERE, "Jumper casing - 5 mm pitch - glue halves_1.stl")
 PITCH = 2.54
-H = 25.0             # casing height (the original jumper casing is 40)
+H = 20.0             # casing height (the original jumper casing is 40)
 WALL = 2.65          # jumper casing: pin channel edge to the side face
 CL = 0.2             # pocket clearance round a body
 EXIT_D, EXIT_H = 0.8, 1.0    # lead exit hole at the bottom, as in the jumper casing

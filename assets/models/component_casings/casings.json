@@ -11,7 +11,7 @@
    ],
    "width_x": 11.54,
    "thickness_y": 4.0,
-   "height": 25.0
+   "height": 20.0
   },
   {
    "casing": "jumper_s2",
@@ -23,7 +23,7 @@
    ],
    "width_x": 14.08,
    "thickness_y": 4.0,
-   "height": 25.0
+   "height": 20.0
   },
   {
    "casing": "jumper_s3",
@@ -35,7 +35,7 @@
    ],
    "width_x": 16.62,
    "thickness_y": 4.0,
-   "height": 25.0
+   "height": 20.0
   },
   {
    "casing": "jumper_s4",
@@ -47,7 +47,7 @@
    ],
    "width_x": 19.16,
    "thickness_y": 4.0,
-   "height": 25.0
+   "height": 20.0
   },
   {
    "casing": "resistor_s1",
@@ -59,7 +59,7 @@
    ],
    "width_x": 14.4,
    "thickness_y": 4.0,
-   "height": 25.0
+   "height": 20.0
   },
   {
    "casing": "resistor_s2",
@@ -71,7 +71,7 @@
    ],
    "width_x": 14.4,
    "thickness_y": 4.0,
-   "height": 25.0
+   "height": 20.0
   },
   {
    "casing": "resistor_s4",
@@ -83,7 +83,7 @@
    ],
    "width_x": 18.66,
    "thickness_y": 4.0,
-   "height": 25.0
+   "height": 20.0
   },
   {
    "casing": "diode_s1",
@@ -95,7 +95,7 @@
    ],
    "width_x": 14.0,
    "thickness_y": 4.0,
-   "height": 25.0
+   "height": 20.0
   },
   {
    "casing": "diode_s2",
@@ -107,7 +107,7 @@
    ],
    "width_x": 14.0,
    "thickness_y": 4.0,
-   "height": 25.0
+   "height": 20.0
   },
   {
    "casing": "diode_s4",
@@ -119,7 +119,7 @@
    ],
    "width_x": 18.66,
    "thickness_y": 4.0,
-   "height": 25.0
+   "height": 20.0
   },
   {
    "casing": "led_s1",
@@ -131,7 +131,7 @@
    ],
    "width_x": 14.0,
    "thickness_y": 4.0,
-   "height": 25.0
+   "height": 20.0
   },
   {
    "casing": "led_s2",
@@ -143,7 +143,7 @@
    ],
    "width_x": 14.0,
    "thickness_y": 4.0,
-   "height": 25.0
+   "height": 20.0
   },
   {
    "casing": "led_s4",
@@ -155,7 +155,7 @@
    ],
    "width_x": 18.66,
    "thickness_y": 4.0,
-   "height": 25.0
+   "height": 20.0
   },
   {
    "casing": "rgb_led_s1",
@@ -169,7 +169,7 @@
    ],
    "width_x": 16.12,
    "thickness_y": 4.0,
-   "height": 25.0
+   "height": 20.0
   },
   {
    "casing": "rgb_led_s2",
@@ -183,7 +183,7 @@
    ],
    "width_x": 23.74,
    "thickness_y": 4.0,
-   "height": 25.0
+   "height": 20.0
   },
   {
    "casing": "bjt_s1",
@@ -196,7 +196,7 @@
    ],
    "width_x": 14.0,
    "thickness_y": 4.0,
-   "height": 25.0
+   "height": 20.0
   },
   {
    "casing": "capacitor_ceramic_s1",
@@ -208,7 +208,7 @@
    ],
    "width_x": 14.0,
    "thickness_y": 4.0,
-   "height": 25.0
+   "height": 20.0
   },
   {
    "casing": "capacitor_electrolytic_s1",
@@ -220,7 +220,7 @@
    ],
    "width_x": 14.0,
    "thickness_y": 4.0,
-   "height": 25.0
+   "height": 20.0
   }
  ]
 }
