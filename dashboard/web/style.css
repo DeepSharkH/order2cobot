@@ -129,7 +129,7 @@ button.primary { background: var(--cream); color: var(--ink); border-color: var(
 /* ── state cards ───────────────────────────────────────────────── */
 /* the cards share the column's height, like the deck's block grids */
 .cards { flex: 1; display: flex; flex-direction: column; gap: var(--gap); overflow-y: auto; min-height: 0; }
-.card { position: relative; flex: 1 1 0; display: flex; flex-direction: column; background: var(--cream); color: var(--ink); padding: 18px 54px 18px 20px; }
+.card { position: relative; flex: 1 1 0; display: flex; flex-direction: column; background: var(--cream); color: var(--ink); padding: 16px 18px; }
 .card .state { margin-top: auto; }
 .card .joints { margin-top: auto; }
 .card.dark { background: var(--bg); color: var(--white); outline: 2px solid var(--cream); outline-offset: -2px; }
@@ -138,10 +138,10 @@ button.primary { background: var(--cream); color: var(--ink); border-color: var(
   writing-mode: vertical-rl; transform: rotate(180deg);
   font-size: 21px; font-weight: 900; letter-spacing: .01em; line-height: 1; text-transform: uppercase;
 }
-.card-head { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 14px; }
-.card-head h3 { margin: 0; font-size: 21px; font-weight: 900; line-height: 1.05; text-transform: uppercase; }
+.card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.card-head h3 { margin: 0; font-size: 18px; font-weight: 900; line-height: 1.05; text-transform: uppercase; }
 .card-head h3 i { display: inline-block; width: 11px; height: 11px; margin-right: 9px; outline: 1px solid var(--ink); vertical-align: 2px; }
-.card-head p { margin: 3px 0 0; font-size: 12px; letter-spacing: .04em; text-transform: uppercase; }
+.card-head p { margin: 3px 0 0; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; opacity: .75; }
 .chip {
   margin-left: auto; flex-shrink: 0;
   font: 700 10px var(--font); letter-spacing: .18em; text-transform: uppercase; padding: 4px 7px;
@@ -165,8 +165,9 @@ button.primary { background: var(--cream); color: var(--ink); border-color: var(
 .note { margin: 0; font-size: 12px; letter-spacing: .04em; text-transform: uppercase; }
 
 /* arm: joint ticks on hairlines */
-.joints { display: grid; gap: 7px; margin-bottom: 14px; }
-.joint { display: grid; grid-template-columns: 24px 1fr 58px; align-items: center; gap: 10px; font-size: 12px; }
+.joints { display: grid; gap: 4px; margin-bottom: 4px; }
+.joint { display: grid; grid-template-columns: 64px 1fr 56px; align-items: center; gap: 10px; font-size: 12px; }
+.joint .n, .joint .val { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .joint .n { font-weight: 700; color: var(--beige); }
 .joint .track { position: relative; height: 1px; background: #4a4a4a; }
 .joint .track i { position: absolute; top: -5px; width: 3px; height: 11px; background: var(--cream); transform: translateX(-1px); }
@@ -201,7 +202,8 @@ button.primary { background: var(--cream); color: var(--ink); border-color: var(
 /* ── calibration additions ─────────────────────────────────────── */
 .sw-board { background: var(--cream); }
 .sw-gcam { background: var(--brass); }
-.card .rows { display: grid; grid-template-columns: auto 1fr; gap: 3px 14px; font-size: 12px; margin-bottom: 10px; }
+.card .rows { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-size: 12px; margin-bottom: 4px; font-variant-numeric: tabular-nums; }
+.card .rows b { white-space: nowrap; }
 .card .rows b { font-weight: 700; letter-spacing: .08em; text-transform: uppercase; font-size: 11px; }
 .card .rows span { text-align: right; }
 .card .rows .alert { color: var(--red); font-weight: 700; }

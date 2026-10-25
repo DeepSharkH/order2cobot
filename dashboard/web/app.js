@@ -276,23 +276,25 @@ function buildCards() {
   $('#cards').innerHTML = `
     <div class="card dark" id="c-robot"></div>
     <div class="card" id="c-fcam">
-      <div class="card-head"><div><h3>Fixed cam</h3><p>Placed from its view of the board</p></div><span class="chip quiet" id="fcam-chip"></span></div>
+      <div class="card-head"><div><h3>Fixed cam</h3><p>From the board</p></div><span class="chip quiet" id="fcam-chip"></span></div>
       <div class="actions"><button class="primary" id="b-locate">Locate from board</button></div>
       <div class="rows" id="fcam-rows"></div>
     </div>
     <div class="card" id="c-gcam">
-      <div class="card-head"><div><h3>Gripper cam</h3><p>Base · forward kinematics · mount</p></div><span class="chip quiet" id="gcam-chip"></span></div>
-      <div class="actions"><button class="primary" id="b-mount" title="Mount = (base · FK)⁻¹ · board view. Set the base first; hold the arm still">Mount from board view</button></div>
+      <div class="card-head"><div><h3>Gripper cam</h3><p>Base · FK · mount</p></div><span class="chip quiet" id="gcam-chip"></span></div>
+      <div class="actions"><button id="b-mount" title="Mount = (base · FK)⁻¹ · one board view. Replaces the multi-view solve (dashboard/scene_solve.py); only for a moved camera">Mount from one view</button></div>
       <div class="rows" id="gcam-rows"></div>
     </div>
     <div class="card" id="c-base">
-      <div class="card-head"><div><h3>Robot base</h3><p>On the board plane, z = 0</p></div></div>
+      <div class="card-head"><div><h3>Robot base</h3><p>On the board plane</p></div></div>
       <div class="actions"><button id="b-edit">Edit base</button></div>
       <div class="rows" id="base-rows"></div>
       <div class="msg" id="msg"></div>
     </div>`;
   $('#b-locate').onclick = () => send({ type: 'locate_fixed' });
-  $('#b-mount').onclick = () => send({ type: 'mount_from_view' });
+  $('#b-mount').onclick = () => {
+    if (confirm('Replace the gripper-cam mount with one from this single view? (the multi-view solve is better)')) send({ type: 'mount_from_view' });
+  };
   $('#b-edit').onclick = () => (editor.active ? editor.close() : editor.open());
 }
 buildCards();
@@ -323,11 +325,11 @@ function renderCards(s) {
   const [fc, gc] = s.cams;
   const loc = fc.located;
   const lv = fc.live_vs_saved;
-  $('#fcam-chip').textContent = loc ? loc.stamp.replace('T', ' ') : 'not located';
+  $('#fcam-chip').textContent = loc ? loc.stamp.slice(11, 16) : 'not located';
   $('#fcam-rows').innerHTML = `
     <b>Camera</b><span class="${fc.ok ? '' : 'alert'}">${fc.ok ? `${fc.size?.[0]}×${fc.size?.[1]} · K ${esc(fc.intrinsics)}` : esc(fc.error || 'offline')}</span>
     ${boardRow(fc, s.board)}
-    ${loc ? `<b>Located</b><span>${loc.frames} frames · ${fmt(loc.rms_px)} px · spread ${fmt(loc.spread_mm, 1)} mm</span>` : ''}
+    ${loc ? `<b>Located</b><span>${fmt(loc.rms_px)} px · ${loc.frames} frames</span>` : ''}
     ${fc.T_world_cam ? `<b>Position</b><span>${fc.T_world_cam.slice(0, 3).map((row) => mm(row[3])).join(', ')} mm</span>` : ''}
     ${lv ? `<b>Live vs saved</b><span class="${lv.dpos_mm > 5 ? 'alert' : ''}">${fmt(lv.dpos_mm, 1)} mm · ${fmt(lv.drot_deg, 2)}°</span>` : ''}
     ${planeRow(fc.plane)}`;
@@ -337,11 +339,11 @@ function renderCards(s) {
   $('#gcam-chip').textContent = ck ? `${fmt(ck.dpos_mm, 0)} mm off` : 'board not seen';
   $('#gcam-rows').innerHTML = `
     <b>Camera</b><span class="${gc.ok ? '' : 'alert'}">${gc.ok ? `${gc.size?.[0]}×${gc.size?.[1]} · K ${esc(gc.intrinsics)}` : esc(gc.error || 'offline')}</span>
-    <b>Mount</b><span>${gc.mount.slice(3).map(mm).join(', ')} mm · ${gc.mount_set ? `from view ${esc(gc.mount_set.stamp.slice(11))}` : 'config'}</span>
+    <b>Mount</b><span>${gc.mount.slice(3).map(mm).join(', ')} mm · ${gc.mount_set ? (gc.mount_set.views ? `${gc.mount_set.views} views` : 'one view') : 'config'}</span>
     ${boardRow(gc, s.board)}
     ${ck ? `<b>FK vs board view</b><span class="${ck.dpos_mm > 10 ? 'alert' : ''}">${fmt(ck.dpos_mm, 1)} mm · ${fmt(ck.drot_deg, 2)}°</span>
       <b>Base from view</b><span>${mm(ck.base.x)}, ${mm(ck.base.y)} mm · yaw ${fmt(ck.base.yaw_deg, 1)}°</span>
-      <b>… its z · tilt</b><span class="${Math.abs(ck.base.z_mm) > 5 || ck.base.tilt_deg > 1 ? 'alert' : ''}">${fmt(ck.base.z_mm, 1)} mm · ${fmt(ck.base.tilt_deg, 2)}°</span>` : ''}
+      <b>Its z · tilt</b><span class="${Math.abs(ck.base.z_mm) > 5 || ck.base.tilt_deg > 1 ? 'alert' : ''}">${fmt(ck.base.z_mm, 1)} mm · ${fmt(ck.base.tilt_deg, 2)}°</span>` : ''}
     ${planeRow(gc.plane)}`;
 
   $('#b-mount').disabled = !!s.busy || !gc.ok || !gc.board.seen || !r.connected;
