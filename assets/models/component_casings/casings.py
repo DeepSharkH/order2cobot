@@ -30,7 +30,7 @@ WALL = 2.65          # jumper casing: pin channel edge to the side face
 CL = 0.2             # pocket clearance round a body
 EXIT_D, EXIT_H = 0.8, 1.0    # lead exit hole at the bottom, as in the jumper casing
 LEAD_D = 1.2         # lead channel from the body down to the exit
-MIN_WALL = 1.0       # thinnest face over a pocket
+HALF_T = 2.0         # thickness of each half; bodies thicker than the casing stick out of the faces
 WINDOW_D = 3.5       # LED light window through both faces
 
 
@@ -155,7 +155,7 @@ def jumper_casing(s, channel, w0):
     p = s * PITCH
     wall_x = (w0 - 5.0) / 2                                        # channel centre to side face in the original
     w = p + 2 * wall_x
-    t = 5.0
+    t = 2 * HALF_T
     cav = [channel.translate([x, 0, 0]) for x in exits(2, s)]
     return box(-w / 2, w / 2, -t / 2, t / 2, 0, H) - union(cav), w, t
 
@@ -164,7 +164,7 @@ def part_casing(body, n, s):
     xs = exits(n, s)
     cav, hx, hy = body(xs)
     w = max(14.0, 2 * max(hx, max(abs(x) for x in xs) + EXIT_D / 2 + LEAD_D) + 2 * WALL)
-    t = max(5.0, 2 * (hy + MIN_WALL))
+    t = 2 * HALF_T
     return box(-w / 2, w / 2, -t / 2, t / 2, 0, H) - union(cav), w, t
 
 
@@ -234,10 +234,8 @@ def check(name, m, w, t, n, s):
     for x in exits(n, s):                                      # a lead fits every exit, and nothing else is there
         probe = zcyl(x, 0, 0.3, -0.5, 0.5)
         assert (probe ^ m).volume() < 1e-6, f"{name}: exit at x={x:.2f} blocked"
-    shell = box(-w / 2, w / 2, -t / 2, t / 2, 0, H) - box(-w / 2 + MIN_WALL * 0.8, w / 2 - MIN_WALL * 0.8,
-                                                         -t / 2 + MIN_WALL * 0.8, t / 2 - MIN_WALL * 0.8, 1e-3, H)
-    if name.split("_s")[0] not in ("led", "rgb_led", "jumper"):   # LED windows are on purpose; the jumper keeps its 0.65 mm walls
-        assert abs((shell ^ m).volume() - shell.volume()) < 1e-2, f"{name}: a pocket breaks through a face"
+    for h in split(m, t):                                       # bodies may break through a face, but each half stays one piece
+        assert len(h.decompose()) == 1, f"{name}: a half falls apart"
 
 
 if __name__ == "__main__":

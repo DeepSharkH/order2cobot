@@ -10,7 +10,7 @@
     1.27
    ],
    "width_x": 11.54,
-   "thickness_y": 5.0,
+   "thickness_y": 4.0,
    "height": 25.0
   },
   {
@@ -22,7 +22,7 @@
     2.54
    ],
    "width_x": 14.08,
-   "thickness_y": 5.0,
+   "thickness_y": 4.0,
    "height": 25.0
   },
   {
@@ -34,7 +34,7 @@
     3.81
    ],
    "width_x": 16.62,
-   "thickness_y": 5.0,
+   "thickness_y": 4.0,
    "height": 25.0
   },
   {
@@ -46,7 +46,7 @@
     5.08
    ],
    "width_x": 19.16,
-   "thickness_y": 5.0,
+   "thickness_y": 4.0,
    "height": 25.0
   },
   {
@@ -58,7 +58,7 @@
     1.27
    ],
    "width_x": 14.4,
-   "thickness_y": 5.0,
+   "thickness_y": 4.0,
    "height": 25.0
   },
   {
@@ -70,7 +70,7 @@
     2.54
    ],
    "width_x": 14.4,
-   "thickness_y": 5.0,
+   "thickness_y": 4.0,
    "height": 25.0
   },
   {
@@ -82,7 +82,7 @@
     5.08
    ],
    "width_x": 18.66,
-   "thickness_y": 5.0,
+   "thickness_y": 4.0,
    "height": 25.0
   },
   {
@@ -94,7 +94,7 @@
     1.27
    ],
    "width_x": 14.0,
-   "thickness_y": 5.0,
+   "thickness_y": 4.0,
    "height": 25.0
   },
   {
@@ -106,7 +106,7 @@
     2.54
    ],
    "width_x": 14.0,
-   "thickness_y": 5.0,
+   "thickness_y": 4.0,
    "height": 25.0
   },
   {
@@ -118,7 +118,7 @@
     5.08
    ],
    "width_x": 18.66,
-   "thickness_y": 5.0,
+   "thickness_y": 4.0,
    "height": 25.0
   },
   {
@@ -130,7 +130,7 @@
     1.27
    ],
    "width_x": 14.0,
-   "thickness_y": 8.2,
+   "thickness_y": 4.0,
    "height": 25.0
   },
   {
@@ -142,7 +142,7 @@
     2.54
    ],
    "width_x": 14.0,
-   "thickness_y": 8.2,
+   "thickness_y": 4.0,
    "height": 25.0
   },
   {
@@ -154,7 +154,7 @@
     5.08
    ],
    "width_x": 18.66,
-   "thickness_y": 8.2,
+   "thickness_y": 4.0,
    "height": 25.0
   },
   {
@@ -168,7 +168,7 @@
     3.81
    ],
    "width_x": 16.12,
-   "thickness_y": 8.2,
+   "thickness_y": 4.0,
    "height": 25.0
   },
   {
@@ -182,7 +182,7 @@
     7.62
    ],
    "width_x": 23.74,
-   "thickness_y": 8.2,
+   "thickness_y": 4.0,
    "height": 25.0
   },
   {
@@ -195,7 +195,7 @@
     2.54
    ],
    "width_x": 14.0,
-   "thickness_y": 5.2,
+   "thickness_y": 4.0,
    "height": 25.0
   },
   {
@@ -207,7 +207,7 @@
     1.27
    ],
    "width_x": 14.0,
-   "thickness_y": 5.0,
+   "thickness_y": 4.0,
    "height": 25.0
   },
   {
@@ -219,7 +219,7 @@
     1.27
    ],
    "width_x": 14.0,
-   "thickness_y": 7.4,
+   "thickness_y": 4.0,
    "height": 25.0
   }
  ]
