@@ -67,8 +67,10 @@ class ScriptedLoop(ToolLoop):
         return "built it"
 
 
-def make_agent(bridge: FakeBridge, loop: ScriptedLoop) -> SingleAgent:
-    config = SimpleAgentConfig(robot=RobotConfig(), llm=LLMConfig(provider="openai", model="fake"))
+def make_agent(bridge: FakeBridge, loop: ScriptedLoop, lock_dir: Path) -> SingleAgent:
+    config = SimpleAgentConfig(
+        robot=RobotConfig(lock_dir=lock_dir), llm=LLMConfig(provider="openai", model="fake")
+    )
     return SingleAgent(config, tool_loop=loop, bridge_factory=lambda *_: bridge)  # type: ignore[arg-type]
 
 
@@ -77,7 +79,9 @@ async def test_builds_and_downloads_program(tmp_path: Path) -> None:
     loop = ScriptedLoop([("program_create", {"name": "pick_place"})])
     out = tmp_path / "pick-place.urpx"
 
-    result = await make_agent(bridge, loop).run(SimpleTask(prompt="pick", output_file=out))
+    result = await make_agent(bridge, loop, tmp_path).run(
+        SimpleTask(prompt="pick", output_file=out)
+    )
 
     assert result.program_name == "pick_place"
     assert result.summary == "built it"
@@ -88,7 +92,9 @@ async def test_blocked_tools_are_not_offered_or_relayed(tmp_path: Path) -> None:
     bridge = FakeBridge()
     loop = ScriptedLoop([("program_run", {}), ("program_create", {"name": "p"})])
 
-    await make_agent(bridge, loop).run(SimpleTask(prompt="x", output_file=tmp_path / "p.urpx"))
+    await make_agent(bridge, loop, tmp_path).run(
+        SimpleTask(prompt="x", output_file=tmp_path / "p.urpx")
+    )
 
     assert loop.offered == ["program_create"]
     assert loop.results[0][1] is True
@@ -98,7 +104,7 @@ async def test_blocked_tools_are_not_offered_or_relayed(tmp_path: Path) -> None:
 async def test_requires_adjust_access(tmp_path: Path) -> None:
     loop = ScriptedLoop([])
     with pytest.raises(AgentError, match="Adjust"):
-        await make_agent(FakeBridge(tier="observe"), loop).run(
+        await make_agent(FakeBridge(tier="observe"), loop, tmp_path).run(
             SimpleTask(prompt="x", output_file=tmp_path / "p.urpx")
         )
 
@@ -106,21 +112,21 @@ async def test_requires_adjust_access(tmp_path: Path) -> None:
 async def test_refuses_existing_program_name(tmp_path: Path) -> None:
     loop = ScriptedLoop([])
     with pytest.raises(AgentError, match="already exists"):
-        await make_agent(FakeBridge(programs={"p"}), loop).run(
+        await make_agent(FakeBridge(programs={"p"}), loop, tmp_path).run(
             SimpleTask(prompt="x", output_file=tmp_path / "p.urpx")
         )
 
 
 async def test_fails_when_model_creates_nothing(tmp_path: Path) -> None:
     with pytest.raises(AgentError, match="no program named"):
-        await make_agent(FakeBridge(), ScriptedLoop([])).run(
+        await make_agent(FakeBridge(), ScriptedLoop([]), tmp_path).run(
             SimpleTask(prompt="x", output_file=tmp_path / "p.urpx")
         )
 
 
 async def test_rejects_non_urpx_output(tmp_path: Path) -> None:
     with pytest.raises(AgentError, match=r"\.urpx"):
-        await make_agent(FakeBridge(), ScriptedLoop([])).run(
+        await make_agent(FakeBridge(), ScriptedLoop([]), tmp_path).run(
             SimpleTask(prompt="x", output_file=tmp_path / "p.txt")
         )
 

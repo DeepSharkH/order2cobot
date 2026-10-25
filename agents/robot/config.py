@@ -12,8 +12,11 @@ class RobotConfig(AppModel):
     robot_api_url: str = "https://universal-robots/universal-robots/robot-api"
     cert_path: Path = Field(default=Path("~/.config/ur3/robot-cert.pem"), validate_default=True)
     request_timeout_s: float = Field(default=120.0, gt=0)
+    # Connection names per LLM config, one process each (see agents.robot.pool)
+    client_pool_size: int = Field(default=5, ge=1)
+    lock_dir: Path = Field(default=Path("~/.cache/order2cobot/bridge-locks"), validate_default=True)
 
-    @field_validator("cert_path")
+    @field_validator("cert_path", "lock_dir")
     @classmethod
     def _expand_home(cls, value: Path) -> Path:
         return value.expanduser()

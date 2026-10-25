@@ -5,8 +5,8 @@ The bridge lives on the robot's private network, so this agent is the MCP client
 the bridge's tools, offers the safe subset to the model, and relays every call the model
 makes. The program is built and validated on the robot but never played.
 
-Needs the 'adjust' access level for the configured client name on the pendant
-(AI Agent Bridge -> Connections).
+Needs the 'adjust' access level on the pendant (AI Agent Bridge -> Connections) for every
+connection name in the configured client name's pool; each run holds one free name.
 """
 
 import re
@@ -18,7 +18,14 @@ from pydantic import Field
 
 from agents.core import AppModel, BaseAgent, Settings
 from agents.llm import LLMError, ToolLoop, create_tool_loop
-from agents.robot import Bridge, BridgeError, RobotConfig, is_allowed, offered_tools
+from agents.robot import (
+    Bridge,
+    BridgeError,
+    RobotConfig,
+    acquire_client_name,
+    is_allowed,
+    offered_tools,
+)
 from agents.simple.config import SimpleAgentConfig
 
 SYSTEM = """You build PolyScope X programs on a real Universal Robots arm through the AI Agent Bridge tools.
@@ -84,9 +91,13 @@ class SingleAgent(BaseAgent[SimpleTask, SimpleTaskResult]):
         name = data.program_name
         loop = self.tool_loop or create_tool_loop(self.config.llm, self.config.max_turns)
         try:
-            async with self.bridge_factory(
-                self.config.robot, self.config.llm.client_name
-            ) as bridge:
+            robot = self.config.robot
+            async with (
+                acquire_client_name(
+                    self.config.llm.client_name, robot.client_pool_size, robot.lock_dir
+                ) as client_name,
+                self.bridge_factory(robot, client_name) as bridge,
+            ):
                 await self._check_access(bridge, name)
 
                 async def relay(tool: str, args: dict[str, Any], turn: int) -> tuple[str, bool]:

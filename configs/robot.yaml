@@ -3,3 +3,5 @@ bridge_url: https://universal-robots/universal-robots/ai-agent-bridge/mcp/v1/   
 robot_api_url: https://universal-robots/universal-robots/robot-api
 cert_path: ~/.config/ur3/robot-cert.pem   # the robot's self-signed certificate
 request_timeout_s: 120
+client_pool_size: 5   # connection names per LLM config, so up to 5 runs at once (each needs Adjust once)
+lock_dir: ~/.cache/order2cobot/bridge-locks
