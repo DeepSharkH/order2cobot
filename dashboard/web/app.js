@@ -318,12 +318,6 @@ let staticBuilt = false;
 function buildCards() {
   $('#cards').innerHTML = `
     <div class="card dark" id="c-robot"></div>
-    <div class="card" id="c-base">
-      <div class="card-head"><div><h3>Fixed cam + base</h3><p>Board pose + UR3e model fitted to the D435 depth</p></div><span class="chip quiet" id="base-chip"></span></div>
-      <div class="actions"><button class="primary" id="b-align">Align base from fixed cam</button></div>
-      <div class="rows" id="base-rows"></div>
-      <p class="note">Keep the board fully in view of the D435 and the arm still. The tan overlay on the fixed feed is the model where the calibration puts it.</p>
-    </div>
     <div class="card" id="c-cap">
       <div class="card-head"><div><h3>Capture</h3><p>Freedrive the arm so the gripper cam sees the whole board, then capture</p></div><span class="chip" id="cap-chip"></span></div>
       <div class="actions">
@@ -345,7 +339,6 @@ function buildCards() {
       <div class="msg" id="msg"></div>
       <pre class="log" id="log"></pre>
     </div>`;
-  $('#b-align').onclick = () => send({ type: 'align_base' });
   $('#b-cap').onclick = () => send({ type: 'capture' });
   $('#b-new').onclick = () => { if (confirm('Start a new, empty sample session? (the current one stays on disk)')) send({ type: 'new_session' }); };
   $('#b-solve').onclick = () => send({ type: 'solve', opts: { intrinsics: $('#o-intr').value === '1', dh: $('#o-dh').value } });
@@ -404,16 +397,6 @@ function renderCards(s) {
   $('#samples').innerHTML = s.samples.map((x) =>
     `<span class="s ${x.rms != null && x.rms > 2 ? 'bad' : ''}" data-id="${x.id}" title="gripper ${x.gripper ? '✓' : '✗'} · fixed ${x.fixed ? '✓' : '✗'}${x.rms != null ? ` · ${x.rms.toFixed(2)} px` : ''}">
       ${x.id}<i class="${x.gripper ? 'on' : ''}"></i><i class="${x.fixed ? 'on' : ''}"></i></span>`).join('');
-
-  const ba = s.result?.base_align;
-  $('#b-align').disabled = !!s.busy || !r.connected || !s.cams[0].ok || !s.cams[0].board.seen;
-  $('#base-chip').textContent = ba ? ba.stamp.replace('T', ' ') : 'not aligned';
-  $('#base-rows').innerHTML = ba ? `
-    <b>Model fit</b><span class="${ba.inlier_frac < 0.6 ? 'alert' : ''}">${(ba.inlier_frac * 100).toFixed(0)}% within 1 cm · rms ${fmt(ba.inlier_rms_mm, 1)} mm</span>
-    <b>Base tilt vs table</b><span class="${ba.tilt_deg > 2 ? 'alert' : ''}">${fmt(ba.tilt_deg, 2)}°</span>
-    <b>Base height vs table</b><span>${fmt(ba.base_height_mm, 1)} mm</span>
-    <b>Table plane from</b><span>${ba.plane_source === 'board' ? `board (${fmt(ba.pnp_rms_px)} px)` : 'depth'}</span>
-    ${s.calib.T_world_base ? `<b>Base in world</b><span>${s.calib.T_world_base.slice(0, 3).map((row) => (row[3] * 1000).toFixed(1)).join(', ')} mm</span>` : ''}` : '';
 
   const res = s.result;
   $('#res-chip').textContent = res ? res.stamp.replace('T', ' ') : 'not calibrated';
