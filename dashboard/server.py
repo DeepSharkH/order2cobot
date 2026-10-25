@@ -22,6 +22,7 @@ qa_test {port, phase}, qa_reset {port?}.
 POST /api/claude {"prompt", "session"?, "mode"?}   Claude Code CLI on the subscription (claude_chat.py)
 
 GET /api/frame/0|1   latest full-resolution colour frame (PNG) of the fixed / gripper cam
+GET /api/depth/0|1   its aligned depth (.npy float32, metres, 0 = no reading)
 
 Port QA for robot scripts (blocks until the link check finishes):
   GET  /api/qa                         all 8 ports + live link
@@ -636,6 +637,18 @@ async def frame_get(request):
     return web.Response(body=png.tobytes(), content_type='image/png')
 
 
+async def depth_get(request):
+    """Latest depth of camera 0 / 1, aligned to its colour frame: .npy float32 metres (0 = none)."""
+    import io
+    cam = request.app['app'].cams[int(request.match_info['cam'])]
+    _, _, depth = cam.latest()
+    if depth is None:
+        return web.json_response({'ok': False, 'reason': cam.error or 'no depth'}, status=503)
+    buf = io.BytesIO()
+    np.save(buf, depth.astype(np.float32))
+    return web.Response(body=buf.getvalue(), content_type='application/octet-stream')
+
+
 async def index(_):
     return web.FileResponse(WEB / 'index.html')
 
@@ -663,6 +676,7 @@ def main():
     w.router.add_get('/ws', ws_handler)
     w.router.add_get('/api/qa', qa_get)
     w.router.add_get('/api/frame/{cam:[01]}', frame_get)
+    w.router.add_get('/api/depth/{cam:[01]}', depth_get)
     w.router.add_post('/api/qa/vlm', qa_vlm)
     w.router.add_post('/api/qa/{port}/{phase}', qa_post)
     w.router.add_routes(claude_chat.routes(ROOT))

@@ -289,5 +289,29 @@ base · FK · mount; fixed cam = board PnP. Stored in `configs/calibration/scene
   evenly spaced boxes, and `survey2` uses views at ±3 / ±5 cm and needs ≥ 2 good ones.
 - A wrong detection in one view wrecks the triangulation (10 mm ray rms, 16 mm pitch, 10°
   yaw). Check ray rms (~0.1 mm when right), pitch (~14.5 mm) and yaw before using a survey.
-- The wrist-3 cable reference after the remount is -4.97 rad (cable relaxed, per the
-  operator); `porttest/go_view.py` keeps moves within ±0.8 rad of it.
+- Wrist-3 cable reference: the insertion orientation (tool down, plug along +y) needs
+  wrist 3 ≈ -2.0 rad. After the remount the cable was relaxed at -4.97 (half a turn off), so
+  the operator re-routed it to be relaxed at -2.0. `go_view.W3_REF` holds it, and
+  `move_checked` keeps every move within ±0.8 rad of it.
+- **Regrip (operator): the plug now points along flange -x**, so the gripper cam sees the
+  insertion from the side. Measured on the gripper-cam frame: tip 41.7 mm out along -x and
+  ~5 mm (±4) to flange -y; the axis is straight -x. Insertion therefore needs the tool turned
+  +90° about the vertical (rotvec (-2.2214, 2.2214, 0)), and IK puts wrist 3 at ≈ -3.78 there.
+  `qa_run.P1`, `plan_views.TIP` and `geometry.py` describe the old grip.
+- What happened with the old grip assumption: the "found" peck and the 12 mm force-mode
+  push were free travel. The plug pointed along base +x, slid sideways past the switch's
+  left end, and the link stayed down. Free travel is not a port; confirm with the link.
+- The checkerboard was removed and a breadboard (~10 mm high) put in its place. The board
+  touch landed on the breadboard (top ≈ 15 mm in base by D435 depth): lowest gripped point
+  ≈ 197–199 mm under the flange, plug centre line ≈ 193 mm.
+- Port-1 attempt with the regripped orientation: the first good-looking peck (x +1 mm, z -2 mm)
+  travelled > 13 mm, stopping only ~3 mm past the surveyed face. Force mode then raised C157
+  (protective stop) with x/z held within 1 mm. The operator recovered it. No link. Either a
+  partial entry at the wrong height, or the face/tip-reach estimates were off by mm.
+- Approach picture set (no contact), `porttest/approach_shots.py` ->
+  `data/approach/approach_20261025/` (with `contact_sheet.jpg`): both cameras at full res,
+  colour + aligned depth (`GET /api/depth/{cam}`), and the pose JSON. Shots: high,
+  30/15/8/5 mm in front of port 1, ±3 mm in x at 8 mm. The gripper cam (now looking along
+  the face from the switch's left end) shows the tip-to-face gap and the plug height but not
+  the openings. The fixed cam loses the port row behind the Hand-E from 30 mm in. Neither
+  resolves the x alignment.

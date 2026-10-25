@@ -14,7 +14,7 @@ from porttest.urexec import URExec, call
 from porttest.view_pose import flange_for_view
 
 JOINTS = ('base', 'shoulder', 'elbow', 'wrist1', 'wrist2', 'wrist3')
-W3_REF = -4.97      # cable relaxed here (operator, 2026-10-25 after the camera remount)
+W3_REF = -3.78      # cable relaxed here: insertion orientation with the regripped plug (operator, 2026-10-25 pm)
 
 
 def main(tx, ty, tz, dist, deg, roll, go=False):
