@@ -13,7 +13,7 @@ from porttest.locate import X, camera, flange
 from porttest.urexec import URExec, call
 
 
-def flange_for_view(target, view, dist, F_now, xsigns=(1.0, -1.0)):
+def flange_for_view(target, view, dist, F_now, xsigns=(1.0, -1.0), roll=0.0):
     z = np.asarray(view, float)
     z /= np.linalg.norm(z)
     C_now = camera(F_now)
@@ -22,6 +22,7 @@ def flange_for_view(target, view, dist, F_now, xsigns=(1.0, -1.0)):
         x = np.array([xs, 0.0, 0.0])
         x = x - z * (x @ z)
         x /= np.linalg.norm(x)
+        x = R.from_rotvec(z * np.radians(roll)).apply(x)     # roll the image about the view axis
         y = np.cross(z, x)
         C = np.eye(4)
         C[:3, :3] = np.c_[x, y, z]

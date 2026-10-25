@@ -47,6 +47,19 @@ def detect(img, roi=None, n=8, debug=None):
     return out
 
 
+def detect_rotated(img, angle, centre, half=(220, 70), n=8, debug=None):
+    """detect() on the image rotated by `angle` deg (cv2 sense) about `centre` (u, v), so a
+    tilted port row becomes horizontal; results are mapped back to original pixels."""
+    M = cv2.getRotationMatrix2D(centre, angle, 1.0)
+    rot = cv2.warpAffine(img, M, (img.shape[1], img.shape[0]), flags=cv2.INTER_CUBIC)
+    cu, cv = centre
+    roi = (int(cu - half[0]), int(cv - half[1]), int(cu + half[0]), int(cv + half[1]))
+    det = detect(rot, roi, n, debug)
+    Mi = cv2.invertAffineTransform(M)
+    back = lambda uv: tuple(Mi @ np.array([uv[0], uv[1], 1.0]))
+    return [{'centre': back(d['centre']), 'bottom': back(d['bottom']), 'box': d['box']} for d in det]
+
+
 def _ray(C, uv):
     d = C[:3, :3] @ np.array([(uv[0] - K[0, 2]) / K[0, 0], (uv[1] - K[1, 2]) / K[1, 1], 1.0])
     return C[:3, 3], d / np.linalg.norm(d)

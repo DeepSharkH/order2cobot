@@ -20,19 +20,20 @@ REAR = np.array([0.0, 0.035 - 0.057, 0.19])
 JOINTS = ('base', 'shoulder', 'elbow', 'wrist1', 'wrist2', 'wrist3')
 
 
-def plan(target, b):
+def plan(target, b, w3=None, w3_tol=0.4, rolls=range(0, 360, 30)):
     F0 = flange(b)
     q0 = [call(b, 'robot_get_joint_positions')['data'][k] for k in JOINTS]
     out = []
-    for dist in (0.26, 0.30, 0.34):
+    w3 = q0[5] if w3 is None else w3
+    for dist in (0.28, 0.32):
         for deg in (25, 30, 35):
             a = np.radians(deg)
             view = [0.0, np.cos(a), -np.sin(a)]
-            for xs in (1.0, -1.0):
+            for xs in rolls:
                 rows, ok = [], True
                 for dx in (0.0, 0.05, -0.05):
                     t = np.array(target) + [dx, 0, 0]
-                    pose, _ = flange_for_view(t, view, dist, F0, (xs,))
+                    pose, _ = flange_for_view(t, view, dist, F0, (1.0,), roll=xs)
                     Rm = R.from_rotvec(pose[3:]).as_matrix()
                     tip = np.array(pose[:3]) + Rm @ TIP
                     rear = np.array(pose[:3]) + Rm @ REAR
@@ -43,7 +44,7 @@ def plan(target, b):
                         q = [q[k] for k in JOINTS]
                     except Exception:
                         q = None
-                    ok &= q is not None and low >= MIN_REAR
+                    ok &= q is not None and low >= MIN_REAR and abs(q[5] - w3) <= w3_tol
                     rows.append((dx, pose, tip, rear, low, q))
                 out.append((ok, dist, deg, xs, rows))
     return out
@@ -54,5 +55,7 @@ if __name__ == '__main__':
     for ok, dist, deg, xs, rows in plan(tgt, URBridge()):
         lows = [round(r[4] * 100, 1) for r in rows]
         w3 = [None if r[5] is None else round(r[5][5], 2) for r in rows]
-        print(f'{"OK " if ok else "-- "} dist {dist:.2f} angle {deg} xs {xs:+.0f}: lowest point above plate [cm] {lows}, '
+        if not ok:
+            continue
+        print(f'OK dist {dist:.2f} angle {deg} roll {xs:3d}: lowest point above plate [cm] {lows}, '
               f'flange z {[round(r[1][2], 3) for r in rows]}, wrist3 {w3}')
