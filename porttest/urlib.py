@@ -64,6 +64,48 @@ def insert(d, maxd, fmax, v):
   return hit
 end
 
+def creep(d, maxd, step, fmax, v):
+  # advance along d in short pecks, re-zeroing before each, so the cable's spring pull never
+  # builds up to the threshold. Stops at the first peck that ends short (contact).
+  p0 = get_actual_tcp_pose()
+  hit = False
+  while point_dist(get_actual_tcp_pose(), p0) < maxd:
+    t = peck(d, step, fmax, v)
+    if t < step - 0.0003:
+      hit = True
+      break
+    end
+  end
+  textmsg("creep contact ", hit)
+  textmsg("pose ", get_actual_tcp_pose())
+  return hit
+end
+
+def insert_fm(fy, depth, tmax):
+  # seat the plug with the controller's force mode: constant push fy [N] along base +y,
+  # x/z held (max 1 mm deviation), speed capped at 10 mm/s. A speed-driven push into the
+  # contacts lagged behind its path and raised C153 protective stops.
+  sleep(0.2)
+  zero_ftsensor()
+  sleep(0.3)
+  p0 = get_actual_tcp_pose()
+  force_mode(p[0, 0, 0, 0, 0, 0], [0, 1, 0, 0, 0, 0], [0.0, fy, 0.0, 0.0, 0.0, 0.0], 2,
+             [0.001, 0.01, 0.001, 0.05, 0.05, 0.05])
+  t = 0
+  while t < tmax:
+    if get_actual_tcp_pose()[1] - p0[1] > depth:
+      break
+    end
+    sync()
+    t = t + get_steptime()
+  end
+  end_force_mode()
+  stopl(0.5)
+  q = get_actual_tcp_pose()
+  textmsg(str_cat(str_cat("seated dy ", q[1] - p0[1]), str_cat(" t ", t)))
+  return q[1] - p0[1]
+end
+
 def peck(d, maxd, fmax, v):
   # guarded move; the F/T sensor is re-zeroed at rest first (its reading drifts by several N
   # when the arm moves between pecks). Returns the distance travelled (maxd = no contact).
