@@ -131,6 +131,9 @@ function setFrustum(f, K, size) {
   f.lines.geometry.setFromPoints([o, tl, o, tr, o, br, o, bl, tl, tr, tr, br, br, bl, bl, tl,
     tl.clone().lerp(tr, 0.3), up, up, tl.clone().lerp(tr, 0.7)]);
   f.face.geometry.setFromPoints([tl, tr, br, tl, br, bl]);
+  // the geometries started empty: their cached (empty) bounding spheres would cull them forever
+  f.lines.geometry.computeBoundingSphere();
+  f.face.geometry.computeBoundingSphere();
   f.l.obj.position.copy(up).add(new THREE.Vector3(0, -0.03, 0));
 }
 function frustumImage(f, img) {
