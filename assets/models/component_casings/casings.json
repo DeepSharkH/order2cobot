@@ -9,6 +9,7 @@
     -1.27,
     1.27
    ],
+   "exit_d": 0.8,
    "width_x": 11.54,
    "thickness_y": 4.0,
    "height": 20.0
@@ -21,6 +22,7 @@
     -2.54,
     2.54
    ],
+   "exit_d": 0.8,
    "width_x": 14.08,
    "thickness_y": 4.0,
    "height": 20.0
@@ -33,6 +35,7 @@
     -3.81,
     3.81
    ],
+   "exit_d": 0.8,
    "width_x": 16.62,
    "thickness_y": 4.0,
    "height": 20.0
@@ -45,6 +48,7 @@
     -5.08,
     5.08
    ],
+   "exit_d": 0.8,
    "width_x": 19.16,
    "thickness_y": 4.0,
    "height": 20.0
@@ -57,6 +61,7 @@
     -1.27,
     1.27
    ],
+   "exit_d": 0.3,
    "width_x": 14.4,
    "thickness_y": 4.0,
    "height": 20.0
@@ -69,6 +74,7 @@
     -2.54,
     2.54
    ],
+   "exit_d": 0.3,
    "width_x": 14.4,
    "thickness_y": 4.0,
    "height": 20.0
@@ -81,7 +87,8 @@
     -5.08,
     5.08
    ],
-   "width_x": 18.66,
+   "exit_d": 0.3,
+   "width_x": 18.16,
    "thickness_y": 4.0,
    "height": 20.0
   },
@@ -93,6 +100,7 @@
     -1.27,
     1.27
    ],
+   "exit_d": 0.8,
    "width_x": 14.0,
    "thickness_y": 4.0,
    "height": 20.0
@@ -105,6 +113,7 @@
     -2.54,
     2.54
    ],
+   "exit_d": 0.8,
    "width_x": 14.0,
    "thickness_y": 4.0,
    "height": 20.0
@@ -117,6 +126,7 @@
     -5.08,
     5.08
    ],
+   "exit_d": 0.8,
    "width_x": 18.66,
    "thickness_y": 4.0,
    "height": 20.0
@@ -131,6 +141,7 @@
     1.27,
     3.81
    ],
+   "exit_d": 0.8,
    "width_x": 16.12,
    "thickness_y": 4.0,
    "height": 20.0
@@ -145,6 +156,7 @@
     2.54,
     7.62
    ],
+   "exit_d": 0.8,
    "width_x": 23.74,
    "thickness_y": 4.0,
    "height": 20.0
@@ -158,6 +170,7 @@
     0.0,
     2.54
    ],
+   "exit_d": 0.8,
    "width_x": 14.0,
    "thickness_y": 4.0,
    "height": 20.0
@@ -170,6 +183,7 @@
     -1.27,
     1.27
    ],
+   "exit_d": 0.3,
    "width_x": 14.0,
    "thickness_y": 4.0,
    "height": 20.0
@@ -182,6 +196,7 @@
     -2.54,
     2.54
    ],
+   "exit_d": 0.8,
    "width_x": 17.7,
    "thickness_y": 14.8,
    "height": 20.0
@@ -194,6 +209,7 @@
     -3.81,
     3.81
    ],
+   "exit_d": 0.8,
    "width_x": 17.7,
    "thickness_y": 14.8,
    "height": 20.0
@@ -206,6 +222,7 @@
     -5.08,
     5.08
    ],
+   "exit_d": 0.8,
    "width_x": 18.66,
    "thickness_y": 14.8,
    "height": 20.0
@@ -218,6 +235,7 @@
     -2.54,
     2.54
    ],
+   "exit_d": 0.8,
    "width_x": 17.7,
    "thickness_y": 14.8,
    "height": 20.0
@@ -230,6 +248,7 @@
     -3.81,
     3.81
    ],
+   "exit_d": 0.8,
    "width_x": 17.7,
    "thickness_y": 14.8,
    "height": 20.0
@@ -242,6 +261,7 @@
     -5.08,
     5.08
    ],
+   "exit_d": 0.8,
    "width_x": 18.66,
    "thickness_y": 14.8,
    "height": 20.0

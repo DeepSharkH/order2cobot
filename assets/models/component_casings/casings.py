@@ -29,6 +29,7 @@ H = 20.0             # casing height (the original jumper casing is 40)
 WALL = 2.65          # jumper casing: pin channel edge to the side face
 CL = 0.2             # pocket clearance round a body
 EXIT_D, EXIT_H = 0.8, 3.0    # lead exit hole at the bottom (Ø as in the jumper casing, 3 mm long to hold the lead straight)
+EXIT_D_PART = {"resistor": 0.3, "capacitor_ceramic": 0.3}   # measured Ø0.3 lead wire: exit at wire size
 LEAD_D = 1.2         # lead channel from the body down to the exit
 HALF_T = 2.0         # thickness of each half; bodies thicker than the casing stick out of the faces
 WINDOW_D = 3.5       # LED light window through both faces
@@ -167,11 +168,18 @@ def jumper_casing(s, channel, w0):
     return box(-w / 2, w / 2, -t / 2, t / 2, 0, H) - union(cav), w, t
 
 
-def part_casing(body, n, s, wrap=False):
-    """wrap: the casing is thick enough to cover the body on both faces instead of 2 * HALF_T."""
+def part_casing(body, n, s, wrap=False, exit_d=EXIT_D):
+    """wrap: the casing is thick enough to cover the body on both faces instead of 2 * HALF_T.
+    exit_d: exit hole Ø for this part (the bodies' lead_path reads EXIT_D)."""
+    g = globals()
+    saved = g["EXIT_D"]
     xs = exits(n, s)
-    cav, hx, hy = body(xs)
-    w = max(14.0, 2 * max(hx, max(abs(x) for x in xs) + EXIT_D / 2 + LEAD_D) + 2 * WALL)
+    try:
+        g["EXIT_D"] = exit_d
+        cav, hx, hy = body(xs)
+    finally:
+        g["EXIT_D"] = saved
+    w = max(14.0, 2 * max(hx, max(abs(x) for x in xs) + exit_d / 2 + LEAD_D) + 2 * WALL)
     t = 2 * (hy + BUZZ_WALL) if wrap else 2 * HALF_T
     return box(-w / 2, w / 2, -t / 2, t / 2, 0, H) - union(cav), w, t
 
@@ -213,8 +221,8 @@ def halves(m, t):
     return h1.rotate([90, 0, 0]).translate([0, 0, t / 2]), h2.rotate([-90, 0, 0]).translate([0, 0, t / 2])
 
 
-def part_shape(body, n, s):
-    """The part itself, for the viewer: the pocket shapes without clearance, leads 0.6 mm,
+def part_shape(body, n, s, lead_d=0.6):
+    """The part itself, for the viewer: the pocket shapes without clearance, leads lead_d,
     legs 7 mm below the casing. Returns (body, leads)."""
     g = globals()
     saved = {k: g[k] for k in ("CL", "LEAD_D", "EXIT_D", "WINDOW_D")}
@@ -222,8 +230,8 @@ def part_shape(body, n, s):
     try:
         g.update(CL=0.0, WINDOW_D=0.0, LEAD_D=0.02, EXIT_D=0.02)
         b = union(body(xs)[0])
-        g.update(LEAD_D=0.6, EXIT_D=0.6)
-        full = union(body(xs)[0] + [zcyl(x, 0, 0.3, -7, EXIT_H + 0.2) for x in xs])
+        g.update(LEAD_D=lead_d, EXIT_D=lead_d)
+        full = union(body(xs)[0] + [zcyl(x, 0, lead_d / 2, -7, EXIT_H + 0.2) for x in xs])
     finally:
         g.update(saved)
     return b, full - b
@@ -236,11 +244,11 @@ def jumper_shape(s):
     return body, union([zcyl(x, 0, 0.32, -7, 9.0) for x in xs])
 
 
-def check(name, m, w, t, n, s):
+def check(name, m, w, t, n, s, exit_d=EXIT_D):
     assert m.status().name == "NoError", name
     assert len(m.decompose()) == 1, f"{name}: falls apart"
     for x in exits(n, s):                                      # a lead fits every exit, and nothing else is there
-        probe = zcyl(x, 0, 0.3, -0.5, 0.5)
+        probe = zcyl(x, 0, min(0.3, 0.45 * exit_d), -0.5, 0.5)
         assert (probe ^ m).volume() < 1e-6, f"{name}: exit at x={x:.2f} blocked"
     for h in split(m, t):                                       # bodies may break through a face, but each half stays one piece
         assert len(h.decompose()) == 1, f"{name}: a half falls apart"
@@ -249,16 +257,17 @@ def check(name, m, w, t, n, s):
 if __name__ == "__main__":
     channel, w0, t0 = jumper_channels()
     out = []
-    builds = [(f"jumper_s{s}", jumper_casing(s, channel, w0), 2, s) for s in (1, 2, 3, 4)]
-    builds += [(f"{k}_s{s}", part_casing(body, n, s, wrap), n, s) for k, (body, n, sp, wrap) in PARTS.items() for s in sp]
-    for name, (m, w, t), n, s in builds:
-        check(name, m, w, t, n, s)
+    builds = [(f"jumper_s{s}", jumper_casing(s, channel, w0), 2, s, EXIT_D) for s in (1, 2, 3, 4)]
+    builds += [(f"{k}_s{s}", part_casing(body, n, s, wrap, EXIT_D_PART.get(k, EXIT_D)), n, s, EXIT_D_PART.get(k, EXIT_D))
+               for k, (body, n, sp, wrap) in PARTS.items() for s in sp]
+    for name, (m, w, t), n, s, exit_d in builds:
+        check(name, m, w, t, n, s, exit_d)
         h1, h2 = split(m, t)
         assert abs(h1.volume() + h2.volume() - m.volume()) < 1e-3, name
         for i, h in enumerate(halves(m, t), 1):
             write_stl(os.path.join(HERE, f"casing_{name}_half{i}.stl"), h, f"casing_{name}_half{i}")
         out.append({"casing": name, "pins": n, "pin_spacing": s, "exit_x": [round(x, 3) for x in exits(n, s)],
-                    "width_x": round(w, 2), "thickness_y": round(t, 2), "height": H})
+                    "exit_d": exit_d, "width_x": round(w, 2), "thickness_y": round(t, 2), "height": H})
         print(f"{name:26s} {w:5.2f} x {t:4.2f} x {H:.0f} mm, exits {[round(x, 2) for x in exits(n, s)]}")
     with open(os.path.join(HERE, "casings.json"), "w") as f:
         json.dump({"frame": "x along the leads, y across the split, z up from the bottom; exits at z = 0",
