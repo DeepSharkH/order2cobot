@@ -57,6 +57,7 @@ class Camera:
         return {'name': self.name, 'ok': self.error is None and self.color is not None,
                 'error': self.error, 'size': self.size, 'fps': round(self.fps, 1),
                 'K': None if self.K is None else np.asarray(self.K).tolist(),
+                'dist': np.asarray(self.dist).ravel().tolist(),
                 'intrinsics': self.intrinsics_source}
 
 

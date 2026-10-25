@@ -254,12 +254,20 @@ alignment. World = checkerboard centre, z up; base = (x, y, yaw) on z = 0; gripp
 base · FK · mount; fixed cam = board PnP. Stored in `configs/calibration/scene.yaml`.
 - Fixed D435 located from the board: 0.80 px over 8 frames. Its depth over the board fits
   z = +1.7 mm with 0.3–0.8° tilt, so D435 depth and colour agree.
-- Gripper cam mount from one board view (with the old manual base): **the optical axis is
-  23.6° off the flange axis**, at (49, -20, 112) mm. The 10-24 hand-eye found 2.3°, so
-  the camera has been remounted or bumped. The photos show it tilted on the side arm. Redo
-  "Mount from board view" after setting the true base.
-- The Gemini depth is still wrong: along each ray, depth / board-plane distance = **1.44**
-  (D435: 0.99), and few depth points land on the board. This is the same problem as in
-  session 3: check the depth work mode and D2C alignment before using its cloud.
+- Gripper cam: a one-view mount ("Mount from board view") soaks up any base error, so it
+  only holds at the pose where it was taken. After the arm moved, it was 75 mm off.
+- **The Gemini depth is fine.** Probed alone, through the dashboard's own camera class,
+  and with the D435 emitter on, depth / board-plane = 0.99 with every board pixel valid.
+  The 1.44 "depth error" (and probably session 3's "27 cm beyond the board") came from
+  a wrong camera *pose*, not from bad depth.
+- **Recalibrated:** `python -m dashboard.scene_solve data/calib/20261025-111444 --save`
+  solves the mount + base (x, y, yaw on z = 0) from 17 board views by reprojection,
+  starting from the photo guess (side bracket on +y, ~100 mm down, ~23° tilt). Result:
+  1.78 px; mount t = (-40, 95, 109) mm with the optical axis **23.8°** off the tool
+  axis; base (26, 374) mm, yaw 90.5°. Holdout at a new pose: 6.7 mm / 1.0° vs the live
+  board view, and gripper depth on the board at z +6 mm, tilt 1.0°. The fixed cam was
+  re-located at 0.73 px; its depth on the board is z +1.6 mm, tilt 0.3°.
+- The sample views all sit at a similar height. Views from higher, lower and more
+  tilted poses should bring the gripper holdout under the current 6 mm.
 - `porttest/locate.py` still reads `handeye_gripper.yaml` (the old mount), and
   `handeye_capture.py` sent the dashboard's removed `capture` message.

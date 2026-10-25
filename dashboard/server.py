@@ -467,6 +467,7 @@ class App:
         robot = {'connected': r.error is None and q is not None, 'error': r.error,
                  'mode': r.state.get('robotmode'), 'control': r.state.get('controlmode'),
                  'rate': round(r.rate, 1), 'dh': 'controller' if r.dh is not None else 'nominal'}
+        robot['dh_table'] = self.dh().tolist()
         if q is not None:
             robot['q'] = q.tolist()
             robot['flange'] = kin.fk(q, self.dh()).tolist()     # in the base frame
@@ -478,8 +479,9 @@ class App:
                              'rms': None if not d.get('pnp') else round(d['pnp'][1], 3),
                              'dist': None if not d.get('pnp') else float(np.linalg.norm(d['pnp'][0][:3, 3])),
                              'partial': d.get('partial')}
-            Tw = self.cam_pose(i, q)
+            Tw, Tv = self.cam_pose(i, q), self.board_view(i)
             info['T_world_cam'] = None if Tw is None else Tw.tolist()
+            info['T_world_cam_view'] = None if Tv is None else Tv.tolist()     # from the live board view
             info['plane'] = self.plane[i]
             cams.append(info)
         Tv = self.board_view(0)
