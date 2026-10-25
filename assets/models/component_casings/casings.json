@@ -1,0 +1,226 @@
+{
+ "frame": "x along the leads, y across the split, z up from the bottom; exits at z = 0",
+ "casings": [
+  {
+   "casing": "jumper_s1",
+   "pins": 2,
+   "pin_spacing": 1,
+   "exit_x": [
+    -1.27,
+    1.27
+   ],
+   "width_x": 11.54,
+   "thickness_y": 5.0,
+   "height": 25.0
+  },
+  {
+   "casing": "jumper_s2",
+   "pins": 2,
+   "pin_spacing": 2,
+   "exit_x": [
+    -2.54,
+    2.54
+   ],
+   "width_x": 14.08,
+   "thickness_y": 5.0,
+   "height": 25.0
+  },
+  {
+   "casing": "jumper_s3",
+   "pins": 2,
+   "pin_spacing": 3,
+   "exit_x": [
+    -3.81,
+    3.81
+   ],
+   "width_x": 16.62,
+   "thickness_y": 5.0,
+   "height": 25.0
+  },
+  {
+   "casing": "jumper_s4",
+   "pins": 2,
+   "pin_spacing": 4,
+   "exit_x": [
+    -5.08,
+    5.08
+   ],
+   "width_x": 19.16,
+   "thickness_y": 5.0,
+   "height": 25.0
+  },
+  {
+   "casing": "resistor_s1",
+   "pins": 2,
+   "pin_spacing": 1,
+   "exit_x": [
+    -1.27,
+    1.27
+   ],
+   "width_x": 14.4,
+   "thickness_y": 5.0,
+   "height": 25.0
+  },
+  {
+   "casing": "resistor_s2",
+   "pins": 2,
+   "pin_spacing": 2,
+   "exit_x": [
+    -2.54,
+    2.54
+   ],
+   "width_x": 14.4,
+   "thickness_y": 5.0,
+   "height": 25.0
+  },
+  {
+   "casing": "resistor_s4",
+   "pins": 2,
+   "pin_spacing": 4,
+   "exit_x": [
+    -5.08,
+    5.08
+   ],
+   "width_x": 18.66,
+   "thickness_y": 5.0,
+   "height": 25.0
+  },
+  {
+   "casing": "diode_s1",
+   "pins": 2,
+   "pin_spacing": 1,
+   "exit_x": [
+    -1.27,
+    1.27
+   ],
+   "width_x": 14.0,
+   "thickness_y": 5.0,
+   "height": 25.0
+  },
+  {
+   "casing": "diode_s2",
+   "pins": 2,
+   "pin_spacing": 2,
+   "exit_x": [
+    -2.54,
+    2.54
+   ],
+   "width_x": 14.0,
+   "thickness_y": 5.0,
+   "height": 25.0
+  },
+  {
+   "casing": "diode_s4",
+   "pins": 2,
+   "pin_spacing": 4,
+   "exit_x": [
+    -5.08,
+    5.08
+   ],
+   "width_x": 18.66,
+   "thickness_y": 5.0,
+   "height": 25.0
+  },
+  {
+   "casing": "led_s1",
+   "pins": 2,
+   "pin_spacing": 1,
+   "exit_x": [
+    -1.27,
+    1.27
+   ],
+   "width_x": 14.0,
+   "thickness_y": 8.2,
+   "height": 25.0
+  },
+  {
+   "casing": "led_s2",
+   "pins": 2,
+   "pin_spacing": 2,
+   "exit_x": [
+    -2.54,
+    2.54
+   ],
+   "width_x": 14.0,
+   "thickness_y": 8.2,
+   "height": 25.0
+  },
+  {
+   "casing": "led_s4",
+   "pins": 2,
+   "pin_spacing": 4,
+   "exit_x": [
+    -5.08,
+    5.08
+   ],
+   "width_x": 18.66,
+   "thickness_y": 8.2,
+   "height": 25.0
+  },
+  {
+   "casing": "rgb_led_s1",
+   "pins": 4,
+   "pin_spacing": 1,
+   "exit_x": [
+    -3.81,
+    -1.27,
+    1.27,
+    3.81
+   ],
+   "width_x": 16.12,
+   "thickness_y": 8.2,
+   "height": 25.0
+  },
+  {
+   "casing": "rgb_led_s2",
+   "pins": 4,
+   "pin_spacing": 2,
+   "exit_x": [
+    -7.62,
+    -2.54,
+    2.54,
+    7.62
+   ],
+   "width_x": 23.74,
+   "thickness_y": 8.2,
+   "height": 25.0
+  },
+  {
+   "casing": "bjt_s1",
+   "pins": 3,
+   "pin_spacing": 1,
+   "exit_x": [
+    -2.54,
+    0.0,
+    2.54
+   ],
+   "width_x": 14.0,
+   "thickness_y": 5.2,
+   "height": 25.0
+  },
+  {
+   "casing": "capacitor_ceramic_s1",
+   "pins": 2,
+   "pin_spacing": 1,
+   "exit_x": [
+    -1.27,
+    1.27
+   ],
+   "width_x": 14.0,
+   "thickness_y": 5.0,
+   "height": 25.0
+  },
+  {
+   "casing": "capacitor_electrolytic_s1",
+   "pins": 2,
+   "pin_spacing": 1,
+   "exit_x": [
+    -1.27,
+    1.27
+   ],
+   "width_x": 14.0,
+   "thickness_y": 7.4,
+   "height": 25.0
+  }
+ ]
+}

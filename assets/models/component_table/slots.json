@@ -1,0 +1,1451 @@
+{
+ "units": "mm",
+ "frame": "origin at the front-left corner of the base top; x along the front edge, y away from it, z up",
+ "tool": {
+  "R_board_tool": [
+   [
+    0,
+    1,
+    0
+   ],
+   [
+    1,
+    0,
+    0
+   ],
+   [
+    0,
+    0,
+    -1
+   ]
+  ],
+  "rotvec_board_tool": [
+   2.2214,
+   2.2214,
+   0.0
+  ],
+  "note": "tool z points down and tool x (the Hand-E jaw axis) runs along board y; every pick uses it"
+ },
+ "pick_point": "centre between the fingertip faces, at the tip bottom, 2.0 mm above the plate top",
+ "tip_bottom_z": 16.0,
+ "plate_top_z": 14.0,
+ "datums": {
+  "top": [
+   [
+    30,
+    2.5,
+    0
+   ],
+   [
+    146.0,
+    2.5,
+    0
+   ],
+   [
+    2.5,
+    88.0,
+    0
+   ]
+  ],
+  "front_face_y0": [
+   [
+    10,
+    0,
+    -5.0
+   ],
+   [
+    166.0,
+    0,
+    -5.0
+   ]
+  ],
+  "left_face_x0": [
+   [
+    0,
+    88.0,
+    -5.0
+   ]
+  ],
+  "right_face_x": [
+   [
+    176.0,
+    88.0,
+    -5.0
+   ]
+  ],
+  "back_face_y": [
+   [
+    10,
+    176.0,
+    -5.0
+   ],
+   [
+    166.0,
+    176.0,
+    -5.0
+   ]
+  ],
+  "note": "prints shrink 0.2-0.4 %: measure the base span (CAD 176 mm in x and y) by touch or calipers and scale every x, y about the origin by measured / CAD"
+ },
+ "modules": {
+  "S1": {
+   "cell": [
+    0,
+    0
+   ],
+   "centre": [
+    46.0,
+    46.0,
+    14.0
+   ]
+  },
+  "S2": {
+   "cell": [
+    1,
+    0
+   ],
+   "centre": [
+    130.0,
+    46.0,
+    14.0
+   ]
+  },
+  "S4": {
+   "cell": [
+    0,
+    1
+   ],
+   "centre": [
+    46.0,
+    130.0,
+    14.0
+   ]
+  },
+  "RJ45": {
+   "cell": [
+    1,
+    1
+   ],
+   "centre": [
+    130.0,
+    130.0,
+    14.0
+   ]
+  }
+ },
+ "slots": [
+  {
+   "id": "S1-01",
+   "module": "S1",
+   "pin_spacing": 1,
+   "pins": 3,
+   "holes": "through",
+   "part": "switch_spdt",
+   "part_name": "SPDT selector switch",
+   "pin_names": [
+    "throw_1",
+    "common",
+    "throw_2"
+   ],
+   "hole_xy": [
+    [
+     15.96,
+     16.0
+    ],
+    [
+     18.5,
+     16.0
+    ],
+    [
+     21.04,
+     16.0
+    ]
+   ],
+   "pick": {
+    "x": 18.5,
+    "y": 16.0,
+    "z": 16.0
+   },
+   "approach_z": 46.0,
+   "open_mm": 12.0
+  },
+  {
+   "id": "S1-02",
+   "module": "S1",
+   "pin_spacing": 1,
+   "pins": 3,
+   "holes": "through",
+   "part": "transistor_npn_generic",
+   "part_name": "Generic NPN bipolar transistor",
+   "pin_names": [
+    "emitter",
+    "base",
+    "collector"
+   ],
+   "hole_xy": [
+    [
+     34.96,
+     16.0
+    ],
+    [
+     37.5,
+     16.0
+    ],
+    [
+     40.04,
+     16.0
+    ]
+   ],
+   "pick": {
+    "x": 37.5,
+    "y": 16.0,
+    "z": 16.0
+   },
+   "approach_z": 46.0,
+   "open_mm": 12.0
+  },
+  {
+   "id": "S1-03",
+   "module": "S1",
+   "pin_spacing": 1,
+   "pins": 3,
+   "holes": "through",
+   "part": "transistor_pnp_generic",
+   "part_name": "Generic PNP bipolar transistor",
+   "pin_names": [
+    "emitter",
+    "base",
+    "collector"
+   ],
+   "hole_xy": [
+    [
+     53.96,
+     16.0
+    ],
+    [
+     56.5,
+     16.0
+    ],
+    [
+     59.04,
+     16.0
+    ]
+   ],
+   "pick": {
+    "x": 56.5,
+    "y": 16.0,
+    "z": 16.0
+   },
+   "approach_z": 46.0,
+   "open_mm": 12.0
+  },
+  {
+   "id": "S1-04",
+   "module": "S1",
+   "pin_spacing": 1,
+   "pins": 3,
+   "holes": "through",
+   "part": "potentiometer_10kohm",
+   "part_name": "10 kohm potentiometer",
+   "pin_names": [
+    "end_1",
+    "wiper",
+    "end_2"
+   ],
+   "hole_xy": [
+    [
+     72.96,
+     16.0
+    ],
+    [
+     75.5,
+     16.0
+    ],
+    [
+     78.04,
+     16.0
+    ]
+   ],
+   "pick": {
+    "x": 75.5,
+    "y": 16.0,
+    "z": 16.0
+   },
+   "approach_z": 46.0,
+   "open_mm": 12.0
+  },
+  {
+   "id": "S1-05",
+   "module": "S1",
+   "pin_spacing": 1,
+   "pins": 4,
+   "holes": "through",
+   "part": "led_rgb_common_cathode_gap_0",
+   "part_name": "RGB LED with common cathode - 0 gap",
+   "pin_names": [
+    "red_anode",
+    "common_cathode",
+    "green_anode",
+    "blue_anode"
+   ],
+   "hole_xy": [
+    [
+     13.19,
+     36.0
+    ],
+    [
+     15.73,
+     36.0
+    ],
+    [
+     18.27,
+     36.0
+    ],
+    [
+     20.81,
+     36.0
+    ]
+   ],
+   "pick": {
+    "x": 17.0,
+    "y": 36.0,
+    "z": 16.0
+   },
+   "approach_z": 46.0,
+   "open_mm": 12.0
+  },
+  {
+   "id": "S1-06",
+   "module": "S1",
+   "pin_spacing": 1,
+   "pins": 2,
+   "holes": "through",
+   "part": "resistor_220ohm_gap_0",
+   "part_name": "220 ohm resistor - 0 gap",
+   "pin_names": [
+    "1",
+    "2"
+   ],
+   "hole_xy": [
+    [
+     35.73,
+     36.0
+    ],
+    [
+     38.27,
+     36.0
+    ]
+   ],
+   "pick": {
+    "x": 37.0,
+    "y": 36.0,
+    "z": 16.0
+   },
+   "approach_z": 46.0,
+   "open_mm": 12.0
+  },
+  {
+   "id": "S1-07",
+   "module": "S1",
+   "pin_spacing": 1,
+   "pins": 2,
+   "holes": "through",
+   "part": "resistor_1kohm_gap_0",
+   "part_name": "1 kohm resistor- 0 gap",
+   "pin_names": [
+    "1",
+    "2"
+   ],
+   "hole_xy": [
+    [
+     55.73,
+     36.0
+    ],
+    [
+     58.27,
+     36.0
+    ]
+   ],
+   "pick": {
+    "x": 57.0,
+    "y": 36.0,
+    "z": 16.0
+   },
+   "approach_z": 46.0,
+   "open_mm": 12.0
+  },
+  {
+   "id": "S1-08",
+   "module": "S1",
+   "pin_spacing": 1,
+   "pins": 2,
+   "holes": "through",
+   "part": "resistor_10kohm_gap_0",
+   "part_name": "10 kohm resistor - 0 gap",
+   "pin_names": [
+    "1",
+    "2"
+   ],
+   "hole_xy": [
+    [
+     75.73,
+     36.0
+    ],
+    [
+     78.27,
+     36.0
+    ]
+   ],
+   "pick": {
+    "x": 77.0,
+    "y": 36.0,
+    "z": 16.0
+   },
+   "approach_z": 46.0,
+   "open_mm": 12.0
+  },
+  {
+   "id": "S1-09",
+   "module": "S1",
+   "pin_spacing": 1,
+   "pins": 2,
+   "holes": "through",
+   "part": "capacitor_ceramic_100nf",
+   "part_name": "100 nF ceramic capacitor",
+   "pin_names": [
+    "1",
+    "2"
+   ],
+   "hole_xy": [
+    [
+     17.23,
+     56.0
+    ],
+    [
+     19.77,
+     56.0
+    ]
+   ],
+   "pick": {
+    "x": 18.5,
+    "y": 56.0,
+    "z": 16.0
+   },
+   "approach_z": 46.0,
+   "open_mm": 12.0
+  },
+  {
+   "id": "S1-10",
+   "module": "S1",
+   "pin_spacing": 1,
+   "pins": 2,
+   "holes": "through",
+   "part": "capacitor_electrolytic_10uf",
+   "part_name": "10 uF electrolytic capacitor",
+   "pin_names": [
+    "positive",
+    "negative"
+   ],
+   "hole_xy": [
+    [
+     36.23,
+     56.0
+    ],
+    [
+     38.77,
+     56.0
+    ]
+   ],
+   "pick": {
+    "x": 37.5,
+    "y": 56.0,
+    "z": 16.0
+   },
+   "approach_z": 46.0,
+   "open_mm": 12.0
+  },
+  {
+   "id": "S1-11",
+   "module": "S1",
+   "pin_spacing": 1,
+   "pins": 2,
+   "holes": "through",
+   "part": "led_red_gap_0",
+   "part_name": "Red LED - 0 gap",
+   "pin_names": [
+    "anode",
+    "cathode"
+   ],
+   "hole_xy": [
+    [
+     55.23,
+     56.0
+    ],
+    [
+     57.77,
+     56.0
+    ]
+   ],
+   "pick": {
+    "x": 56.5,
+    "y": 56.0,
+    "z": 16.0
+   },
+   "approach_z": 46.0,
+   "open_mm": 12.0
+  },
+  {
+   "id": "S1-12",
+   "module": "S1",
+   "pin_spacing": 1,
+   "pins": 2,
+   "holes": "through",
+   "part": "led_green_gap_0",
+   "part_name": "Green LED - 0 gap",
+   "pin_names": [
+    "anode",
+    "cathode"
+   ],
+   "hole_xy": [
+    [
+     74.23,
+     56.0
+    ],
+    [
+     76.77,
+     56.0
+    ]
+   ],
+   "pick": {
+    "x": 75.5,
+    "y": 56.0,
+    "z": 16.0
+   },
+   "approach_z": 46.0,
+   "open_mm": 12.0
+  },
+  {
+   "id": "S1-13",
+   "module": "S1",
+   "pin_spacing": 1,
+   "pins": 2,
+   "holes": "through",
+   "part": "led_blue_gap_0",
+   "part_name": "Blue LED - 0 gap",
+   "pin_names": [
+    "anode",
+    "cathode"
+   ],
+   "hole_xy": [
+    [
+     17.23,
+     76.0
+    ],
+    [
+     19.77,
+     76.0
+    ]
+   ],
+   "pick": {
+    "x": 18.5,
+    "y": 76.0,
+    "z": 16.0
+   },
+   "approach_z": 46.0,
+   "open_mm": 12.0
+  },
+  {
+   "id": "S1-14",
+   "module": "S1",
+   "pin_spacing": 1,
+   "pins": 2,
+   "holes": "through",
+   "part": "switch_spst",
+   "part_name": "SPST on/off switch",
+   "pin_names": [
+    "1",
+    "2"
+   ],
+   "hole_xy": [
+    [
+     36.23,
+     76.0
+    ],
+    [
+     38.77,
+     76.0
+    ]
+   ],
+   "pick": {
+    "x": 37.5,
+    "y": 76.0,
+    "z": 16.0
+   },
+   "approach_z": 46.0,
+   "open_mm": 12.0
+  },
+  {
+   "id": "S1-15",
+   "module": "S1",
+   "pin_spacing": 1,
+   "pins": 2,
+   "holes": "through",
+   "part": "pushbutton_normally_open",
+   "part_name": "Two-terminal normally-open pushbutton",
+   "pin_names": [
+    "1",
+    "2"
+   ],
+   "hole_xy": [
+    [
+     55.23,
+     76.0
+    ],
+    [
+     57.77,
+     76.0
+    ]
+   ],
+   "pick": {
+    "x": 56.5,
+    "y": 76.0,
+    "z": 16.0
+   },
+   "approach_z": 46.0,
+   "open_mm": 12.0
+  },
+  {
+   "id": "S1-16",
+   "module": "S1",
+   "pin_spacing": 1,
+   "pins": 2,
+   "holes": "blind",
+   "part": "jumper_rigid_1_pitch",
+   "part_name": "Rigid jumper - 0 gap",
+   "pin_names": [
+    "1",
+    "2"
+   ],
+   "hole_xy": [
+    [
+     74.23,
+     76.0
+    ],
+    [
+     76.77,
+     76.0
+    ]
+   ],
+   "pick": {
+    "x": 75.5,
+    "y": 76.0,
+    "z": 16.0
+   },
+   "approach_z": 46.0,
+   "open_mm": 12.0
+  },
+  {
+   "id": "S2-01",
+   "module": "S2",
+   "pin_spacing": 2,
+   "pins": 4,
+   "holes": "through",
+   "part": "led_rgb_common_cathode_gap_1",
+   "part_name": "RGB LED with common cathode - 1 gap",
+   "pin_names": [
+    "red_anode",
+    "common_cathode",
+    "green_anode",
+    "blue_anode"
+   ],
+   "hole_xy": [
+    [
+     99.38,
+     16.0
+    ],
+    [
+     104.46,
+     16.0
+    ],
+    [
+     109.54,
+     16.0
+    ],
+    [
+     114.62,
+     16.0
+    ]
+   ],
+   "pick": {
+    "x": 107.0,
+    "y": 16.0,
+    "z": 16.0
+   },
+   "approach_z": 46.0,
+   "open_mm": 12.0
+  },
+  {
+   "id": "S2-02",
+   "module": "S2",
+   "pin_spacing": 2,
+   "pins": 4,
+   "holes": "through",
+   "part": null,
+   "part_name": null,
+   "pin_names": null,
+   "hole_xy": [
+    [
+     123.38,
+     16.0
+    ],
+    [
+     128.46,
+     16.0
+    ],
+    [
+     133.54,
+     16.0
+    ],
+    [
+     138.62,
+     16.0
+    ]
+   ],
+   "pick": {
+    "x": 131.0,
+    "y": 16.0,
+    "z": 16.0
+   },
+   "approach_z": 46.0,
+   "open_mm": 12.0
+  },
+  {
+   "id": "S2-03",
+   "module": "S2",
+   "pin_spacing": 2,
+   "pins": 4,
+   "holes": "through",
+   "part": null,
+   "part_name": null,
+   "pin_names": null,
+   "hole_xy": [
+    [
+     147.38,
+     16.0
+    ],
+    [
+     152.46,
+     16.0
+    ],
+    [
+     157.54,
+     16.0
+    ],
+    [
+     162.62,
+     16.0
+    ]
+   ],
+   "pick": {
+    "x": 155.0,
+    "y": 16.0,
+    "z": 16.0
+   },
+   "approach_z": 46.0,
+   "open_mm": 12.0
+  },
+  {
+   "id": "S2-04",
+   "module": "S2",
+   "pin_spacing": 2,
+   "pins": 2,
+   "holes": "through",
+   "part": "resistor_220ohm_gap_1",
+   "part_name": "220 ohm resistor - 1 gap",
+   "pin_names": [
+    "1",
+    "2"
+   ],
+   "hole_xy": [
+    [
+     99.96,
+     36.0
+    ],
+    [
+     105.04,
+     36.0
+    ]
+   ],
+   "pick": {
+    "x": 102.5,
+    "y": 36.0,
+    "z": 16.0
+   },
+   "approach_z": 46.0,
+   "open_mm": 12.0
+  },
+  {
+   "id": "S2-05",
+   "module": "S2",
+   "pin_spacing": 2,
+   "pins": 2,
+   "holes": "through",
+   "part": "resistor_1kohm_gap_1",
+   "part_name": "1 kohm resistor - 1 gap",
+   "pin_names": [
+    "1",
+    "2"
+   ],
+   "hole_xy": [
+    [
+     118.96,
+     36.0
+    ],
+    [
+     124.04,
+     36.0
+    ]
+   ],
+   "pick": {
+    "x": 121.5,
+    "y": 36.0,
+    "z": 16.0
+   },
+   "approach_z": 46.0,
+   "open_mm": 12.0
+  },
+  {
+   "id": "S2-06",
+   "module": "S2",
+   "pin_spacing": 2,
+   "pins": 2,
+   "holes": "through",
+   "part": "resistor_10kohm_gap_1",
+   "part_name": "10 kohm resistor - 1 gap",
+   "pin_names": [
+    "1",
+    "2"
+   ],
+   "hole_xy": [
+    [
+     137.96,
+     36.0
+    ],
+    [
+     143.04,
+     36.0
+    ]
+   ],
+   "pick": {
+    "x": 140.5,
+    "y": 36.0,
+    "z": 16.0
+   },
+   "approach_z": 46.0,
+   "open_mm": 12.0
+  },
+  {
+   "id": "S2-07",
+   "module": "S2",
+   "pin_spacing": 2,
+   "pins": 2,
+   "holes": "through",
+   "part": "led_red_gap_1",
+   "part_name": "Red LED - 1 gap",
+   "pin_names": [
+    "anode",
+    "cathode"
+   ],
+   "hole_xy": [
+    [
+     156.96,
+     36.0
+    ],
+    [
+     162.04,
+     36.0
+    ]
+   ],
+   "pick": {
+    "x": 159.5,
+    "y": 36.0,
+    "z": 16.0
+   },
+   "approach_z": 46.0,
+   "open_mm": 12.0
+  },
+  {
+   "id": "S2-08",
+   "module": "S2",
+   "pin_spacing": 2,
+   "pins": 2,
+   "holes": "through",
+   "part": "led_green_gap_1",
+   "part_name": "Green LED - 1 gap",
+   "pin_names": [
+    "anode",
+    "cathode"
+   ],
+   "hole_xy": [
+    [
+     99.96,
+     56.0
+    ],
+    [
+     105.04,
+     56.0
+    ]
+   ],
+   "pick": {
+    "x": 102.5,
+    "y": 56.0,
+    "z": 16.0
+   },
+   "approach_z": 46.0,
+   "open_mm": 12.0
+  },
+  {
+   "id": "S2-09",
+   "module": "S2",
+   "pin_spacing": 2,
+   "pins": 2,
+   "holes": "through",
+   "part": "led_blue_gap_1",
+   "part_name": "Blue LED - 1 gap",
+   "pin_names": [
+    "anode",
+    "cathode"
+   ],
+   "hole_xy": [
+    [
+     118.96,
+     56.0
+    ],
+    [
+     124.04,
+     56.0
+    ]
+   ],
+   "pick": {
+    "x": 121.5,
+    "y": 56.0,
+    "z": 16.0
+   },
+   "approach_z": 46.0,
+   "open_mm": 12.0
+  },
+  {
+   "id": "S2-10",
+   "module": "S2",
+   "pin_spacing": 2,
+   "pins": 2,
+   "holes": "through",
+   "part": null,
+   "part_name": null,
+   "pin_names": null,
+   "hole_xy": [
+    [
+     137.96,
+     56.0
+    ],
+    [
+     143.04,
+     56.0
+    ]
+   ],
+   "pick": {
+    "x": 140.5,
+    "y": 56.0,
+    "z": 16.0
+   },
+   "approach_z": 46.0,
+   "open_mm": 12.0
+  },
+  {
+   "id": "S2-11",
+   "module": "S2",
+   "pin_spacing": 2,
+   "pins": 2,
+   "holes": "through",
+   "part": null,
+   "part_name": null,
+   "pin_names": null,
+   "hole_xy": [
+    [
+     156.96,
+     56.0
+    ],
+    [
+     162.04,
+     56.0
+    ]
+   ],
+   "pick": {
+    "x": 159.5,
+    "y": 56.0,
+    "z": 16.0
+   },
+   "approach_z": 46.0,
+   "open_mm": 12.0
+  },
+  {
+   "id": "S2-12",
+   "module": "S2",
+   "pin_spacing": 2,
+   "pins": 2,
+   "holes": "blind",
+   "part": "jumper_rigid_2_pitch",
+   "part_name": "Rigid jumper - 1 gap",
+   "pin_names": [
+    "1",
+    "2"
+   ],
+   "hole_xy": [
+    [
+     99.96,
+     76.0
+    ],
+    [
+     105.04,
+     76.0
+    ]
+   ],
+   "pick": {
+    "x": 102.5,
+    "y": 76.0,
+    "z": 16.0
+   },
+   "approach_z": 46.0,
+   "open_mm": 12.0
+  },
+  {
+   "id": "S2-13",
+   "module": "S2",
+   "pin_spacing": 2,
+   "pins": 2,
+   "holes": "blind",
+   "part": null,
+   "part_name": null,
+   "pin_names": null,
+   "hole_xy": [
+    [
+     118.96,
+     76.0
+    ],
+    [
+     124.04,
+     76.0
+    ]
+   ],
+   "pick": {
+    "x": 121.5,
+    "y": 76.0,
+    "z": 16.0
+   },
+   "approach_z": 46.0,
+   "open_mm": 12.0
+  },
+  {
+   "id": "S2-14",
+   "module": "S2",
+   "pin_spacing": 2,
+   "pins": 2,
+   "holes": "blind",
+   "part": null,
+   "part_name": null,
+   "pin_names": null,
+   "hole_xy": [
+    [
+     137.96,
+     76.0
+    ],
+    [
+     143.04,
+     76.0
+    ]
+   ],
+   "pick": {
+    "x": 140.5,
+    "y": 76.0,
+    "z": 16.0
+   },
+   "approach_z": 46.0,
+   "open_mm": 12.0
+  },
+  {
+   "id": "S2-15",
+   "module": "S2",
+   "pin_spacing": 2,
+   "pins": 2,
+   "holes": "blind",
+   "part": null,
+   "part_name": null,
+   "pin_names": null,
+   "hole_xy": [
+    [
+     156.96,
+     76.0
+    ],
+    [
+     162.04,
+     76.0
+    ]
+   ],
+   "pick": {
+    "x": 159.5,
+    "y": 76.0,
+    "z": 16.0
+   },
+   "approach_z": 46.0,
+   "open_mm": 12.0
+  },
+  {
+   "id": "S4-01",
+   "module": "S4",
+   "pin_spacing": 4,
+   "pins": 2,
+   "holes": "through",
+   "part": null,
+   "part_name": null,
+   "pin_names": null,
+   "hole_xy": [
+    [
+     19.92,
+     100.0
+    ],
+    [
+     30.08,
+     100.0
+    ]
+   ],
+   "pick": {
+    "x": 25.0,
+    "y": 100.0,
+    "z": 16.0
+   },
+   "approach_z": 46.0,
+   "open_mm": 12.0
+  },
+  {
+   "id": "S4-02",
+   "module": "S4",
+   "pin_spacing": 4,
+   "pins": 2,
+   "holes": "through",
+   "part": null,
+   "part_name": null,
+   "pin_names": null,
+   "hole_xy": [
+    [
+     41.92,
+     100.0
+    ],
+    [
+     52.08,
+     100.0
+    ]
+   ],
+   "pick": {
+    "x": 47.0,
+    "y": 100.0,
+    "z": 16.0
+   },
+   "approach_z": 46.0,
+   "open_mm": 12.0
+  },
+  {
+   "id": "S4-03",
+   "module": "S4",
+   "pin_spacing": 4,
+   "pins": 2,
+   "holes": "through",
+   "part": null,
+   "part_name": null,
+   "pin_names": null,
+   "hole_xy": [
+    [
+     63.92,
+     100.0
+    ],
+    [
+     74.08,
+     100.0
+    ]
+   ],
+   "pick": {
+    "x": 69.0,
+    "y": 100.0,
+    "z": 16.0
+   },
+   "approach_z": 46.0,
+   "open_mm": 12.0
+  },
+  {
+   "id": "S4-04",
+   "module": "S4",
+   "pin_spacing": 4,
+   "pins": 2,
+   "holes": "through",
+   "part": null,
+   "part_name": null,
+   "pin_names": null,
+   "hole_xy": [
+    [
+     19.92,
+     120.0
+    ],
+    [
+     30.08,
+     120.0
+    ]
+   ],
+   "pick": {
+    "x": 25.0,
+    "y": 120.0,
+    "z": 16.0
+   },
+   "approach_z": 46.0,
+   "open_mm": 12.0
+  },
+  {
+   "id": "S4-05",
+   "module": "S4",
+   "pin_spacing": 4,
+   "pins": 2,
+   "holes": "through",
+   "part": null,
+   "part_name": null,
+   "pin_names": null,
+   "hole_xy": [
+    [
+     41.92,
+     120.0
+    ],
+    [
+     52.08,
+     120.0
+    ]
+   ],
+   "pick": {
+    "x": 47.0,
+    "y": 120.0,
+    "z": 16.0
+   },
+   "approach_z": 46.0,
+   "open_mm": 12.0
+  },
+  {
+   "id": "S4-06",
+   "module": "S4",
+   "pin_spacing": 4,
+   "pins": 2,
+   "holes": "through",
+   "part": null,
+   "part_name": null,
+   "pin_names": null,
+   "hole_xy": [
+    [
+     63.92,
+     120.0
+    ],
+    [
+     74.08,
+     120.0
+    ]
+   ],
+   "pick": {
+    "x": 69.0,
+    "y": 120.0,
+    "z": 16.0
+   },
+   "approach_z": 46.0,
+   "open_mm": 12.0
+  },
+  {
+   "id": "S4-07",
+   "module": "S4",
+   "pin_spacing": 4,
+   "pins": 2,
+   "holes": "blind",
+   "part": "jumper_rigid_4_pitch",
+   "part_name": "Rigid jumper - 3 gap",
+   "pin_names": [
+    "1",
+    "2"
+   ],
+   "hole_xy": [
+    [
+     19.92,
+     140.0
+    ],
+    [
+     30.08,
+     140.0
+    ]
+   ],
+   "pick": {
+    "x": 25.0,
+    "y": 140.0,
+    "z": 16.0
+   },
+   "approach_z": 46.0,
+   "open_mm": 12.0
+  },
+  {
+   "id": "S4-08",
+   "module": "S4",
+   "pin_spacing": 4,
+   "pins": 2,
+   "holes": "blind",
+   "part": null,
+   "part_name": null,
+   "pin_names": null,
+   "hole_xy": [
+    [
+     41.92,
+     140.0
+    ],
+    [
+     52.08,
+     140.0
+    ]
+   ],
+   "pick": {
+    "x": 47.0,
+    "y": 140.0,
+    "z": 16.0
+   },
+   "approach_z": 46.0,
+   "open_mm": 12.0
+  },
+  {
+   "id": "S4-09",
+   "module": "S4",
+   "pin_spacing": 4,
+   "pins": 2,
+   "holes": "blind",
+   "part": null,
+   "part_name": null,
+   "pin_names": null,
+   "hole_xy": [
+    [
+     63.92,
+     140.0
+    ],
+    [
+     74.08,
+     140.0
+    ]
+   ],
+   "pick": {
+    "x": 69.0,
+    "y": 140.0,
+    "z": 16.0
+   },
+   "approach_z": 46.0,
+   "open_mm": 12.0
+  },
+  {
+   "id": "S4-10",
+   "module": "S4",
+   "pin_spacing": 4,
+   "pins": 2,
+   "holes": "blind",
+   "part": null,
+   "part_name": null,
+   "pin_names": null,
+   "hole_xy": [
+    [
+     19.92,
+     160.0
+    ],
+    [
+     30.08,
+     160.0
+    ]
+   ],
+   "pick": {
+    "x": 25.0,
+    "y": 160.0,
+    "z": 16.0
+   },
+   "approach_z": 46.0,
+   "open_mm": 12.0
+  },
+  {
+   "id": "S4-11",
+   "module": "S4",
+   "pin_spacing": 4,
+   "pins": 2,
+   "holes": "blind",
+   "part": null,
+   "part_name": null,
+   "pin_names": null,
+   "hole_xy": [
+    [
+     41.92,
+     160.0
+    ],
+    [
+     52.08,
+     160.0
+    ]
+   ],
+   "pick": {
+    "x": 47.0,
+    "y": 160.0,
+    "z": 16.0
+   },
+   "approach_z": 46.0,
+   "open_mm": 12.0
+  },
+  {
+   "id": "S4-12",
+   "module": "S4",
+   "pin_spacing": 4,
+   "pins": 2,
+   "holes": "blind",
+   "part": null,
+   "part_name": null,
+   "pin_names": null,
+   "hole_xy": [
+    [
+     63.92,
+     160.0
+    ],
+    [
+     74.08,
+     160.0
+    ]
+   ],
+   "pick": {
+    "x": 69.0,
+    "y": 160.0,
+    "z": 16.0
+   },
+   "approach_z": 46.0,
+   "open_mm": 12.0
+  }
+ ],
+ "rj45": {
+  "pick": {
+   "x": 129.2,
+   "y": 130.0,
+   "z": 20.3
+  },
+  "approach_z": 50.3,
+  "grip_span_mm": 8.0,
+  "open_mm": 36.0,
+  "plug_axis": "+x from the tip to the cable",
+  "tip_xy": [
+   93.0,
+   130.0
+  ],
+  "note": "descend with the tips open to open_mm (outside the flares), then close: the flares and notches centre the grip; tip bottom 1 mm above the shell top"
+ },
+ "unplaced": [
+  "diode_generic",
+  "jumper_rigid_3_pitch",
+  "power_connector_2pin"
+ ]
+}

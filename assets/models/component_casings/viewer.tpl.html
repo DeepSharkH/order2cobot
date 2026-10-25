@@ -1,0 +1,478 @@
+<title>Component Casings</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;600&display=swap">
+<style>
+/* Layout: a shelf of every casing in 3D, with a rail to pick one and run the assembly; rail stacks below on phones */
+:root {
+  --bg: #eef1f3; --panel: #ffffff; --fg: #1b2228; --muted: #5d6973; --line: #d3dae0;
+  --c1: #e2711d; --c2: #2f8f83; --floor: #d9dfe4; --accent: #1f6fb2; --hud: #0d5f91;
+  --sans: "IBM Plex Sans", system-ui, sans-serif; --mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #12171b; --panel: #1a2127; --fg: #e3e8ec; --muted: #8e9aa4; --line: #2c363e;
+  --c1: #f08a3c; --c2: #4fb3a5; --floor: #222a31; --accent: #5aa7e6; --hud: #8fe7ff; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #12171b; --panel: #1a2127; --fg: #e3e8ec; --muted: #8e9aa4; --line: #2c363e;
+  --c1: #f08a3c; --c2: #4fb3a5; --floor: #222a31; --accent: #5aa7e6; --hud: #8fe7ff; color-scheme: dark }
+html, body { height: 100%; }
+body { background: var(--bg); color: var(--fg); font-family: var(--sans); }
+.app { height: 100%; display: grid; grid-template-columns: minmax(0,1fr) 320px; }
+#view { position: relative; min-width: 0; min-height: 0; overflow: hidden; }
+#view canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+.hint { position: absolute; left: max(16px, env(safe-area-inset-left, 0px)); bottom: 12px; font: 12px var(--mono); color: var(--muted); }
+.whiteout { position: absolute; inset: 0; pointer-events: none; opacity: 0; background: radial-gradient(circle at 50% 50%, #fff 0%, #ffe9c4 45%, rgba(255, 160, 60, .6) 100%); mix-blend-mode: screen; }
+.vignette { position: absolute; inset: 0; pointer-events: none; opacity: 0;
+  background: radial-gradient(ellipse at 50% 45%, transparent 50%, rgba(0, 0, 0, .6) 100%); }
+.hud { position: absolute; top: 16px; left: max(16px, env(safe-area-inset-left, 0px)); pointer-events: none;
+  font: 500 15px var(--mono); letter-spacing: .16em; text-transform: uppercase; color: var(--hud);
+  opacity: 0; transform: translateX(-6px); transition: opacity .25s, transform .25s; }
+.hud small { display: block; margin-top: 5px; font-size: 11.5px; letter-spacing: .12em; opacity: .85; }
+.hud.on { opacity: 1; transform: none; }
+#view.cine .hud { color: #8fe7ff; text-shadow: 0 0 8px rgba(80, 200, 255, .9), 0 0 24px rgba(60, 150, 255, .7); }
+#view.cine .hint { color: #8796a3; }
+aside { background: var(--panel); border-left: 1px solid var(--line); overflow-y: auto;
+  padding-block: 20px; padding-left: max(20px, env(safe-area-inset-left, 0px)); padding-right: max(20px, env(safe-area-inset-right, 0px));
+  display: flex; flex-direction: column; gap: 20px; }
+h1 { font-size: 18px; margin: 0; text-wrap: balance; }
+.sub { color: var(--muted); margin: 4px 0 0; line-height: 1.45; }
+h2 { font: 500 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0 0 8px; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; }
+.toggles label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+button, select { font: 500 12px var(--mono); padding: 6px 10px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); border-radius: 4px; cursor: pointer; }
+select { width: 100%; }
+button:hover, select:hover { border-color: var(--accent); }
+button:disabled { opacity: .5; cursor: default; }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.primary { flex: 1 1 100%; padding: 9px 10px; background: var(--accent); border-color: var(--accent); color: var(--panel); letter-spacing: .06em; }
+dl { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; margin: 0; }
+dt { color: var(--muted); }
+dd { margin: 0; font: 13px var(--mono); font-variant-numeric: tabular-nums; text-align: right; }
+.note { font-size: 13px; color: var(--muted); line-height: 1.5; margin: 0; }
+@media (max-width: 760px) {
+  .app { grid-template-columns: 1fr; grid-template-rows: 68vh auto; height: auto; }
+  aside { border-left: 0; border-top: 1px solid var(--line); padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+}
+</style>
+
+<div class="app">
+  <div id="view">
+    <div class="vignette" id="vignette"></div>
+    <div class="whiteout" id="whiteout"></div>
+    <div class="hud" id="hud" aria-live="polite"></div>
+    <div class="hint">drag to orbit · scroll to zoom · right-drag to pan</div>
+  </div>
+  <aside>
+    <div>
+      <h1>Component casings</h1>
+      <p class="sub">Every part rides in the same kind of block: 25 mm tall, split through the lead plane and glued, with the leads leaving the bottom on the 2.54 mm grid. The Hand-E grips the block, never the part. Jumpers reuse the original 5 mm jumper casing's channels, moved to each spacing.</p>
+    </div>
+    <div class="row">
+      <button class="primary" id="boom">Blow them all up</button>
+      <button class="primary" id="all">Assemble them all</button>
+    </div>
+    <div>
+      <h2>Casing</h2>
+      <select id="pick" aria-label="Casing"></select>
+      <div class="row" style="margin-top:10px">
+        <button id="go">Assemble</button><button id="apart">Blow apart</button><button id="focus">Focus</button><button id="shelf">Whole shelf</button>
+      </div>
+    </div>
+    <div>
+      <h2>Show</h2>
+      <select id="mode" aria-label="Show">
+        <option value="closed">Casing around the part</option>
+        <option value="half1">Half 1 only, pockets facing you</option>
+        <option value="half2">Half 2 only, pockets facing you</option>
+        <option value="flat">Both molds opened flat, as printed</option>
+      </select>
+      <div class="toggles row" style="margin-top:10px">
+        <label><input type="checkbox" id="t-parts" checked> Parts</label>
+        <label><input type="checkbox" id="t-see"> See through the casing</label>
+      </div>
+    </div>
+    <div>
+      <h2>Selected (mm)</h2>
+      <dl id="spec"></dl>
+    </div>
+    <p class="note">Halves and parts are the actual geometry from casings.py: the orange half is half 1 (y &lt; 0), the teal one half 2. Print each half lying on its outer face, split face up, no supports. Parts are standard sizes: 1/4 W resistor, 1N4148, 5 mm LED, TO-92, 5 mm disc, 5 × 11 mm electrolytic. The sparks are for show only.</p>
+  </aside>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/STLLoader.js"></script>
+<script>
+const ITEMS = __ITEMS__;
+const f1 = v => (+v).toFixed(1), f2 = v => (+v).toFixed(2);
+const NAMES = { jumper: 'Jumper', resistor: 'Resistor', diode: 'Diode', led: 'LED', rgb_led: 'RGB LED', bjt: 'Transistor TO-92',
+  capacitor_ceramic: 'Ceramic capacitor', capacitor_electrolytic: 'Electrolytic capacitor' };
+const label = it => `${NAMES[it.kind]} · spacing ${it.s} (${f2(it.s * 2.54)} mm)`;
+
+const view = document.getElementById('view');
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+view.prepend(renderer.domElement);
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(35, 1, 1, 5000);
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+const hemi = new THREE.HemisphereLight(0xffffff, 0x445566, 0.9); scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xffffff, 0.65); sun.position.set(80, 200, 140); scene.add(sun);
+const world = new THREE.Group(); world.rotation.x = -Math.PI / 2; scene.add(world);   // z up, mm
+const stl = b => new THREE.STLLoader().parse(Uint8Array.from(atob(b), c => c.charCodeAt(0)).buffer);
+const M = (color, extra = {}) => new THREE.MeshStandardMaterial(Object.assign({ color, roughness: 0.6, metalness: 0.04 }, extra));
+const edges = g => new THREE.LineSegments(new THREE.EdgesGeometry(g, 25), new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.28 }));
+const half1Mat = M(css('--c1'), { transparent: true }), half2Mat = M(css('--c2'), { transparent: true });
+const leadMat = M(0xbfc5cb, { metalness: 0.5, roughness: 0.35 });
+const sv = (x, y, z) => new THREE.Vector3(x, z, -y);
+
+/* shelf: one row per part type, spacings along x */
+const kinds = [...new Set(ITEMS.map(i => i.kind))];
+const DX = 34;
+let DY = 26, mode = 'closed';
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), M(css('--floor'), { roughness: 0.9 }));
+world.add(floor);
+function bodyMat(it) {
+  const c = { resistor: 0xd8c39a, diode: 0x2b2b2b, rgb_led: 0xe8eef2, bjt: 0x2a2a2a, capacitor_ceramic: 0xd9892b, capacitor_electrolytic: 0x26395e, jumper: 0xc0c6cc }[it.kind]
+    ?? [0xe5322d, 0x2fbf4f, 0x2f6fe5][it.s % 3];
+  return it.kind === 'led' || it.kind === 'rgb_led' ? M(c, { roughness: 0.25, emissive: c, emissiveIntensity: 0.25, transparent: true, opacity: 0.92 })
+    : M(c, it.kind === 'jumper' ? { metalness: 0.5, roughness: 0.35 } : {});
+}
+function textSprite(s) {
+  const c = document.createElement('canvas'); c.width = 512; c.height = 64;
+  const x = c.getContext('2d'); x.font = '600 40px IBM Plex Mono, monospace'; x.fillStyle = '#5d6973'; x.textAlign = 'center'; x.fillText(s, 256, 42);
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(34, 4.25), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthWrite: false }));
+  return m;
+}
+ITEMS.forEach(it => {
+  const row = kinds.indexOf(it.kind), col = ITEMS.filter(o => o.kind === it.kind).indexOf(it);
+  const g = new THREE.Group(); world.add(g);
+  const h1 = new THREE.Mesh(stl(it.stl.h1), half1Mat), h2 = new THREE.Mesh(stl(it.stl.h2), half2Mat);
+  h1.add(edges(h1.geometry)); h2.add(edges(h2.geometry));
+  const p1 = new THREE.Group(), p2 = new THREE.Group(); p1.add(h1); p2.add(h2);
+  const part = new THREE.Group();
+  part.add(new THREE.Mesh(stl(it.stl.body), bodyMat(it)), new THREE.Mesh(stl(it.stl.leads), leadMat));
+  if (it.kind === 'jumper') {                 // the flexible wire leaves the top and loops over
+    const [a, b] = it.exits, top = it.h, r = Math.max(8, (b - a) * 0.8);
+    const curve = new THREE.CatmullRomCurve3([[a, 0, top - 1], [a, 0, top + 6], [a - 2, 0, top + 6 + r], [(a + b) / 2, 0, top + 10 + r * 1.4],
+      [b + 2, 0, top + 6 + r], [b, 0, top + 6], [b, 0, top - 1]].map(p => new THREE.Vector3(...p)));
+    part.add(new THREE.Mesh(new THREE.TubeGeometry(curve, 60, 0.65, 10), M([0xd24a3a, 0xe0a020, 0x2f9a4e, 0x3d7be0][it.s - 1])));
+  }
+  g.add(p1, p2, part);
+  const tag = textSprite(`${NAMES[it.kind].split(' ')[0]} s${it.s}`); tag.position.set(0, -it.t / 2 - 5, 0.05); g.add(tag);
+  Object.assign(it, { g, p1, p2, part, u: 1, row, col });
+});
+const shelfW = (Math.max(...kinds.map(k => ITEMS.filter(i => i.kind === k).length)) - 1) * DX;
+let shelfH = 0;
+function layout() {                         // opened-flat molds need more room per row
+  DY = mode === 'flat' ? 104 : 26; shelfH = (kinds.length - 1) * DY;
+  ITEMS.forEach(it => it.g.position.set(it.col * DX, -it.row * DY + (mode === 'flat' ? 20 : 0), 0));
+  floor.scale.set(shelfW + 60, shelfH + (mode === 'flat' ? 110 : 50), 1); floor.position.set(shelfW / 2, -shelfH / 2, -0.05);
+}
+layout();
+
+// u = 1 assembled, 0 blown apart: halves out along y and tilted, the part lifted above
+function pose(it) {
+  const k = 1 - it.u, G = it.G ?? 28, sp = it.spin ?? [0, 0, 0, 0];
+  it.p1.position.set(sp[2] * k * 10, -G * k, (6 + G * 0.5) * k); it.p1.rotation.set(-0.9 * k - sp[0] * k, 0, sp[1] * k);
+  it.p2.position.set(-sp[2] * k * 10, G * k, (6 + G * 0.5) * k); it.p2.rotation.set(0.9 * k + sp[0] * k, 0, -sp[1] * k);
+  it.part.position.z = (it.drop ?? 0); it.part.rotation.set(sp[3] * (it.drop ?? 0) / 60, 0, sp[3] * (it.drop ?? 0) / 40);
+  it.p1.visible = mode !== 'half2'; it.p2.visible = mode !== 'half1';
+  it.part.visible = document.getElementById('t-parts').checked;
+  if (it.running || it.u < 1) return;
+  const t = it.t;
+  if (mode === 'flat') {                     // hinge each half down onto its outer face, split face up
+    it.p1.position.set(0, -9, t / 2); it.p1.rotation.set(Math.PI / 2, 0, 0);      // a gap for the legs between the halves
+    it.p2.position.set(0, 9, t / 2); it.p2.rotation.set(-Math.PI / 2, 0, 0);
+    it.part.position.copy(it.p1.position); it.part.rotation.copy(it.p1.rotation);   // the part lies in half 1's pockets
+  } else if (mode === 'half1') {             // turn half 1 round so its split face looks at the camera
+    it.p1.rotation.set(0, 0, Math.PI); it.part.rotation.set(0, 0, Math.PI);
+  }
+}
+function setMode(m) {
+  mode = m; document.getElementById('mode').value = m;
+  layout(); ITEMS.forEach(pose); overview();
+}
+
+/* ---------- show engine: tweens, particles, flash, shake, HUD (same as the storage table) ---------- */
+const calm = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const ease = { io: u => u < .5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2, out: u => 1 - Math.pow(1 - u, 3), in: u => u * u * u, lin: u => u };
+const tasks = [];
+function tween(dur, fn, e = ease.io) {
+  return new Promise(res => { const k = { t: 0, dur: calm ? Math.min(dur, 0.2) : dur, fn, e, res }; fn(e(0)); tasks.push(k); });
+}
+const wait = s => tween(s, () => {}, ease.lin);
+function runTasks(dt) {
+  for (let i = tasks.length - 1; i >= 0; i--) {
+    const k = tasks[i]; k.t += dt;
+    const u = Math.min(1, k.t / k.dur); k.fn(k.e(u));
+    if (u >= 1) { tasks.splice(i, 1); k.res(); }
+  }
+}
+const rnd = (a, b) => a + Math.random() * (b - a);
+const C = hex => [((hex >> 16) & 255) / 255, ((hex >> 8) & 255) / 255, (hex & 255) / 255];
+const glowTex = (() => {
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const x = c.getContext('2d'), g = x.createRadialGradient(32, 32, 0, 32, 32, 32);
+  g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.22, 'rgba(255,255,255,.85)');
+  g.addColorStop(0.55, 'rgba(255,255,255,.22)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+  x.fillStyle = g; x.fillRect(0, 0, 64, 64);
+  return new THREE.CanvasTexture(c);
+})();
+const PV = `attribute vec3 pcolor; attribute float psize; attribute float palpha; uniform float scale;
+varying vec3 vC; varying float vA;
+void main() { vC = pcolor; vA = palpha; vec4 mv = modelViewMatrix * vec4(position, 1.0);
+  gl_PointSize = psize * scale / max(1.0, -mv.z); gl_Position = projectionMatrix * mv; }`;
+const PF = `uniform sampler2D map; varying vec3 vC; varying float vA;
+void main() { float t = texture2D(map, gl_PointCoord).a * vA; if (t < 0.003) discard; gl_FragColor = vec4(vC, t); }`;
+class Particles {
+  constructor(n, blending) {
+    this.n = n; this.p = [];
+    const g = this.geo = new THREE.BufferGeometry();
+    this.pos = new Float32Array(n * 3); this.col = new Float32Array(n * 3); this.size = new Float32Array(n); this.alpha = new Float32Array(n);
+    g.setAttribute('position', new THREE.BufferAttribute(this.pos, 3)); g.setAttribute('pcolor', new THREE.BufferAttribute(this.col, 3));
+    g.setAttribute('psize', new THREE.BufferAttribute(this.size, 1)); g.setAttribute('palpha', new THREE.BufferAttribute(this.alpha, 1));
+    g.setDrawRange(0, 0);
+    this.mat = new THREE.ShaderMaterial({ uniforms: { map: { value: glowTex }, scale: { value: 600 } }, vertexShader: PV, fragmentShader: PF,
+      transparent: true, depthWrite: false, blending });
+    this.pts = new THREE.Points(g, this.mat); this.pts.frustumCulled = false; this.pts.renderOrder = 5; world.add(this.pts);
+  }
+  emit(o) { if (calm || this.p.length >= this.n) return; o.max = o.life; this.p.push(o); }
+  update(dt) {
+    const p = this.p;
+    for (let i = p.length - 1; i >= 0; i--) {
+      const q = p[i]; q.life -= dt;
+      if (q.life <= 0) { p[i] = p[p.length - 1]; p.pop(); continue; }
+      const k = Math.max(0, 1 - q.drag * dt);
+      q.vx *= k; q.vy *= k; q.vz = q.vz * k - q.grav * dt;
+      q.x += q.vx * dt; q.y += q.vy * dt; q.z += q.vz * dt;
+      if (q.z < 0.2) { q.z = 0.2; q.vz *= -0.3; q.vx *= 0.55; q.vy *= 0.55; }
+    }
+    for (let i = 0; i < p.length; i++) {
+      const q = p[i], u = 1 - q.life / q.max, c0 = q.c0, c1 = q.c1 || q.c0;
+      this.pos[3 * i] = q.x; this.pos[3 * i + 1] = q.y; this.pos[3 * i + 2] = q.z;
+      this.col[3 * i] = c0[0] + (c1[0] - c0[0]) * u; this.col[3 * i + 1] = c0[1] + (c1[1] - c0[1]) * u; this.col[3 * i + 2] = c0[2] + (c1[2] - c0[2]) * u;
+      this.size[i] = q.s * Math.max(0.05, 1 + (q.grow || 0) * u);
+      this.alpha[i] = q.a * Math.min(1, u * (q.fadeIn || 50)) * Math.pow(1 - u, q.fade || 1);
+    }
+    this.geo.setDrawRange(0, p.length);
+    for (const a of ['position', 'pcolor', 'psize', 'palpha']) this.geo.attributes[a].needsUpdate = true;
+  }
+}
+const fx = new Particles(30000, THREE.AdditiveBlending), smoke = new Particles(9000, THREE.NormalBlending);
+let timeScale = 1;
+async function slowmo(scale, dur) { if (calm) return; timeScale = scale; await new Promise(r => setTimeout(r, dur * 1000)); timeScale = 1; }
+const whiteEl = document.getElementById('whiteout');
+let white = 0;
+const whiteout = a => { if (!calm) white = Math.max(white, a); };
+function fireball(x, y, z, n, r) {
+  for (let i = 0; i < n; i++) {
+    const a = rnd(0, Math.PI * 2), e = rnd(-0.2, 1.2), sp = rnd(40, 260) * r / 30;
+    fx.emit({ x, y, z, vx: Math.cos(a) * Math.cos(e) * sp, vy: Math.sin(a) * Math.cos(e) * sp, vz: Math.sin(e) * sp + 30, grav: -20, drag: 2.2,
+      life: rnd(0.4, 1.3), s: rnd(5, 14), grow: 1.6, a: 0.8, c0: C(0xfff2c0), c1: C(0xff3a0a), fade: 1.6 });
+  }
+  for (let i = 0; i < n / 3; i++) { const a = rnd(0, Math.PI * 2), sp = rnd(60, 420);
+    fx.emit({ x, y, z, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, vz: rnd(60, 380), grav: 600, drag: 0.6, life: rnd(0.8, 2.2), s: rnd(0.8, 2), grow: -0.5, a: 1, c0: C(0xffffff), c1: C(0xff7a1a) }); }
+  puff(x, y, z, n / 4, r);
+}
+function vortex(x, y, h, n) {
+  for (let i = 0; i < n; i++) { const a = rnd(0, Math.PI * 2), r = rnd(20, 45), z = rnd(0, h + 20);
+    fx.emit({ x: x + Math.cos(a) * r, y: y + Math.sin(a) * r, z, vx: -Math.cos(a) * r * 2.2 - Math.sin(a) * 60, vy: -Math.sin(a) * r * 2.2 + Math.cos(a) * 60, vz: (h / 2 - z) * 1.5,
+      grav: 0, drag: 0.4, life: rnd(0.35, 0.6), s: rnd(0.6, 1.6), a: 0.9, c0: C(0x9fe9ff), c1: C(0x6b3dff) }); }
+}
+function spark(x, y, z, vx, vy, vz, hot = true) {
+  fx.emit({ x, y, z, vx, vy, vz, grav: 700, drag: 1.0, life: rnd(0.35, 1.0), s: rnd(0.6, 1.6), grow: -0.7, a: 1,
+    c0: C(hot ? 0xfff6d0 : 0xd8f6ff), c1: C(hot ? 0xff5a14 : 0x2f7bff) });
+}
+const glow = (x, y, z, s, hex, life = 0.35) => fx.emit({ x, y, z, vx: 0, vy: 0, vz: 0, grav: 0, drag: 0, life, s, grow: 0.8, a: 1, c0: C(hex), fade: 2 });
+function puff(x, y, z, n, spread) {
+  for (let i = 0; i < n; i++) {
+    const a = rnd(0, Math.PI * 2), sp = rnd(10, 60);
+    smoke.emit({ x: x + rnd(-spread, spread), y: y + rnd(-spread, spread), z: z + rnd(0, 3), vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, vz: rnd(4, 24),
+      grav: -10, drag: 1.6, life: rnd(1.0, 2.2), s: rnd(3, 7), grow: 2.4, a: 0.3, c0: C(0x8d969e), c1: C(0xc8cdd2), fadeIn: 8, fade: 1.4 });
+  }
+}
+const rings = [];
+function shockwave(x, y, hex, r1 = 30, dur = 0.7) {
+  if (calm) return;
+  const m = new THREE.Mesh(new THREE.RingGeometry(0.82, 1, 72), new THREE.MeshBasicMaterial({ color: hex, transparent: true, opacity: 0.9,
+    blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+  m.position.set(x, y, 0.15); world.add(m); rings.push({ m, t: 0, dur, r1 });
+}
+let flashL = null;
+function flash(x, y, z, hex, power = 7) {
+  if (calm) return;
+  if (!flashL) { flashL = new THREE.PointLight(hex, 0, 300, 2); world.add(flashL); }
+  flashL.color.set(hex); flashL.position.set(x, y, z); flashL.intensity = power;
+}
+let shakeAmp = 0;
+const shake = a => { if (!calm) shakeAmp = Math.max(shakeAmp, a); };
+const hudEl = document.getElementById('hud');
+let hudTimer = 0;
+function hud(main, sub) {
+  hudEl.innerHTML = `${main}${sub ? `<small>${sub}</small>` : ''}`;
+  hudEl.classList.add('on'); clearTimeout(hudTimer);
+  hudTimer = setTimeout(() => hudEl.classList.remove('on'), 2600);
+}
+const seamMat = () => new THREE.MeshBasicMaterial({ color: 0x6fdcff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
+const beamMat = new THREE.MeshBasicMaterial({ color: 0x6fdcff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
+
+/* ---------- assembly and blow-apart ---------- */
+let busy = 0;
+const at = (it, x, y, z) => [it.g.position.x + x, it.g.position.y + y, z];
+async function assemble(it, quiet = false) {
+  if (mode !== 'closed') setMode('closed');
+  if (it.u >= 1 || it.running) return;
+  it.running = true; busy++;
+  if (!quiet) hud('Loading part', label(it));
+  const beam = new THREE.Mesh(new THREE.CylinderGeometry(it.w / 2 + 1, it.w / 2 + 1, 1, 32, 1, true), beamMat.clone());
+  beam.rotation.x = Math.PI / 2; beam.scale.set(1, 70, 1); beam.position.set(0, 0, 35); it.g.add(beam);
+  const d0 = it.drop;
+  await tween(0.75, u => {
+    it.drop = d0 * (1 - u); pose(it);
+    beam.material.opacity = 0.45 * Math.sin(Math.PI * u);
+    if (Math.random() < 0.6) { const [x, y] = at(it, rnd(-it.w / 2, it.w / 2), rnd(-3, 3)); fx.emit({ x, y, z: rnd(0, 40) + it.drop, vx: 0, vy: 0, vz: rnd(10, 40),
+      grav: 0, drag: 1, life: rnd(0.3, 0.6), s: rnd(0.5, 1.2), a: 0.9, c0: C(0x9fe9ff), c1: C(0x2f7bff) }); }
+  }, ease.out);
+  it.g.remove(beam);
+  const u0 = it.u;
+  await tween(0.5, u => { it.u = u0 + (1 - u0) * u; pose(it); }, ease.in);
+  // impact: sparks spray from the seam, the glue line glows, a ring runs over the floor
+  const [cx, cy] = at(it, 0, 0, 0);
+  for (let i = 0; i < (quiet ? 220 : 480); i++) {
+    const z = rnd(0, it.h), side = Math.random() < 0.5 ? -1 : 1, onTop = Math.random() < 0.25;
+    const x = onTop ? rnd(-it.w / 2, it.w / 2) : side * it.w / 2;
+    spark(cx + x, cy, onTop ? it.h : z, (onTop ? rnd(-40, 40) : side * rnd(40, 160)), rnd(-90, 90), rnd(20, 180), i % 3 !== 0);
+  }
+  glow(cx, cy, it.h / 2, 90, 0x7fd8ff, 0.5); glow(cx, cy, it.h, 50, 0xffc46b, 0.4); glow(cx, cy, 2, 60, 0xffffff, 0.25);
+  shockwave(cx, cy, 0x7fd8ff, 45); shockwave(cx, cy, 0xffc46b, 70, 1.0); shockwave(cx, cy, 0xffffff, 25, 0.4);
+  flash(cx, cy, it.h + 10, 0xffd28a, 18); shake(quiet ? 2 : 6);
+  if (!quiet) { whiteout(0.55); slowmo(0.25, 0.45); }
+  puff(cx, cy, 1, quiet ? 10 : 30, it.w);
+  const seam = new THREE.Mesh(new THREE.BoxGeometry(it.w + 0.4, 0.5, it.h + 0.4), seamMat());
+  seam.position.set(0, 0, it.h / 2); it.g.add(seam);
+  if (!quiet) hud('Sealed', `${NAMES[it.kind]} · ${f1(it.w)} × ${f1(it.t)} × ${f1(it.h)} · leads ${f2(it.s * 2.54)} apart`);
+  await tween(1.1, u => { seam.material.opacity = 0.9 * (1 - u) * (0.7 + 0.3 * Math.sin(u * 40)); }, ease.lin);
+  it.g.remove(seam);
+  it.running = false; busy--;
+}
+async function blowApart(it, quiet = false) {
+  if (mode !== 'closed') setMode('closed');
+  if (it.u <= 0 || it.running) return;
+  it.running = true; busy++;
+  const [cx, cy] = at(it, 0, 0, 0);
+  if (!quiet) { it.G = 45; it.spin = [rnd(0.5, 1.5), rnd(-1.2, 1.2), rnd(-1, 1), rnd(-1, 1)]; fireball(cx, cy, it.h / 2, 260, 30);
+    shockwave(cx, cy, 0xff9b4a, 60, 0.9); flash(cx, cy, it.h, 0xff8a3a, 16); shake(5); whiteout(0.4); slowmo(0.3, 0.35); }
+  if (!quiet) hud('Casing open', label(it));
+  const u0 = it.u;
+  const top = quiet ? 55 : 40;
+  await tween(quiet ? 1.1 : 0.8, u => { it.u = u0 * (1 - u); it.drop = top * u; pose(it); }, ease.out);
+  it.running = false; busy--;
+}
+const sel = document.getElementById('pick');
+for (const k of kinds) {
+  const og = document.createElement('optgroup'); og.label = NAMES[k];
+  ITEMS.filter(i => i.kind === k).forEach(it => { const o = document.createElement('option'); o.value = ITEMS.indexOf(it); o.textContent = label(it); og.appendChild(o); });
+  sel.appendChild(og);
+}
+const current = () => ITEMS[+sel.value];
+function spec() {
+  const it = current();
+  document.getElementById('spec').innerHTML = [
+    ['Block W × T × H', `${f1(it.w)} × ${f1(it.t)} × ${f1(it.h)}`], ['Leads', `${it.pins}, ${f2(it.s * 2.54)} apart`],
+    ['Lead exits x', it.exits.map(f2).join(' · ')], ['Halves', '2, glued on the lead plane'], ['Hand-E opens to', `≥ ${f1(it.t + 5)}`],
+  ].map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
+}
+let camTween = null;
+function flyTo(pos, tgt, dur = 0.9) {
+  const p0 = camera.position.clone(), t0 = controls.target.clone();
+  camTween = tween(dur, u => { camera.position.lerpVectors(p0, pos, u); controls.target.lerpVectors(t0, tgt, u); }, ease.io);
+}
+function focus() { const it = current(), c = sv(it.g.position.x, it.g.position.y, 20); flyTo(c.clone().add(new THREE.Vector3(55, 45, 75)), c); }
+const HOME = () => { const e = Math.max(0, shelfH - 182); return [sv(shelfW / 2 + 190 + e * 0.2, -shelfH / 2 - 250 - e * 0.55, 260 + e * 0.7), sv(shelfW / 2, -shelfH / 2, 10)]; };
+function overview() { const [p, c] = HOME(); flyTo(p, c); }
+sel.onchange = () => { spec(); focus(); };
+document.getElementById('focus').onclick = focus;
+document.getElementById('shelf').onclick = overview;
+document.getElementById('go').onclick = () => assemble(current());
+document.getElementById('apart').onclick = () => blowApart(current());
+const allBtn = document.getElementById('all'), boomBtn = document.getElementById('boom');
+const shelfC = () => [shelfW / 2, -shelfH / 2];
+async function group(fn) { if (mode !== 'closed') setMode('closed'); allBtn.disabled = boomBtn.disabled = true; busy++; try { await fn(); } finally { busy--; allBtn.disabled = boomBtn.disabled = false; } }
+boomBtn.onclick = () => group(async () => {
+  overview();
+  hud('Detonation in 3', 'all casings'); await wait(0.5); hud('2'); shake(1); await wait(0.5); hud('1'); shake(2); await wait(0.5);
+  const [cx, cy] = shelfC();
+  ITEMS.forEach(it => { it.G = rnd(45, 85); it.spin = [rnd(0.6, 2.2), rnd(-2.5, 2.5), rnd(-1.5, 1.5), rnd(-2, 2)];
+    const [x, y] = at(it, 0, 0, 0); fireball(x, y, it.h / 2, 160, 30); });
+  fireball(cx, cy, 15, 900, 90);
+  for (const [hex, r, d] of [[0xffffff, 60, 0.4], [0xffc46b, 140, 0.9], [0xff6a1a, 220, 1.4], [0x7fd8ff, 300, 1.9]]) shockwave(cx, cy, hex, r, d);
+  flash(cx, cy, 60, 0xff9b4a, 40); shake(11); whiteout(1); slowmo(0.2, 0.7);
+  hud('Kaboom', `${ITEMS.length} casings · ${ITEMS.length * 2} halves airborne`);
+  await Promise.all(ITEMS.map(it => blowApart(it, true)));
+});
+allBtn.onclick = () => group(async () => {
+  overview();
+  ITEMS.forEach(it => { if (it.u >= 1) { it.u = 0; it.drop = 55; it.G = 45; it.spin = [rnd(0.6, 2), rnd(-2, 2), rnd(-1, 1), rnd(-2, 2)]; pose(it); } });
+  hud('Charging', 'every part to its pocket');
+  await tween(1.6, u => { ITEMS.forEach(it => { const [x, y] = at(it, 0, 0, 0); if (Math.random() < 0.9) vortex(x, y, it.h, 6); }); shake(1.5 * u); }, ease.lin);
+  const [cx, cy] = shelfC();
+  hud('Assembling', `${ITEMS.length} casings at once`);
+  await Promise.all(ITEMS.map(it => assemble(it, true)));
+  for (const [hex, r, d] of [[0xffffff, 80, 0.4], [0x7fd8ff, 200, 1.0], [0x6b3dff, 320, 1.6]]) shockwave(cx, cy, hex, r, d);
+  glow(cx, cy, 20, 260, 0x9fe9ff, 0.6); flash(cx, cy, 60, 0x9fdcff, 40); shake(10); whiteout(0.9); slowmo(0.2, 0.6);
+  hud('All sealed', `${ITEMS.length} casings · every lead on the 2.54 mm grid`);
+  await wait(1.0);
+});
+document.getElementById('mode').onchange = e => setMode(e.target.value);
+document.getElementById('t-parts').onchange = () => ITEMS.forEach(pose);
+document.getElementById('t-see').onchange = e => {
+  for (const m of [half1Mat, half2Mat]) { m.opacity = e.target.checked ? 0.28 : 1; m.depthWrite = !e.target.checked; }
+};
+ITEMS.forEach(it => { it.drop = 0; pose(it); });
+sel.value = String(ITEMS.findIndex(i => i.kind === 'led' && i.s === 2)); spec();
+
+/* ---------- render loop ---------- */
+const pageBg = new THREE.Color(), DARK = new THREE.Color(0x06090d), bg = new THREE.Color();
+const recolor = () => { half1Mat.color.set(css('--c1')); half2Mat.color.set(css('--c2')); floor.material.color.set(css('--floor')); pageBg.set(css('--bg') || '#eef1f3'); };
+recolor();
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', recolor);
+new MutationObserver(recolor).observe(document.documentElement, { attributes: true });
+function resize() {
+  const w = view.clientWidth, h = view.clientHeight;
+  if (!w || !h) return;
+  renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+  const s = renderer.getDrawingBufferSize(new THREE.Vector2()).y / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)));
+  fx.mat.uniforms.scale.value = smoke.mat.uniforms.scale.value = s;
+}
+new ResizeObserver(resize).observe(view); resize();
+{ const [p, c] = HOME(); camera.position.copy(p); controls.target.copy(c); controls.update(); }
+const clock = new THREE.Clock(), vign = document.getElementById('vignette');
+let cine = 0;
+const shakeOff = new THREE.Vector3();
+(function loop() {
+  const real = Math.min(clock.getDelta(), 0.05), dt = real * timeScale;
+  white *= Math.exp(-real * 3.5); whiteEl.style.opacity = white.toFixed(3);
+  runTasks(dt);
+  for (let i = rings.length - 1; i >= 0; i--) {
+    const r = rings[i]; r.t += dt; const u = Math.min(1, r.t / r.dur), s = 1 + (r.r1 - 1) * ease.out(u);
+    r.m.scale.set(s, s, 1); r.m.material.opacity = 0.9 * (1 - u);
+    if (u >= 1) { world.remove(r.m); r.m.geometry.dispose(); r.m.material.dispose(); rings.splice(i, 1); }
+  }
+  if (flashL) flashL.intensity *= Math.exp(-dt * 9);
+  fx.update(dt); smoke.update(dt);
+  const want = !calm && busy > 0 ? 1 : 0;
+  cine += (want - cine) * Math.min(1, dt * (want ? 2.5 : 1.2));
+  if (cine > 0.003) scene.background = bg.copy(pageBg).lerp(DARK, cine); else scene.background = null;
+  hemi.intensity = 0.9 - 0.5 * cine; sun.intensity = 0.65 - 0.2 * cine;
+  vign.style.opacity = cine.toFixed(3); view.classList.toggle('cine', cine > 0.5);
+  controls.update();
+  shakeAmp *= Math.exp(-real * 5);
+  shakeOff.set(rnd(-1, 1), rnd(-1, 1), rnd(-1, 1)).multiplyScalar(shakeAmp);
+  camera.position.add(shakeOff);
+  renderer.render(scene, camera);
+  camera.position.sub(shakeOff);
+  requestAnimationFrame(loop);
+})();
+</script>
