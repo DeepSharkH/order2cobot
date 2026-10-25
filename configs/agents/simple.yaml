@@ -1,0 +1,6 @@
+# Simple agent: one model builds one program on the robot, then it is saved as .urpx.
+# File references are relative to this file; override the model with --llm.
+robot: ../robot.yaml
+llm: ../llm/claude_cli.yaml
+max_turns: 80        # model turns before giving up
+timeout_s: 3600      # whole build, all model and tool turns

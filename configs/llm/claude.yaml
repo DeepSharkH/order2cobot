@@ -1,0 +1,13 @@
+# Claude through the Anthropic API
+provider: anthropic
+model: claude-opus-5-5
+api_key_env: ANTHROPIC_API_KEY   # omit to use an `ant auth login` profile
+client_name: claude-task-builder # connection name on the pendant; give it Adjust access
+params:                          # request fields for client.beta.messages.create
+  max_tokens: 16000
+  output_config:
+    effort: high
+  cache_control:
+    type: ephemeral              # the tool definitions repeat every turn
+  betas: [server-side-fallback-2026-07-01]
+  fallbacks: default             # on a safety decline, rerun on a fallback model

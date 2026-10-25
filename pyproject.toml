@@ -1,0 +1,46 @@
+[project]
+name = "order2cobot"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = [
+    "anthropic>=2.3",
+    "claude-agent-sdk>=0.2.174",
+    "httpx>=0.28.1",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "python-dotenv>=1.2.4",
+    "pyyaml>=6.0.3",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.5",
+    "mypy>=1.10",
+    "types-pyyaml>=6.0.12.20260906",
+    "rich>=15.0.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["agents*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+plugins = ["pydantic.mypy"]
