@@ -621,13 +621,23 @@ async def index(_):
     return web.FileResponse(WEB / 'index.html')
 
 
+@web.middleware
+async def no_cache(request, handler):
+    """Always revalidate the page and its scripts: a cached app.js from an older
+    version against a newer index.html leaves the page stuck on "Connecting"."""
+    resp = await handler(request)
+    if isinstance(resp, web.StreamResponse) and not request.path.startswith('/api') and request.path != '/ws':
+        resp.headers['Cache-Control'] = 'no-cache'
+    return resp
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--config', default=str(ROOT / 'configs' / 'calib_dashboard.yaml'))
     ap.add_argument('--port', type=int)
     a = ap.parse_args()
     cfg = yaml.safe_load(Path(a.config).read_text())
-    w = web.Application()
+    w = web.Application(middlewares=[no_cache])
     w['app'] = App(cfg)
     w['dt'] = 1.0 / cfg.get('state_hz', 10)
     w.router.add_get('/', index)
