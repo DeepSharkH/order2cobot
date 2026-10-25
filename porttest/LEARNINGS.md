@@ -160,6 +160,11 @@ Port 1 seated by the robot without hints: link up 1000 Mb/s full, 0 flaps.
 - **Never end a program while pressing:** ending at 40 N in the port raised a protective
   stop (C153). `urlib.insert` backs off 0.5 mm after seating. Clearing a protective stop
   is the operator's job (the agent's unlock was blocked).
+- **Wrist twist winds the camera cable:** the gripper camera's cable is routed along the
+  arm; turning wrist 3 by ~1.3 rad (-2.2 -> -3.5) wrapped it around the last links and the
+  tug raised a protective stop (C153, joint 5). Keep wrist 3 near the insertion orientation
+  (about -2.2 rad, within ~±0.8 rad); plan camera views with a free roll about the view
+  axis instead of fixing image x, and reject plans that need large wrist-3 turns.
 - **Check the cable, not just the plug tip, for clearance:** a low tilted camera-view pose
   (flange z 0.15, plug tip 3.6 cm above the plate) drove the cable, which leaves the shell
   rear and droops, into the table and raised a protective stop. Keep the shell rear ≥ 10 cm
