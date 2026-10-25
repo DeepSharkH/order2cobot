@@ -11,6 +11,7 @@ Each run gets its own folder, written even when the build fails:
     results/<timestamp>_<name>/
         <name>.urpx      the program (only on success)
         metadata.json    agent, model, prompt, timings, status, summary or error
+        final_output.md  the model's final answer, or the error when the build failed
         run.log          tool calls and agent log
 """
 
@@ -124,6 +125,8 @@ def generate(
         error=error,
     )
     (run_dir / "metadata.json").write_text(metadata.model_dump_json(indent=2) + "\n")
+    final_output = summary if summary is not None else f"**Build failed:** {error}"
+    (run_dir / "final_output.md").write_text(final_output.strip() + "\n")
     return metadata, run_dir
 
 
