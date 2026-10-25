@@ -138,3 +138,14 @@ def test_blocked_list_covers_motion() -> None:
 
 def test_default_cert_path_is_expanded() -> None:
     assert RobotConfig().cert_path.is_absolute()
+
+
+def test_claude_cli_config_builds_cli_loop() -> None:
+    from agents.llm import create_tool_loop
+    from agents.llm.claude_cli_loop import ClaudeCLIToolLoop
+
+    config = load_simple_config(
+        CONFIGS / "agents" / "simple.yaml", llm=CONFIGS / "llm" / "claude_cli.yaml"
+    )
+    assert config.llm.api_key_env is None
+    assert isinstance(create_tool_loop(config.llm, 5), ClaudeCLIToolLoop)

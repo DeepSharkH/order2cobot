@@ -9,7 +9,8 @@ from agents.core.models import AppModel
 
 
 class LLMConfig(AppModel):
-    provider: Literal["anthropic", "openai"]  # "openai" = any OpenAI-compatible API
+    # "openai" = any OpenAI-compatible API; "claude_cli" = the logged-in `claude` CLI
+    provider: Literal["anthropic", "openai", "claude_cli"]
     model: str
     base_url: str | None = None
     api_key_env: str | None = None  # name of the env var holding the key; None for local servers

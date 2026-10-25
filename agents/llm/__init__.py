@@ -8,6 +8,10 @@ def create_tool_loop(config: LLMConfig, max_turns: int) -> ToolLoop:
         from agents.llm.anthropic_loop import AnthropicToolLoop
 
         return AnthropicToolLoop(config, max_turns)
+    if config.provider == "claude_cli":
+        from agents.llm.claude_cli_loop import ClaudeCLIToolLoop
+
+        return ClaudeCLIToolLoop(config, max_turns)
     from agents.llm.openai_loop import OpenAIToolLoop
 
     return OpenAIToolLoop(config, max_turns)
