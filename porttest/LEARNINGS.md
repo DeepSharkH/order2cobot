@@ -160,6 +160,10 @@ Port 1 seated by the robot without hints: link up 1000 Mb/s full, 0 flaps.
 - **Never end a program while pressing:** ending at 40 N in the port raised a protective
   stop (C153). `urlib.insert` backs off 0.5 mm after seating. Clearing a protective stop
   is the operator's job (the agent's unlock was blocked).
+- **Never move to an unchecked target near the reach limit:** a movel to (-0.44, 0.07, 0.38)
+  stretched the arm until the elbow was straight (-0.003 rad) and the shoulder went into a
+  safety FAULT (C281, joint 1), which needs a restart on the pendant. Check every target with
+  IK first, move to those joints, and reject targets with |elbow| < 0.5 rad.
 - **Wrist twist winds the camera cable:** the gripper camera's cable is routed along the
   arm; turning wrist 3 by ~1.3 rad (-2.2 -> -3.5) wrapped it around the last links and the
   tug raised a protective stop (C153, joint 5). Keep wrist 3 near the insertion orientation
