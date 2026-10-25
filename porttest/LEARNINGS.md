@@ -289,10 +289,11 @@ base · FK · mount; fixed cam = board PnP. Stored in `configs/calibration/scene
   evenly spaced boxes, and `survey2` uses views at ±3 / ±5 cm and needs ≥ 2 good ones.
 - A wrong detection in one view wrecks the triangulation (10 mm ray rms, 16 mm pitch, 10°
   yaw). Check ray rms (~0.1 mm when right), pitch (~14.5 mm) and yaw before using a survey.
-- Wrist-3 cable reference: the insertion orientation (tool down, plug along +y) needs
-  wrist 3 ≈ -2.0 rad. After the remount the cable was relaxed at -4.97 (half a turn off), so
-  the operator re-routed it to be relaxed at -2.0. `go_view.W3_REF` holds it, and
-  `move_checked` keeps every move within ±0.8 rad of it.
+- Wrist-3 cable reference: the cable has to be relaxed at the insertion orientation's
+  wrist 3. After the remount it was relaxed at -4.97. It was re-routed to -2.0 (for the old
+  grip, tool at (0, π, 0)), then to **-3.78** after the regrip (tool turned +90°, below).
+  `go_view.W3_REF` holds it (-3.78), and `move_checked` keeps every move within ±0.8 rad of
+  it. Ask the operator again whenever the cable or the grip changes.
 - **Regrip (operator): the plug now points along flange -x**, so the gripper cam sees the
   insertion from the side. Measured on the gripper-cam frame: tip 41.7 mm out along -x and
   ~5 mm (±4) to flange -y; the axis is straight -x. Insertion therefore needs the tool turned
@@ -308,10 +309,38 @@ base · FK · mount; fixed cam = board PnP. Stored in `configs/calibration/scene
   travelled > 13 mm, stopping only ~3 mm past the surveyed face. Force mode then raised C157
   (protective stop) with x/z held within 1 mm. The operator recovered it. No link. Either a
   partial entry at the wrong height, or the face/tip-reach estimates were off by mm.
-- Approach picture set (no contact), `porttest/approach_shots.py` ->
-  `data/approach/approach_20261025/` (with `contact_sheet.jpg`): both cameras at full res,
-  colour + aligned depth (`GET /api/depth/{cam}`), and the pose JSON. Shots: high,
-  30/15/8/5 mm in front of port 1, ±3 mm in x at 8 mm. The gripper cam (now looking along
-  the face from the switch's left end) shows the tip-to-face gap and the plug height but not
-  the openings. The fixed cam loses the port row behind the Hand-E from 30 mm in. Neither
-  resolves the x alignment.
+- Approach picture set (no contact), `porttest/approach_shots.py`, saved in
+  `/home/lab/order2cobot/.claude/worktrees/rj45-port-qa/data/approach/approach_20261025/`
+  (overview: `contact_sheet.jpg` there; `data/` is not in git). Per shot: `<shot>_cam0.png`
+  (fixed D435) and `<shot>_cam1.png` (gripper Gemini) at 1280x720, `<shot>_cam{0,1}.npy`
+  aligned depth (float32 m, `GET /api/depth/{cam}`), and `<shot>.json`: flange pose, joints,
+  both camera poses (world + base), K/dist, `T_base_world`, grip model. Also `ports.yaml`
+  (the survey used), `01_survey_view_cam1.png` and the `survey2_*.png` detection crops.
+  Shots: 00 parked, 01 survey view, 02 high, 03–06 tip 30/15/8/5 mm in front of the face at
+  port 1, 07/08 ±3 mm in x at 8 mm.
+- What the set shows: the gripper cam (now looking along the face from the switch's left end)
+  shows the tip-to-face gap and the plug height but not the openings. The fixed cam loses
+  the port row behind the Hand-E from 30 mm in. Neither resolves the x alignment, and the
+  ±3 mm shifts are barely visible in either camera.
+
+## Where the port work stopped (2026-10-25, end of afternoon)
+
+- The arm is parked above and in front of port 1 in the insertion orientation (flange
+  (-0.3299, 0.0472, 0.3143), rotvec (-2.2214, 2.2214, 0), wrist 3 ≈ -3.78). The plug is still
+  gripped; the switch is unmoved. No port has been seated with the new grip.
+- Trusted: the scene calibration (`configs/calibration/scene.yaml`: base (25.2, 374.5) mm,
+  yaw 90.57°, 9.1 mm under the board plane; gripper mount from 17 views at 0.33 px; fixed
+  cam 0.73 px) and the port survey (`data/ports.yaml`: rays agree to 0.1–0.4 mm, pitch
+  14.51 mm, yaw 0.0°, port 1 centre (-324.6, 118.9, 21.3) mm in base).
+- Not trusted to < 3 mm: the face y relative to the plug tip (tip reach), the plug's
+  sideways offset (±4 mm, camera depth ambiguity) and the plug height (breadboard touch +
+  depth, ±1.5 mm). These are what break the peck search.
+- Open questions for the offline session:
+  1. Measure the tip-to-face gap in the gripper-cam side view (shots 03–06) to calibrate the
+     face y and the tip reach before any contact.
+  2. Touch references instead of absolute camera numbers: face at a solid spot (y), switch
+     top edge (z), left end (x). Then place the ports with the survey's relative positions.
+  3. A compliant search (force mode with x/z free, small spiral, 5–8 N) instead of rigid
+     pecks plus a stiff seat (C157 came from x/z held within 1 mm).
+  4. Move the fixed cam to port height, 30–45° to the side, so the opening stays visible
+     while the plug approaches.

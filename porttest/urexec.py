@@ -127,6 +127,34 @@ class URExec:
             raise BridgeError(f'safety mode {rs["safetymode"]} after step: {msgs}')
         return msgs, self.pose()
 
+    def move_checked(self, pose, w3_ref=None, w3_tol=0.8, min_elbow=0.5, min_clear=0.10, v=0.25):
+        """Joint move to `pose` (flange, base frame) after IK and safety checks; raises if any fails.
+
+        Checks: bent elbow (|q2| >= min_elbow, a straight elbow faulted the shoulder), wrist 3
+        within w3_tol of w3_ref (the camera cable winds up), plug tip and shell rear at least
+        min_clear above the plate (the cable droops behind the shell)."""
+        import numpy as np
+        from scipy.spatial.transform import Rotation as R
+        J = ('base', 'shoulder', 'elbow', 'wrist1', 'wrist2', 'wrist3')
+        q0 = [call(self.b, 'robot_get_joint_positions')['data'][k] for k in J]
+        w3_ref = q0[5] if w3_ref is None else w3_ref
+        r = call(self.b, 'robot_inverse_kinematics', pose={'position': list(pose[:3]), 'orientation': list(pose[3:])},
+                 qNear=q0)['data']
+        q = [float(r[k]) for k in J]
+        Rm = R.from_rotvec(pose[3:]).as_matrix()
+        low = min((np.array(pose[:3]) + Rm @ np.array(o))[2] for o in ((0, 0.035, 0.19), (0, -0.022, 0.19))) - 0.015
+        problems = []
+        if abs(q[2]) < min_elbow:
+            problems.append(f'elbow {q[2]:.2f} rad too straight')
+        if abs(q[5] - w3_ref) > w3_tol:
+            problems.append(f'wrist3 {q[5]:.2f} vs ref {w3_ref:.2f}')
+        if low < min_clear:
+            problems.append(f'plug/cable only {low * 100:.1f} cm above the plate')
+        if problems:
+            raise BridgeError('move rejected: ' + '; '.join(problems))
+        self.run(f'movej({[round(v_, 5) for v_ in q]}, a=0.4, v={v})', timeout=150)
+        return q
+
     def stop(self):
         try:
             call(self.b, 'program_run', action='stop', confirm=True)
