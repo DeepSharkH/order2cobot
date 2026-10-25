@@ -160,6 +160,10 @@ Port 1 seated by the robot without hints: link up 1000 Mb/s full, 0 flaps.
 - **Never end a program while pressing:** ending at 40 N in the port raised a protective
   stop (C153). `urlib.insert` backs off 0.5 mm after seating. Clearing a protective stop
   is the operator's job (the agent's unlock was blocked).
+- **The switch must be fixed solidly:** insertion pushes ~25 N and pulling out a seated
+  RJ45 takes a similar force. A taped switch slid along with the plug (port 2 extraction
+  dragged the whole switch); it looked like "the plug stayed in". After any movement of
+  the switch, re-run the port survey.
 - **Extraction lost the plug:** pulling back 20 mm at 2 mm/s left the plug in port 1
   (link still up); the shell's snap lips slip under pull. Use the zip-tie groove at the rear
   of the shell (`rj45_grip.py` ZIP_*) so the cable/plug is locked to the shell and the
