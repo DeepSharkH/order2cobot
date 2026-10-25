@@ -28,7 +28,7 @@ PITCH = 2.54
 H = 20.0             # casing height (the original jumper casing is 40)
 WALL = 2.65          # jumper casing: pin channel edge to the side face
 CL = 0.2             # pocket clearance round a body
-EXIT_D, EXIT_H = 0.8, 1.0    # lead exit hole at the bottom, as in the jumper casing
+EXIT_D, EXIT_H = 0.8, 3.0    # lead exit hole at the bottom (Ø as in the jumper casing, 3 mm long to hold the lead straight)
 LEAD_D = 1.2         # lead channel from the body down to the exit
 HALF_T = 2.0         # thickness of each half; bodies thicker than the casing stick out of the faces
 WINDOW_D = 3.5       # LED light window through both faces
@@ -156,7 +156,9 @@ def jumper_casing(s, channel, w0):
     wall_x = (w0 - 5.0) / 2                                        # channel centre to side face in the original
     w = p + 2 * wall_x
     t = 2 * HALF_T
-    cav = [channel.translate([x, 0, 0]) for x in exits(2, s)]
+    lift = EXIT_H - 1.0                                            # the original's exit is 1 mm long
+    cav = [channel.translate([x, 0, lift]) for x in exits(2, s)]
+    cav += [zcyl(x, 0, EXIT_D / 2, -1, EXIT_H + 0.1) for x in exits(2, s)]
     return box(-w / 2, w / 2, -t / 2, t / 2, 0, H) - union(cav), w, t
 
 
