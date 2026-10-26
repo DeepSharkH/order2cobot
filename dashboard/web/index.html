@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>UR3e Calibration</title>
+  <title>UR3e 3D Visualization</title>
   <link rel="preload" href="vendor/fonts/open-sauce-one-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="vendor/fonts/open-sauce-one-latin-900-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="style.css">
@@ -15,8 +15,9 @@
   <header class="top">
     <div class="kicker">order2cobot</div>
     <nav class="tabs" id="tabs">
-      <button data-tab="calib" class="on">Calibration</button>
+      <button data-tab="calib" class="on">3D Visualization</button>
       <button data-tab="qa">Port QA</button>
+      <button data-tab="cams">Cameras</button>
       <button data-tab="claude">Claude</button>
       <button data-tab="exp">Experiments</button>
     </nav>
@@ -29,7 +30,7 @@
         <h2>Scene</h2>
         <div class="legend">
           <span><i class="sw sw-arm"></i>UR3e</span>
-          <span><i class="sw sw-board"></i>Board</span>
+          <span><i class="sw sw-board"></i>CAD targets</span>
           <span><i class="sw sw-cam"></i>Fixed cam</span>
           <span><i class="sw sw-gcam"></i>Gripper cam</span>
         </div>
@@ -40,6 +41,7 @@
             <button data-view="gripper" title="Look through the gripper camera (2)">Gripper cam</button>
           </div>
           <button id="btn-cloud" class="toggle on" title="Depth clouds from both cameras">Cloud</button>
+          <button id="btn-cad" class="toggle on" title="CAD models (switch, breadboard) at their registered / anchored poses, semi-transparent">CAD</button>
           <button id="btn-ovl" class="toggle on" title="Draw detections and the calibrated robot/board onto the feeds">Overlays</button>
           <button id="btn-view" title="Reset the view">Reset</button>
         </div>
@@ -114,6 +116,10 @@
         <div class="card" id="qa-c-run"></div>
       </div>
     </section>
+  </main>
+
+  <main class="layout cams-layout hidden" id="tab-cams">
+    <section class="section cams" id="cams-only"></section>
   </main>
 
   <main class="layout chat-layout hidden" id="tab-claude">

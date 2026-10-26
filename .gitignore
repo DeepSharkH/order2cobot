@@ -232,3 +232,4 @@ Log/
 .claude/worktrees/
 .deps/
 data/
+dashboard/web/models/cad/poses.json

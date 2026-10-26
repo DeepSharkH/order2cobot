@@ -341,3 +341,8 @@ button.exp-t:hover { color: var(--cream); }
   .exp-layout { padding: 16px; }
   .exp-grid, .exp-videos { grid-template-columns: 1fr; }
 }
+
+/* ── cameras tab: the feeds alone, filling the page ───────────── */
+.cams-layout { display: flex; }
+.cams-layout .cams { flex: 1; min-width: 0; }
+.cams-layout .feeds { justify-content: center; }

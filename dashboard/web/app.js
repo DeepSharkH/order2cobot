@@ -1,11 +1,12 @@
 // Calibration dashboard frontend: one websocket, a three.js scene in the world
-// frame (checkerboard centre, z up), camera feeds and calibration cards. See
+// frame (calibration-board centre, z up), camera feeds and calibration cards. See
 // dashboard/server.py for the frames and the wire format.
 
 import * as THREE from 'three';
 import { OrbitControls } from './vendor/OrbitControls.js';
 import { CSS2DRenderer, CSS2DObject } from './vendor/CSS2DRenderer.js';
 import { TransformControls } from './vendor/TransformControls.js';
+import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { UR3eModel } from './ur3e_model.js';
 import { HandEModel } from './hande_model.js';
 import { SwitchView } from './switch3d.js';
@@ -73,29 +74,46 @@ const hande = new HandEModel();       // Robotiq Hand-E on the flange
 flangeG.add(hande.root);
 hande.load().catch((e) => console.error('Hand-E meshes failed to load', e));
 
-// checkerboard, centred on the world origin in the z = 0 plane
-const boardG = new THREE.Group();
-scene.add(boardG);
-let boardKey = '';
-function buildBoard(b) {
-  const key = `${b.cols}x${b.rows}x${b.square}`;
-  if (key === boardKey) return;
-  boardKey = key;
-  boardG.clear();
-  const s = b.square;
-  const geom = new THREE.PlaneGeometry(s, s);
-  const white = new THREE.MeshBasicMaterial({ color: C.cream, side: THREE.DoubleSide });
-  const black = new THREE.MeshBasicMaterial({ color: 0x111111, side: THREE.DoubleSide });
-  // inner corners cols x rows -> squares (cols+1) x (rows+1); world y = -board y
-  const cx = ((b.cols - 1) * s) / 2, cy = ((b.rows - 1) * s) / 2;
-  for (let j = -1; j < b.rows; j++) {
-    for (let i = -1; i < b.cols; i++) {
-      const m = new THREE.Mesh(geom, (i + j) % 2 === 0 ? black : white);
-      m.position.set((i + 0.5) * s - cx, -((j + 0.5) * s - cy), 0.0005);
-      boardG.add(m);
-    }
-  }
+// CAD models of the targets (assets/models/cad/*.py) at T_base_obj from
+// models/cad/poses.json (python -m cadguide register / anchor), semi-transparent so
+// the camera clouds and the arm show through: misalignment is visible at a glance.
+const cad = {};
+const cadLoader = new GLTFLoader();
+async function loadCadModel(name) {
+  const g = placed(baseGroup);
+  g.visible = false;
+  const gltf = await cadLoader.loadAsync(`./models/cad/${name}.glb`);
+  gltf.scene.traverse((o) => {
+    if (!o.isMesh) return;
+    o.material = o.material.clone();
+    Object.assign(o.material, { transparent: true, opacity: 0.45, depthWrite: false });
+  });
+  g.add(gltf.scene);
+  const l = label(name);
+  g.add(l.obj);
+  cad[name] = { g, l, key: '' };
 }
+Promise.all(['ls108g', 'breadboard'].map(loadCadModel)).catch((e) => console.error('CAD models', e));
+let cadOn = true;
+async function pollCadPoses() {
+  try {
+    const poses = await (await fetch('./models/cad/poses.json', { cache: 'no-store' })).json();
+    for (const [name, m] of Object.entries(cad)) {
+      const p = poses[name];
+      m.g.visible = cadOn && !!p;
+      if (!p) continue;
+      const key = JSON.stringify(p);
+      if (key === m.key) continue;
+      m.key = key;
+      // object x / y pitch scales (fitted from anchors) stretch the model about its origin
+      m.g.matrix.copy(mat4(p.T)).multiply(new THREE.Matrix4().makeScale(p.scale[0], p.scale[1], 1));
+      m.l.el.innerHTML = `${name} <small>${p.source}${p.anchors ? ` · ${p.anchors} anchor${p.anchors > 1 ? 's' : ''}` : ''}</small>`;
+      m.l.obj.position.set(0, 0, name === 'ls108g' ? 0.04 : 0.015);
+    }
+  } catch { /* not registered yet */ }
+}
+pollCadPoses();
+setInterval(pollCadPoses, 2000);
 
 // cameras, drawn like the Hestia dashboard: a short pyramid from the
 // intrinsics (optical frame: x right, y down, z forward), an "up" triangle
@@ -241,6 +259,7 @@ function toggle(id, fn) {
   b.onclick = () => { b.classList.toggle('on'); fn(b.classList.contains('on')); };
 }
 toggle('#btn-cloud', (on) => { clouds.forEach((c) => { c.visible = on; }); });
+toggle('#btn-cad', (on) => { cadOn = on; for (const m of Object.values(cad)) m.key = ''; pollCadPoses(); });
 toggle('#btn-ovl', (on) => send({ type: 'set_overlays', on }));
 
 // ── camera feeds ────────────────────────────────────────────────────────────
@@ -361,7 +380,6 @@ function applyState(s) {
   if (!editor.active) baseGroup.matrix.copy(mat4(s.T_world_base));
   if (s.robot.q) robot.setJoints(s.robot.q);
   if (s.robot.flange) flangeG.matrix.copy(mat4(s.robot.flange));
-  buildBoard(s.board);
 
   s.cams.forEach((c, i) => {
     const f = cams[i];
@@ -466,9 +484,10 @@ document.addEventListener('keydown', (e) => {
 // ── tabs ────────────────────────────────────────────────────────────────────
 // one set of camera feeds, moved into whichever tab is showing
 function showTab(name) {
-  for (const t of ['calib', 'qa', 'claude', 'exp']) $(`#tab-${t}`).classList.toggle('hidden', t !== name);
+  for (const t of ['calib', 'qa', 'cams', 'claude', 'exp']) $(`#tab-${t}`).classList.toggle('hidden', t !== name);
   document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === name));
-  if (name === 'calib' || name === 'qa') $(name === 'qa' ? '#qa-cams' : '#calib-cams').appendChild($('#feeds'));
+  const home = { calib: '#calib-cams', qa: '#qa-cams', cams: '#cams-only' }[name];
+  if (home) $(home).appendChild($('#feeds'));
   if (name === 'exp') expShow(expOpen, expWithTrace);
   else history.replaceState(null, '', name === 'calib' ? location.pathname : `#${name}`);
 }
@@ -932,10 +951,10 @@ async function expTrace(run) {
   $('#exp-text').onclick = (e) => { const b = e.target.closest('button.exp-t'); if (b) expSeek(b.dataset.at); };
 }
 
-// open the tab named in the address: #qa, #claude, #exp, #exp/<run> or #exp/<run>/trace
+// open the tab named in the address: #qa, #cams, #claude, #exp, #exp/<run> or #exp/<run>/trace
 {
   const h = decodeURIComponent(location.hash.slice(1));
   const m = h.match(/^exp(?:\/([^/]+)(\/trace)?)?$/);
-  if (h === 'qa' || h === 'claude') showTab(h);
+  if (h === 'qa' || h === 'cams' || h === 'claude') showTab(h);
   else if (m) { expOpen = m[1] || null; expWithTrace = !!m[2]; showTab('exp'); }
 }

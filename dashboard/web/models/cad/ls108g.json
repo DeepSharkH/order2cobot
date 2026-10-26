@@ -1,0 +1,184 @@
+{
+ "name": "tp-link_ls108g",
+ "source": "tp-link.com spec (case size) + official photos + our port survey (pitch, height)",
+ "units": "mm",
+ "frame": "origin = centre of the case bottom; port face toward -y; x along the row, port 1 at -x; z up. Port centre = centre of the opening bbox on the face plane",
+ "size": [
+  158.0,
+  99.1,
+  25.0
+ ],
+ "face_y": -49.55,
+ "pitch": 14.55,
+ "row_step": [
+  14.55,
+  0,
+  0
+ ],
+ "port_z": 14.0,
+ "opening": {
+  "width": 11.8,
+  "height": 6.6,
+  "notch_width": 6.4,
+  "notch_height": 2.2,
+  "latch": "up",
+  "bbox": [
+   11.8,
+   8.8
+  ]
+ },
+ "window": {
+  "x": [
+   -59.05,
+   59.05
+  ],
+  "z": [
+   6.9,
+   20.4
+  ],
+  "recess": 0.4
+ },
+ "seat_depth": 13.0,
+ "ports": {
+  "1": {
+   "centre": [
+    -50.925,
+    -49.55,
+    14.0
+   ],
+   "axis": [
+    0,
+    1,
+    0
+   ],
+   "led": [
+    -56.525,
+    -49.15,
+    18.5
+   ]
+  },
+  "2": {
+   "centre": [
+    -36.375,
+    -49.55,
+    14.0
+   ],
+   "axis": [
+    0,
+    1,
+    0
+   ],
+   "led": [
+    -41.975,
+    -49.15,
+    18.5
+   ]
+  },
+  "3": {
+   "centre": [
+    -21.825,
+    -49.55,
+    14.0
+   ],
+   "axis": [
+    0,
+    1,
+    0
+   ],
+   "led": [
+    -27.425,
+    -49.15,
+    18.5
+   ]
+  },
+  "4": {
+   "centre": [
+    -7.275,
+    -49.55,
+    14.0
+   ],
+   "axis": [
+    0,
+    1,
+    0
+   ],
+   "led": [
+    -12.875,
+    -49.15,
+    18.5
+   ]
+  },
+  "5": {
+   "centre": [
+    7.275,
+    -49.55,
+    14.0
+   ],
+   "axis": [
+    0,
+    1,
+    0
+   ],
+   "led": [
+    1.675,
+    -49.15,
+    18.5
+   ]
+  },
+  "6": {
+   "centre": [
+    21.825,
+    -49.55,
+    14.0
+   ],
+   "axis": [
+    0,
+    1,
+    0
+   ],
+   "led": [
+    16.225,
+    -49.15,
+    18.5
+   ]
+  },
+  "7": {
+   "centre": [
+    36.375,
+    -49.55,
+    14.0
+   ],
+   "axis": [
+    0,
+    1,
+    0
+   ],
+   "led": [
+    30.775,
+    -49.15,
+    18.5
+   ]
+  },
+  "8": {
+   "centre": [
+    50.925,
+    -49.55,
+    14.0
+   ],
+   "axis": [
+    0,
+    1,
+    0
+   ],
+   "led": [
+    45.325,
+    -49.15,
+    18.5
+   ]
+  }
+ },
+ "measured": {
+  "pitch": "survey 14.51-14.56 (data/ports.yaml), photo 14.7+-0.2; seated tip coordinates suggested ~15.0 (includes tool-model error)",
+  "port_z": "photo 14.5, touches 13.6"
+ }
+}
