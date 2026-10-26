@@ -242,13 +242,18 @@ def seg(s, L, v, n, ref, adv):
 end
 
 def contact(n, fn):
+  return contact_l(n, fn, [0.01, 0.005, 0.01, 0.1, 0.1, 0.1])
+end
+
+def contact_l(n, fn, lim):
   write_output_float_register(24, fn)   # force only: callers own the phase code
   # force mode pressing fn along n (tip must already be within ~1 mm of the face); waits
-  # until the tip stops moving along n, returns the face coordinate along n
+  # until the tip stops moving along n, returns the face coordinate along n.
+  # lim: force_mode limits, base x y z order (compliant axis: max speed; others: max deviation)
   zero_ftsensor()
   sleep(0.3)
   force_mode(p[0, 0, 0, 0, 0, 0], [norm(n[0]), norm(n[1]), norm(n[2]), 0, 0, 0], [fn*n[0], fn*n[1], fn*n[2], 0, 0, 0], 2,
-             [0.01, 0.005, 0.01, 0.1, 0.1, 0.1])
+             lim)
   c0 = adv_along(n, 0)
   sleep(0.5)
   t = 0
@@ -299,10 +304,14 @@ def slide_until_advance(n, fn, s, maxd, adv, v):
 end
 
 def spiral_search(n, fn, a, b, pitch, rmax, adv, v):
+  return spiral_search_l(n, fn, a, b, pitch, rmax, adv, v, [0.01, 0.005, 0.01, 0.1, 0.1, 0.1])
+end
+
+def spiral_search_l(n, fn, a, b, pitch, rmax, adv, v, lim):
   tel(fn, 3)
   # contact, then a square spiral centre-out in a/b; stays in force mode on a hit
   c0 = adv_along(n, 0)
-  ref = contact(n, fn)
+  ref = contact_l(n, fn, lim)
   if not found_face(n, c0, ref):
     back_off(n, 0.004)
     return False
@@ -357,14 +366,18 @@ def spiral_from(ref, n, a, b, pitch, rmax, adv, v):
 end
 
 def lateral(s, amp, v):
-  # move amp along s, return the reaction force along s, come back
+  return lateral_l(s, amp, v, 8.0)
+end
+
+def lateral_l(s, amp, v, fstop):
+  # move amp along s (stop early above fstop), return the reaction force along s, come back
   q0 = get_actual_tcp_pose()
   t = 0
   while along(q0, s) < amp and t < amp / v * 3 + 0.5:
     speedl([s[0]*v, s[1]*v, s[2]*v, 0, 0, 0], 0.2, 0.008)
     t = t + 0.008
     F = get_tcp_force()
-    if -(F[0]*s[0] + F[1]*s[1] + F[2]*s[2]) > 8.0:
+    if -(F[0]*s[0] + F[1]*s[1] + F[2]*s[2]) > fstop:
       break
     end
   end
@@ -376,26 +389,35 @@ def lateral(s, amp, v):
 end
 
 def wiggle_test(a, b, amp, fthr):
+  return wiggle_test_l(a, b, amp, fthr, 8.0)
+end
+
+def wiggle_test_l(a, b, amp, fthr, fstop):
   tel(fthr, 5)
   # in force mode at a candidate: a wall on at least one side of a AND of b = inside the port.
   # Use amp >= 0.8 mm: the plug has ~0.3 mm play and sits off-centre (port 2, 10-25: at 0.3 mm
   # max 2.6 N, at 0.8 mm -a 5.05 N / +b 4.08 N with the opposite sides free)
-  fa1 = lateral(a, amp, 0.002)
-  fa2 = lateral([-a[0], -a[1], -a[2]], amp, 0.002)
-  fb1 = lateral(b, amp, 0.002)
-  fb2 = lateral([-b[0], -b[1], -b[2]], amp, 0.002)
+  fa1 = lateral_l(a, amp, 0.002, fstop)
+  fa2 = lateral_l([-a[0], -a[1], -a[2]], amp, 0.002, fstop)
+  fb1 = lateral_l(b, amp, 0.002, fstop)
+  fb2 = lateral_l([-b[0], -b[1], -b[2]], amp, 0.002, fstop)
   textmsg(str_cat("wiggle ", str_cat(str_cat(fa1, str_cat(" ", fa2)), str_cat(" ", str_cat(fb1, str_cat(" ", fb2))))))
   return (fa1 > fthr or fa2 > fthr) and (fb1 > fthr or fb2 > fthr)
 end
 
 def seat_compliant(n, fy, depth, tmax):
+  return seat_compliant_l(n, fy, depth, tmax, [0.003, 0.004, 0.003, 0.1, 0.1, 0.1], 3.0)
+end
+
+def seat_compliant_l(n, fy, depth, tmax, lim, frel):
   tel(fy, 6)
-  # x/z float at zero force (self-align), push fy along n; back off 0.5 mm before returning
+  # the in-plane axes float at zero force (self-align), push fy along n; then release until the
+  # push is < frel. lim: force_mode speed limits, base x y z (the push axis: the seat speed)
   end_force_mode()
   q0 = get_actual_tcp_pose()
   r0 = q0[0]*n[0] + q0[1]*n[1] + q0[2]*n[2]
   force_mode(p[0, 0, 0, 0, 0, 0], [1, 1, 1, 0, 0, 0], [fy*n[0], fy*n[1], fy*n[2], 0, 0, 0], 2,
-             [0.003, 0.004, 0.003, 0.1, 0.1, 0.1])
+             lim)
   t = 0
   while t < tmax:
     if adv_along(n, r0) > depth:
@@ -406,7 +428,7 @@ def seat_compliant(n, fy, depth, tmax):
   end
   dy = adv_along(n, r0)
   textmsg("seatpose ", get_actual_tcp_pose())
-  release(n, 3.0, 0.001)
+  release(n, frel, 0.001)
   textmsg(str_cat("seated ", str_cat(dy, str_cat(" t ", t))))
   return dy
 end
@@ -428,13 +450,18 @@ def release(n, fmax, maxd):
 end
 
 def engage(n, fe, face, depth, tmax):
-  # from a candidate: push fe along n with x/z compliant (self-centring in the mouth) until the
-  # tip is `depth` past the measured face or tmax; 4 N stalls at the mouth (port 1: 1.1 mm in).
-  # Ends in force mode pushing 4 N along n only (x/z stiff again, for wiggle_test)
+  return engage_l(n, fe, face, depth, tmax, [0.003, 0.004, 0.003, 0.1, 0.1, 0.1], 4.0, [0.01, 0.005, 0.01, 0.1, 0.1, 0.1])
+end
+
+def engage_l(n, fe, face, depth, tmax, lim, fh, lim_hold):
+  # from a candidate: push fe along n with the in-plane axes compliant (self-centring in the
+  # mouth) until the tip is `depth` past the measured face or tmax; 4 N stalls at the mouth
+  # (port 1: 1.1 mm in). Ends in force mode pushing fh along n only (in-plane stiff again, held
+  # within lim_hold, for wiggle_test). lim / lim_hold: force_mode limits, base x y z
   tel(fe, 4)
   end_force_mode()
   force_mode(p[0, 0, 0, 0, 0, 0], [1, 1, 1, 0, 0, 0], [fe*n[0], fe*n[1], fe*n[2], 0, 0, 0], 2,
-             [0.003, 0.004, 0.003, 0.1, 0.1, 0.1])
+             lim)
   t = 0
   while t < tmax and adv_along(n, face) < depth:
     sync()
@@ -442,8 +469,8 @@ def engage(n, fe, face, depth, tmax):
   end
   d = adv_along(n, face)
   end_force_mode()
-  force_mode(p[0, 0, 0, 0, 0, 0], [norm(n[0]), norm(n[1]), norm(n[2]), 0, 0, 0], [4.0*n[0], 4.0*n[1], 4.0*n[2], 0, 0, 0], 2,
-             [0.01, 0.005, 0.01, 0.1, 0.1, 0.1])
+  force_mode(p[0, 0, 0, 0, 0, 0], [norm(n[0]), norm(n[1]), norm(n[2]), 0, 0, 0], [fh*n[0], fh*n[1], fh*n[2], 0, 0, 0], 2,
+             lim_hold)
   sleep(0.3)
   textmsg(str_cat(str_cat("engaged ", d), str_cat(" t ", t)))
   textmsg("engpose ", get_actual_tcp_pose())
@@ -494,5 +521,38 @@ def engage_x(n, fe, face, depth, tmax):
   textmsg(str_cat(str_cat("engaged ", d), str_cat(" t ", t)))
   textmsg("engpose ", get_actual_tcp_pose())
   return d
+end
+
+# --- protoboard-wire skill. Poses are pins-TCP poses (set_tcp(tcp_pins)); n = -board normal. ---
+
+def pull_out(n, fmax, maxd, v):
+  # move along -n (out of the board) at v until maxd; stop if the pull exceeds fmax.
+  # Reports the peak pull force (the pins' holding force) and the travel.
+  tel(fmax, 8)
+  zero_ftsensor()
+  sleep(0.3)
+  q0 = get_actual_tcp_pose()
+  s = [-n[0], -n[1], -n[2]]
+  peak = 0
+  t = 0
+  while along(q0, s) < maxd and t < maxd / v * 3 + 1.0:
+    speedl([s[0]*v, s[1]*v, s[2]*v, 0, 0, 0], 0.2, 0.008)
+    t = t + 0.008
+    F = get_tcp_force()
+    f = -(F[0]*s[0] + F[1]*s[1] + F[2]*s[2])
+    if f > peak:
+      peak = f
+    end
+    if f > fmax:
+      stopl(0.5)
+      textmsg(str_cat("pull limit ", f))
+      textmsg("pose ", get_actual_tcp_pose())
+      return False
+    end
+  end
+  stopl(0.5)
+  textmsg(str_cat(str_cat("pulled ", along(q0, s)), str_cat(" peak ", peak)))
+  textmsg("pose ", get_actual_tcp_pose())
+  return True
 end
 '''
