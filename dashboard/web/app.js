@@ -10,6 +10,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { UR3eModel } from './ur3e_model.js';
 import { HandEModel } from './hande_model.js';
 import { SwitchView } from './switch3d.js';
+import { ObjectsView } from './objects3d.js';
 
 const C = { bg: 0x111111, cream: 0xfef5da, brass: 0xc9a15d, grey: 0x8c8577 };
 const JN = ['Base', 'Shoulder', 'Elbow', 'Wrist 1', 'Wrist 2', 'Wrist 3'];
@@ -377,6 +378,7 @@ function renderCards(s) {
 
 // ── state → scene ───────────────────────────────────────────────────────────
 function applyState(s) {
+  lastState = s;
   ensureFeeds(s.cams);
   if (!editor.active) baseGroup.matrix.copy(mat4(s.T_world_base));
   if (s.robot.q) robot.setJoints(s.robot.q);
@@ -406,13 +408,17 @@ function applyState(s) {
     ['Switch link', s.qa?.live?.up ? 'ok' : 'bad'],
   ];
   $('#status').innerHTML = st.map(([n, c]) => `<span class="st ${c}"><i></i>${n}</span>`).join('');
+  if (s.mirror) $('#status').insertAdjacentHTML('afterbegin', `<span class="st ok" title="cameras and robot from ${esc(s.mirror)}; calibration is read-only"><i></i>Mirror of ${esc(s.mirror.replace(/^https?:\/\//, ''))}</span>`);
   renderCards(s);
   if (s.qa) renderQA(s.qa);
+  if (s.objects) renderObjects(s.objects, s);
 }
 
 function applyCloud(buf) {
-  const cloud = clouds[new Uint8Array(buf, 1, 1)[0]];
+  const idx = new Uint8Array(buf, 1, 1)[0];
+  const cloud = clouds[idx];
   if (!cloud) return;
+  objView.setCloud(idx, buf, lastState?.cams[idx]?.T_world_cam);
   const n = new DataView(buf).getUint32(4, true);
   const xyz = new Float32Array(buf, 8, n * 3);
   const rgb = new Uint8Array(buf, 8 + n * 12, n * 3);
@@ -488,9 +494,9 @@ document.addEventListener('keydown', (e) => {
 // ── tabs ────────────────────────────────────────────────────────────────────
 // one set of camera feeds, moved into whichever tab is showing
 function showTab(name) {
-  for (const t of ['calib', 'qa', 'cams', 'claude', 'exp']) $(`#tab-${t}`).classList.toggle('hidden', t !== name);
+  for (const t of ['calib', 'qa', 'cams', 'obj', 'claude', 'exp']) $(`#tab-${t}`).classList.toggle('hidden', t !== name);
   document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === name));
-  const home = { calib: '#calib-cams', qa: '#qa-cams', cams: '#cams-only' }[name];
+  const home = { calib: '#calib-cams', qa: '#qa-cams', cams: '#cams-only', obj: '#obj-cams' }[name];
   if (home) $(home).appendChild($('#feeds'));
   if (name === 'exp') expShow(expOpen, expWithTrace);
   else history.replaceState(null, '', name === 'calib' ? location.pathname : `#${name}`);
@@ -587,6 +593,80 @@ $('#qa-insert').onclick = () => send({ type: 'qa_test', port: qaSel, phase: 'ins
 $('#qa-extract').onclick = () => send({ type: 'qa_test', port: qaSel, phase: 'extract' });
 $('#qa-reset-port').onclick = () => { if (confirm(`Clear the results of port ${qaSel}?`)) send({ type: 'qa_reset', port: qaSel }); };
 $('#qa-reset-all').onclick = () => { if (confirm('Clear the results of all ports?')) send({ type: 'qa_reset' }); };
+
+// ── objects ─────────────────────────────────────────────────────────────────
+// bounding box of a configured object (configs/objects.yaml) in the live clouds;
+// the server runs the search (dashboard/objects.py) and sends the result with the state
+let lastState = null;
+const objView = new ObjectsView($('#obj-3d'));
+let objSel = null;
+let objFocused = null;
+const objBusy = (s) => !!s.busy && s.busy.startsWith('locating');
+const mmv = (v, d = 1) => fmt(v * 1000, d);
+
+function renderObjects(o, s) {
+  if (!objSel && o.specs.length) objSel = o.specs[0].name;
+  setHTML('#obj-sel', o.specs.map((p) => `<option value="${esc(p.name)}" ${p.name === objSel ? 'selected' : ''}>${esc(p.label)}</option>`).join(''));
+  const spec = o.specs.find((p) => p.name === objSel);
+  const r = o.results[objSel] || null;
+  objView.setResult(r);
+  if (r && objFocused !== r.t) { objFocused = r.t; if (!$('#tab-obj').classList.contains('hidden')) objView.focus(); }
+
+  const busy = objBusy(s);
+  $('#obj-locate').disabled = !!s.busy || !spec;
+  $('#obj-chip').textContent = busy ? 'searching' : r ? new Date(r.t * 1000).toLocaleTimeString('en-GB') : 'not located';
+  const msg = $('#obj-msg');
+  msg.textContent = busy ? `${s.busy}… (cloud search, then the camera frames if needed)` : (s.message.startsWith('locating') ? s.message : (r ? '' : 'Press Locate to search both depth clouds.'));
+  msg.classList.toggle('alert', !busy && s.message.startsWith('locating') && s.message.includes('failed'));
+
+  if (!spec) { setHTML('#obj-c-box', ''); setHTML('#obj-c-fit', ''); return; }
+  if (!r) {
+    setHTML('#obj-c-box', `
+      <div class="card-head"><div><h3>${esc(spec.label)}</h3><p>${spec.size_mm.join(' × ')} mm per model${spec.instances ? ` · ${spec.instances} end to end` : ''}</p></div>
+        <span class="chip quiet">no result</span></div>`);
+    setHTML('#obj-c-fit', '');
+    return;
+  }
+  const b = r.box, cf = r.cloud_fit, im = r.image_fit;
+  const cov = Object.entries(cf.coverage).map(([k, v]) => `<b>${esc(k)}</b><span class="${v < 0.5 ? 'alert' : ''}">${Math.round(v * 100)}% seen</span>`).join('');
+  setHTML('#obj-c-box', `
+    <div class="card-head"><div><h3><i style="background:#c9a15d"></i>${esc(r.label)}</h3><p>world frame · ${esc(r.dof)} · ${b.instances[0]}×${b.instances[1]} model instances</p></div>
+      <span class="chip">${esc(r.method.split(' (')[0])}</span></div>
+    <div class="rows">
+      <b>Centre</b><span>${b.centre.map((v) => mmv(v)).join(', ')} mm</span>
+      <b>Yaw</b><span>${fmt(b.pose.yaw_deg, 2)}°</span>
+      <b>Size</b><span>${b.size_mm.map((v) => fmt(v, 1)).join(' × ')} mm</span>
+      <b>Base z</b><span>${mmv(r.plate_z.used, 2)} mm (cloud ${mmv(r.plate_z.cloud, 2)})</span>
+      <b>Fit</b><span>${esc(r.method)}</span>
+      <b>Search</b><span>${fmt(r.duration_s, 1)} s · ${r.points} points</span>
+    </div>`);
+  setHTML('#obj-c-fit', `
+    <div class="card-head"><div><h3>Precision</h3><p>cloud fit: bootstrap 1σ · side coverage</p></div>
+      <span class="chip ${r.images_needed.length ? 'bad' : ''}">${r.images_needed.length ? 'cloud not enough' : 'cloud ok'}</span></div>
+    <div class="rows">
+      <b>1σ x · y · yaw</b><span>${fmt(cf.std_mm_mm_deg[0], 2)} · ${fmt(cf.std_mm_mm_deg[1], 2)} mm · ${fmt(cf.std_mm_mm_deg[2], 3)}°</span>
+      ${cov}
+      <b>Points</b><span>${cf.points.top} top · ${cf.points.plate} plate</span>
+      <b>Coarse</b><span>score ${fmt(r.coarse.score, 2)}</span>
+      ${cf.method === 'icp' ? `<b>ICP to CAD</b><span>${fmt(cf.residual_mm.median, 2)} mm median · ${Math.round(cf.inliers * 100)}% within 2 mm</span>
+      <b>Weakest</b><span class="${cf.weakest.sigma > 1 ? 'alert' : ''}">${cf.weakest.direction_mm_mm_deg.map((v) => fmt(v, 2)).join(', ')} · σ ${fmt(cf.weakest.sigma, 2)}</span>` : ''}
+      ${r.images_needed.map((x) => `<b>Needs images</b><span class="alert">${esc(x)}</span>`).join('')}
+      ${im ? `<b>Image fit</b><span>${im.restarts_agree} restarts agree · ±${im.restart_spread_mm_mm_deg.slice(0, 2).map((v) => fmt(v, 2)).join(', ')} mm</span>` : ''}
+      ${im ? Object.entries(im.check_cameras).map(([n, c]) => `<b>${esc(n)}</b><span class="${Math.max(...c.delta_mm_mm_deg.slice(0, 2).map(Math.abs)) > 2 ? 'alert' : ''}">check ${c.delta_mm_mm_deg.slice(0, 2).map((v) => fmt(v, 1)).join(', ')} mm</span>`).join('') : ''}
+      ${(r.cameras || []).map((c) => `<b>${esc(c.camera)}</b><span>${c.used ? 'used' : 'not used'} · ${esc(c.why)}</span>`).join('')}
+    </div>`);
+}
+$('#obj-sel').onchange = (e) => { objSel = e.target.value; objFocused = null; if (lastState) renderObjects(lastState.objects, lastState); };
+$('#obj-locate').onclick = () => send({ type: 'locate_object', name: objSel, images: $('#obj-img').value });
+$('#obj-focus').onclick = () => objView.focus();
+$('#obj-view').onclick = () => objView.resetView();
+$('#obj-colour').onclick = (e) => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  document.querySelectorAll('#obj-colour button').forEach((x) => x.classList.toggle('on', x === b));
+  objView.showCloud(b.dataset.c !== 'off');
+  if (b.dataset.c !== 'off') objView.setColour(b.dataset.c);
+};
 
 // ── websocket ───────────────────────────────────────────────────────────────
 let ws;
@@ -691,12 +771,18 @@ $('#cc-prompt').onkeydown = (e) => {
 $('#cc-new').onclick = () => { ccSession = null; ccLog.textContent = ''; };
 
 // ── experiments ─────────────────────────────────────────────────────────────
-// agent runs under results/: a grid of runs; a run shows its camera videos, its final
-// output and, on request, the whole trace (text, tool calls and their results)
+// agent runs under results/: a grid of runs; a run shows its camera videos, its tags and
+// comments, its final output and, on request, the whole trace (text, tool calls and their results)
 let expOpen = null;               // run shown, or null for the grid
 let expWithTrace = false;         // open the run with its whole trace (#exp/<run>/trace)
 let expPoll = null;
 let expRun = null;                // detail of the open run
+let expTag = null;                // grid shows only the runs with this tag
+let expSrc = null;                // results folder shown (config `experiments`), null = the server's default
+try { expSrc = localStorage.getItem('expSrc'); } catch { /* storage blocked */ }
+// experiments API url for the folder shown
+const expApi = (path = '') => `/api/experiments${path}${expSrc ? `?src=${encodeURIComponent(expSrc)}` : ''}`;
+const expHash = (run, trace) => `#exp${expSrc ? `:${encodeURIComponent(expSrc)}` : ''}${run ? `/${encodeURIComponent(run)}${trace ? '/trace' : ''}` : ''}`;
 
 const when = (iso) => {
   const d = iso ? new Date(/[zZ]|[+-]\d\d:\d\d$/.test(iso) ? iso : `${iso}Z`) : null;
@@ -740,11 +826,13 @@ function md(text) {
   return out.join('');
 }
 
-async function getJSON(url) {
-  const r = await fetch(url);
+async function getJSON(url, opts) {
+  const r = await fetch(url, opts);
   if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
   return r.json();
 }
+const sendJSON = (method, url, body) => getJSON(url, {
+  method, headers: { 'Content-Type': 'application/json' }, body: body && JSON.stringify(body) });
 
 function expShow(run, withTrace = false) {
   expOpen = run;
@@ -752,15 +840,38 @@ function expShow(run, withTrace = false) {
   clearTimeout(expPoll);
   $('#exp-list').classList.toggle('hidden', !!run);
   $('#exp-run').classList.toggle('hidden', !run);
-  history.replaceState(null, '', run ? `#exp/${encodeURIComponent(run)}` : '#exp');
+  history.replaceState(null, '', expHash(run));
   if (run) expLoadRun(run); else expLoadList();
 }
 
 async function expLoadList() {
   const grid = $('#exp-grid');
   try {
-    const { dir, runs } = await getJSON('/api/experiments');
-    $('#exp-dir').textContent = `${runs.length} runs · ${dir}`;
+    let r0;
+    try {
+      r0 = await getJSON(expApi());
+    } catch (e) {                 // a folder that is no longer configured: back to the default
+      if (!expSrc) throw e;
+      expSrc = null;
+      r0 = await getJSON(expApi());
+    }
+    const { dir, runs: all, src, sources } = r0;
+    if (expSrc !== src) {
+      expSrc = src;
+      try { localStorage.setItem('expSrc', src); } catch { /* storage blocked */ }
+    }
+    $('#exp-src').classList.toggle('hidden', sources.length < 2);
+    $('#exp-src').innerHTML = sources.map((o) => `<option value="${esc(o.name)}" title="${esc(o.dir)}"${o.name === src ? ' selected' : ''}>${esc(o.name)}</option>`).join('');
+    const count = {};
+    for (const r of all) for (const t of r.tags) count[t] = (count[t] || 0) + 1;
+    const tags = Object.keys(count).sort((a, b) => a.localeCompare(b));
+    if (!count[expTag]) expTag = null;
+    const runs = expTag ? all.filter((r) => r.tags.includes(expTag)) : all;
+    $('#exp-dir').textContent = `${expTag ? `${runs.length} of ` : ''}${all.length} runs · ${dir}`;
+    $('#exp-tag-list').innerHTML = tags.map((t) => `<option value="${esc(t)}">`).join('');
+    $('#exp-filter').classList.toggle('hidden', !tags.length);
+    $('#exp-filter').innerHTML = `<span class="lbl">Tags</span><button class="${expTag ? '' : 'on'}" data-tag="">All</button>`
+      + tags.map((t) => `<button class="${t === expTag ? 'on' : ''}" data-tag="${esc(t)}">${esc(t)} · ${count[t]}</button>`).join('');
     grid.innerHTML = runs.length ? runs.map((r) => {
       const bad = r.error || (r.status && r.status !== 'success');
       const chip = r.recording ? '<span class="chip quiet">Recording</span>'
@@ -769,12 +880,14 @@ async function expLoadList() {
         .filter(Boolean).join(' · ');
       const nums = [r.duration_s ? `${mmss(r.duration_s)} min` : null, r.turns ? `${r.turns} turns` : null,
         r.cost != null ? `$${fmt(r.cost)}` : null].filter(Boolean).join(' · ');
+      const notes = r.comments ? `<span>${r.comments} comment${r.comments > 1 ? 's' : ''}</span>` : '';
       return `<button class="exp-card" data-run="${esc(r.run)}">
         <div class="card-head"><h3>${esc(r.name || r.run)}</h3>${chip}</div>
         <p class="exp-prompt">${esc(r.prompt || 'No transcript')}</p>
-        <div class="meta"><span><b>${esc(when(r.started_at))}</b></span><span>${esc(has)}</span>${nums ? `<span>${esc(nums)}</span>` : ''}</div>
+        ${r.tags.length ? `<div class="exp-tags">${r.tags.map((t) => `<span class="exp-tag">${esc(t)}</span>`).join('')}</div>` : ''}
+        <div class="meta"><span><b>${esc(when(r.started_at))}</b></span><span>${esc(has)}</span>${nums ? `<span>${esc(nums)}</span>` : ''}${notes}</div>
       </button>`;
-    }).join('') : '<p class="note">No runs with a transcript or videos yet.</p>';
+    }).join('') : `<p class="note">${expTag ? 'No runs with this tag.' : 'No runs with a transcript or videos yet.'}</p>`;
   } catch (e) {
     grid.innerHTML = `<p class="msg err">Could not list the experiments: ${esc(e.message)}</p>`;
   }
@@ -784,9 +897,10 @@ async function expLoadRun(run) {
   $('#exp-title').textContent = run;
   $('#exp-meta').textContent = '';
   $('#exp-videos').innerHTML = '';
+  $('#exp-notes').innerHTML = '';
   $('#exp-text').innerHTML = '<p class="note">Loading…</p>';
   try {
-    expRun = await getJSON(`/api/experiments/${encodeURIComponent(run)}`);
+    expRun = await getJSON(expApi(`/${encodeURIComponent(run)}`));
   } catch (e) {
     $('#exp-text').innerHTML = `<p class="msg err">${esc(e.message)}</p>`;
     return;
@@ -806,6 +920,7 @@ async function expLoadRun(run) {
     </div>`;
   }).join('');
   if (r.videos.length) expVideos(run);
+  expNotes(r);
   if (!r.transcript) {
     $('#exp-text').innerHTML = '<p class="note">No transcript for this run.</p>';
     return;
@@ -825,11 +940,56 @@ async function expLoadRun(run) {
   if (expWithTrace) expTrace(run);
 }
 
+// tags and comments of the open run; every change is saved on the server at once
+function expNotes(n) {
+  const box = $('#exp-notes');
+  const draft = $('#exp-comment-in')?.value || '';
+  box.innerHTML = `<div class="exp-block">
+    <div class="exp-k">Tags</div>
+    <div class="exp-tags">
+      ${n.tags.map((t) => `<span class="exp-tag">${esc(t)}<button data-untag="${esc(t)}" title="Remove this tag">×</button></span>`).join('')}
+      <input id="exp-tag-in" list="exp-tag-list" maxlength="40" placeholder="Add tag, Enter" autocomplete="off">
+    </div>
+    <div class="exp-k">Comments</div>
+    ${n.comments.map((c) => `<div class="exp-comment">
+      <div class="exp-comment-head"><span>${esc(when(c.at))}</span><button data-del="${esc(c.id)}">Delete</button></div>
+      <div class="exp-md">${md(c.text)}</div>
+    </div>`).join('') || '<p class="note">No comments yet.</p>'}
+    <form class="chat-in" id="exp-comment-form">
+      <textarea id="exp-comment-in" rows="2" placeholder="Add a comment (Markdown, Shift+Enter for a new line)"></textarea>
+      <button class="primary">Comment</button>
+    </form>
+    <p class="msg err hidden" id="exp-notes-err"></p>
+  </div>`;
+  $('#exp-comment-in').value = draft;
+}
+
+async function expSaveNotes(method, path, body) {
+  const run = expOpen;
+  try {
+    const n = await sendJSON(method, expApi(`/${encodeURIComponent(run)}/${path}`), body);
+    if (expOpen !== run) return false;
+    Object.assign(expRun, n);
+    expNotes(expRun);
+    return true;
+  } catch (e) {
+    const err = $('#exp-notes-err');
+    if (err) { err.textContent = `Could not save: ${e.message}`; err.classList.remove('hidden'); }
+    return false;
+  }
+}
+
+function expAddTag(input) {
+  const t = input.value.replace(/,/g, ' ').trim();
+  if (!t) return;
+  expSaveNotes('PUT', 'tags', { tags: [...expRun.tags, t] }).then((ok) => { if (ok) $('#exp-tag-in').focus(); });
+}
+
 // videos are converted to H.264 on the server the first time a run is opened
 async function expVideos(run) {
   let st;
   try {
-    st = await getJSON(`/api/experiments/${encodeURIComponent(run)}/videos`);
+    st = await getJSON(expApi(`/${encodeURIComponent(run)}/videos`));
   } catch (e) {
     st = {};
   }
@@ -841,7 +1001,7 @@ async function expVideos(run) {
     if (s.state === 'ready') {
       if (!vb.querySelector('video')) {
         vb.innerHTML = `<video controls preload="metadata" muted playsinline
-          src="/api/experiments/${encodeURIComponent(run)}/video/${encodeURIComponent(box.dataset.file)}"></video>`;
+          src="${expApi(`/${encodeURIComponent(run)}/video/${encodeURIComponent(box.dataset.file)}`)}"></video>`;
         expSync();
       }
       continue;
@@ -899,13 +1059,13 @@ async function expTrace(run) {
   if (box.childElementCount) {         // second click hides it again
     box.innerHTML = '';
     btn.textContent = `Show whole trace · ${expRun.steps} steps`;
-    history.replaceState(null, '', `#exp/${encodeURIComponent(run)}`);
+    history.replaceState(null, '', expHash(run));
     return;
   }
   btn.textContent = 'Loading trace…';
   let tr;
   try {
-    tr = await getJSON(`/api/experiments/${encodeURIComponent(run)}/trace`);
+    tr = await getJSON(expApi(`/${encodeURIComponent(run)}/trace`));
   } catch (e) {
     btn.textContent = `Trace failed: ${e.message}`;
     return;
@@ -945,20 +1105,54 @@ async function expTrace(run) {
     </div></div>`;
   }).join('');
   btn.textContent = 'Hide whole trace';
-  history.replaceState(null, '', `#exp/${encodeURIComponent(run)}/trace`);
+  history.replaceState(null, '', expHash(run, true));
 }
 
 {
   $('#exp-grid').onclick = (e) => { const c = e.target.closest('.exp-card'); if (c) expShow(c.dataset.run); };
+  $('#exp-filter').onclick = (e) => {
+    const b = e.target.closest('button[data-tag]');
+    if (b) { expTag = b.dataset.tag || null; expLoadList(); }
+  };
+  const notes = $('#exp-notes');
+  notes.onclick = (e) => {
+    const un = e.target.closest('button[data-untag]');
+    if (un) expSaveNotes('PUT', 'tags', { tags: expRun.tags.filter((t) => t !== un.dataset.untag) });
+    const del = e.target.closest('button[data-del]');
+    if (del && confirm('Delete this comment?')) expSaveNotes('DELETE', `comments/${encodeURIComponent(del.dataset.del)}`);
+  };
+  notes.onkeydown = (e) => {
+    if (e.target.id === 'exp-tag-in' && (e.key === 'Enter' || e.key === ',')) { e.preventDefault(); expAddTag(e.target); }
+    if (e.target.id === 'exp-comment-in' && e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('#exp-comment-form').requestSubmit(); }
+  };
+  notes.onsubmit = async (e) => {
+    e.preventDefault();
+    const input = $('#exp-comment-in');
+    const text = input.value.trim();
+    if (!text) return;
+    input.value = '';
+    if (!await expSaveNotes('POST', 'comments', { text })) $('#exp-comment-in').value = text;
+  };
   $('#exp-back').onclick = () => expShow(null);
   $('#exp-refresh').onclick = () => expLoadList();
+  $('#exp-src').onchange = (e) => {
+    expSrc = e.target.value;
+    try { localStorage.setItem('expSrc', expSrc); } catch { /* storage blocked */ }
+    expTag = null;
+    expShow(null);
+  };
   $('#exp-text').onclick = (e) => { const b = e.target.closest('button.exp-t'); if (b) expSeek(b.dataset.at); };
 }
 
-// open the tab named in the address: #qa, #cams, #claude, #exp, #exp/<run> or #exp/<run>/trace
+// open the tab named in the address: #qa, #cams, #obj, #claude, #exp[:<folder>][/<run>[/trace]]
 {
   const h = decodeURIComponent(location.hash.slice(1));
-  const m = h.match(/^exp(?:\/([^/]+)(\/trace)?)?$/);
-  if (h === 'qa' || h === 'cams' || h === 'claude') showTab(h);
-  else if (m) { expOpen = m[1] || null; expWithTrace = !!m[2]; showTab('exp'); }
+  const m = h.match(/^exp(?::([^/]+))?(?:\/([^/]+)(\/trace)?)?$/);
+  if (['qa', 'cams', 'obj', 'claude'].includes(h)) showTab(h);
+  else if (m) {
+    if (m[1]) expSrc = m[1];
+    expOpen = m[2] || null;
+    expWithTrace = !!m[3];
+    showTab('exp');
+  }
 }

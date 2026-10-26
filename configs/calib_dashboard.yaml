@@ -45,6 +45,12 @@ tof_camera:                # SICK Visionary-T Mini AP (ToF, no colour) on enP7p1
   cloud_stride: 1          # 512x424 grid, mostly empty outside Nova's working range
   # pose: T_world_tcam in scene_file once calibrated (not yet: test position)
 
+# Experiments tab: results folders to choose from (the first is the default). The two
+# checkouts keep running their own experiments; each folder has its own video cache.
+experiments:
+  main: {dir: results, cache: data/cache/experiments}
+  shao: {dir: /home/lab/dev/shao/order2cobot/results, cache: data/cache/experiments-shao}
+
 scene_file: configs/calibration/scene.yaml   # base x/y/yaw + fixed cam pose, written by the dashboard
 
 # Switch port QA (dashboard Port QA tab, dashboard/check_link.py). The robot

@@ -1,0 +1,21 @@
+# Objects the scene can be searched for (agents/vision/locate.py; dashboard "Objects" tab,
+# scripts/locate_object.py). Each is a box resting on the plate: size_mm is one model
+# instance (L x W along the plate, H the height); `instances` copies end to end make the
+# object (omit to detect). World frame: the calibration checkerboard, z up.
+objects:
+  protoboard:
+    label: Protoboard
+    model: tmp/HalfBreadboard.STEP   # half breadboard (two make the board); the ICP's footprint.
+                                     # Relative to the repo root; missing -> a plain box of size_mm
+    size_mm: [83.01, 56.08, 9.51]
+    instances: 2
+    min_score: 0.45      # template score to accept a match (1 = perfect)
+    # World z of the plate top. World z = 0 is the top of the calibration checkerboard, which
+    # lay on the plate: the fixed D435 read the board at +1.62 mm and the bare plate in the
+    # same footprint at -2.90 mm (2026-10-25), so the board was 4.5 mm thick.
+    plate_z_mm: -4.5
+    fit: icp             # cloud fit: 3-DoF ICP against the CAD (agents/vision/icp.py), or edges
+    images: auto         # refine on the camera images when the cloud fit is not precise enough
+    tol_mm: 0.5          # ... cloud 1σ above this (x or y)
+    tol_deg: 0.15        # ... cloud 1σ above this (yaw)
+    min_coverage: 0.5    # ... a side seen less than this

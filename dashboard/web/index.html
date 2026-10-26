@@ -18,6 +18,7 @@
       <button data-tab="calib" class="on">3D Visualization</button>
       <button data-tab="qa">Port QA</button>
       <button data-tab="cams">Cameras</button>
+      <button data-tab="obj">Objects</button>
       <button data-tab="claude">Claude</button>
       <button data-tab="exp">Experiments</button>
     </nav>
@@ -122,6 +123,49 @@
     <section class="section cams" id="cams-only"></section>
   </main>
 
+  <main class="layout hidden" id="tab-obj">
+    <section class="section scene">
+      <div class="section-head">
+        <h2>Objects</h2>
+        <div class="legend">
+          <span><i class="sw sw-mix"></i>Bounding box</span>
+          <span><i class="sw sw-cam"></i>Model instances</span>
+          <span><i class="sw sw-air"></i>Cloud-only fit</span>
+        </div>
+        <div class="tools">
+          <div class="seg" id="obj-colour"><span class="lbl">Cloud</span>
+            <button data-c="rgb" class="on" title="Camera colours">Colour</button>
+            <button data-c="height" title="Height above the plate the object rests on">Height</button>
+            <button data-c="off" title="Hide the clouds">Off</button>
+          </div>
+          <button id="obj-focus" title="Look at the located object">Focus</button>
+          <button id="obj-view" title="Reset the view">Reset</button>
+        </div>
+      </div>
+      <div id="obj-3d" class="viewport"></div>
+    </section>
+    <section class="section cams" id="obj-cams">
+      <div class="section-head"><h2>Cameras</h2></div>
+    </section>
+    <section class="section side">
+      <div class="section-head"><h2>Detection</h2></div>
+      <div class="cards">
+        <div class="card dark" id="obj-c-find">
+          <div class="card-head"><div><h3>Find</h3><p>configs/objects.yaml · both depth clouds</p></div><span class="chip quiet" id="obj-chip"></span></div>
+          <div class="rows">
+            <b>Object</b><span><select id="obj-sel"></select></span>
+            <b>Image fit</b><span><select id="obj-img" title="Refine on the camera frames: auto = only when the cloud fit is not precise enough">
+              <option value="auto">auto</option><option value="always">always</option><option value="never">never</option></select></span>
+          </div>
+          <div class="actions"><button class="primary" id="obj-locate">Locate</button></div>
+          <div class="obj-msg" id="obj-msg"></div>
+        </div>
+        <div class="card" id="obj-c-box"></div>
+        <div class="card" id="obj-c-fit"></div>
+      </div>
+    </section>
+  </main>
+
   <main class="layout chat-layout hidden" id="tab-claude">
     <section class="section chat">
       <div class="section-head">
@@ -148,8 +192,9 @@
       <div class="section-head">
         <h2>Experiments</h2>
         <div class="legend" id="exp-dir"></div>
-        <div class="tools"><button id="exp-refresh">Refresh</button></div>
+        <div class="tools"><select id="exp-src" class="hidden" title="Results folder"></select><button id="exp-refresh">Refresh</button></div>
       </div>
+      <div class="exp-filter hidden" id="exp-filter"></div>
       <div class="exp-grid" id="exp-grid"></div>
     </section>
     <section class="section hidden" id="exp-run">
@@ -159,7 +204,9 @@
         <div class="tools"><button id="exp-back">All experiments</button></div>
       </div>
       <div class="exp-videos" id="exp-videos"></div>
+      <div class="exp-text exp-notes" id="exp-notes"></div>
       <div class="exp-text" id="exp-text"></div>
+      <datalist id="exp-tag-list"></datalist>
     </section>
   </main>
 

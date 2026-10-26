@@ -13,6 +13,7 @@ dependencies = [
     "pydantic-settings>=2.3",
     "python-dotenv>=1.2.4",
     "pyyaml>=6.0.3",
+    "scipy>=1.15.3",
 ]
 
 [build-system]
