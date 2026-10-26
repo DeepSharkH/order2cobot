@@ -57,6 +57,15 @@ these 800 points, so every position in this skill is one of them.
   x per hole into every camera frame (`cam<i>_holes_zoom.png`: check that the x's sit on the
   holes before trusting a grid).
 
+## Simulator (same commands, no robot)
+
+To rehearse or debug without the arm: `python -m simulation` (simulated UR3e + AI Agent Bridge on
+:8095), then `export UR_BRIDGE_URL=http://127.0.0.1:8095/universal-robots/ai-agent-bridge/mcp/v1/`
+in the shell that runs this skill's Python. URExec, SkillB and move_checked then drive the
+simulator unchanged; watch it in the dashboard's **Simulation** tab. Not simulated: the cameras
+(frames still come from the real dashboard), RTDE telemetry, the link check. Say in the run log
+that a run was simulated; a simulated pass is not a robot pass. See `simulation/README.md`.
+
 ## Principles (why this skill looks like this)
 
 1. **Vision gives the pins, touch only enters.** There are no touch references. Hole and pin
