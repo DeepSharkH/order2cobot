@@ -4,10 +4,17 @@ import argparse
 import json
 from collections import defaultdict
 from pathlib import Path
+from time import monotonic
 
 from ortools.sat.python import cp_model
 
+if __package__:
+    from .geometry import casing_for, constrain_assembly, placement_geometry, verify_assembly
+else:
+    from geometry import casing_for, constrain_assembly, placement_geometry, verify_assembly
+
 HERE = Path(__file__).parent
+DEFAULT_CASINGS = HERE.parents[1] / "assets/models/component_casings/casings.json"
 
 
 def read_json(path):
@@ -48,9 +55,21 @@ def placements(part, positions):
                 yield holes
 
 
-def map_circuit(circuit, inventory, board, time_limit=30):
+def map_circuit(circuit, inventory, board, time_limit=30, casings=None, gripper=None):
+    casings = read_json(DEFAULT_CASINGS) if casings is None else casings
+    gripper = read_json(HERE / "gripper.json") if gripper is None else gripper
+    pitch = board["geometry"]["hole_pitch_mm"]
+    if pitch <= 0 or time_limit <= 0:
+        raise ValueError("Board pitch and time limit must be positive")
+    if (
+        min(gripper["finger_thickness_mm"], gripper["finger_width_mm"]) <= 0
+        or min(gripper["opening_per_finger_mm"], gripper["safety_margin_mm"]) < 0
+    ):
+        raise ValueError("Invalid gripper dimensions or margin")
     parts = {part["part_id"]: part for part in inventory["components"]}
     instances = {c["id"]: parts[c["part_id"]] for c in circuit["components"]}
+    if any(cid.startswith("jumper:") for cid in instances):
+        raise ValueError("The instance ID prefix jumper: is reserved for generated wires")
     if len(instances) != len(circuit["components"]):
         raise ValueError("Component instance IDs must be unique")
     expected = {f"{cid}.{pin}" for cid, part in instances.items() for pin in part["pins"]}
@@ -82,15 +101,26 @@ def map_circuit(circuit, inventory, board, time_limit=30):
             if len({pin_net[f"{cid}.{pin}"] for pin in connected}) > 1:
                 raise ValueError(f"{cid}: permanently connected pins assigned to different nets")
 
+    manual_ids = {
+        c["id"]
+        for c in circuit["components"]
+        if c.get("placement_mode", instances[c["id"]].get("placement_mode")) == "manual"
+    }
+    manual_pins = {f"{cid}.{pin}" for cid in manual_ids for pin in instances[cid]["pins"]}
+    physical = {cid: part for cid, part in instances.items() if cid not in manual_ids}
+    used_parts = {p["part_id"]: p for p in physical.values()}
+    used_parts.update({pid: p for pid, p in parts.items() if p["type"] == "jumper"})
+    shapes = {pid: casing_for(part, casings, pitch) for pid, part in used_parts.items()}
     positions, groups = board_geometry(board)
     group_count = len(board["conductive_groups"])
     model = cp_model.CpModel()
     # Each conductive strip can belong to only one net (-1 means unused).
     labels = [model.new_int_var(-1, len(nets) - 1, f"net_{g}") for g in range(group_count)]
+    candidates = []
     occupancy = defaultdict(list)
     terminals, roots = defaultdict(list), defaultdict(list)
     choices = {}
-    for cid, part in instances.items():
+    for owner, (cid, part) in enumerate(physical.items()):
         options = []
         for holes in placements(part, positions):
             assignments = [
@@ -101,8 +131,21 @@ def map_circuit(circuit, inventory, board, time_limit=30):
                 continue  # This placement would short two distinct nets inside a strip.
             chosen = model.new_bool_var(f"{cid}_{len(options)}")
             options.append((chosen, holes))
-            for pin, hole, (n, g) in zip(part["pins"], holes, assignments, strict=True):
+            candidates.append(
+                {
+                    "chosen": chosen,
+                    "owner": owner,
+                    "id": cid,
+                    "part_id": part["part_id"],
+                    "holes": holes,
+                    "shape": placement_geometry(
+                        holes, positions, shapes[part["part_id"]], gripper, pitch
+                    ),
+                }
+            )
+            for hole in holes:
                 occupancy[hole].append(chosen)
+            for pin, (n, g) in zip(part["pins"], assignments, strict=True):
                 model.add(labels[g] == n).only_enforce_if(chosen)
                 terminals[n, g].append(chosen)
                 if f"{cid}.{pin}" == nets[n]["pins"][0]:
@@ -111,6 +154,22 @@ def map_circuit(circuit, inventory, board, time_limit=30):
             raise ValueError(f"No legal placements for {cid}")
         model.add_exactly_one(chosen for chosen, _ in options)
         choices[cid] = options
+
+    # Manual connections are individual reserved holes, without a body or grip.
+    manual_choices = {}
+    for pin in sorted(manual_pins):
+        n = pin_net[pin]
+        options = []
+        for hole, g in groups.items():
+            chosen = model.new_bool_var(f"manual_{pin}_{hole}")
+            options.append((chosen, hole))
+            occupancy[hole].append(chosen)
+            model.add(labels[g] == n).only_enforce_if(chosen)
+            terminals[n, g].append(chosen)
+            if pin == nets[n]["pins"][0]:
+                roots[n, g].append(chosen)
+        model.add_exactly_one(chosen for chosen, _ in options)
+        manual_choices[pin] = options
 
     wires, edges = [], defaultdict(list)
     seen_pairs = set()
@@ -125,22 +184,36 @@ def map_circuit(circuit, inventory, board, time_limit=30):
                 continue
             seen_pairs.add(pair)
             chosen = model.new_bool_var(f"wire_{len(wires)}")
+            candidates.append(
+                {
+                    "chosen": chosen,
+                    "owner": len(physical) + len(wires),
+                    "id": f"jumper:{len(wires) + 1}",
+                    "part_id": part["part_id"],
+                    "holes": holes,
+                    "shape": placement_geometry(
+                        holes, positions, shapes[part["part_id"]], gripper, pitch
+                    ),
+                }
+            )
+            for hole in holes:
+                occupancy[hole].append(chosen)
             wires.append((chosen, part, holes))
             a, b = sorted((groups[holes[0]], groups[holes[1]]))
             edges[a, b].append(chosen)
             model.add(labels[a] == labels[b]).only_enforce_if(chosen)
             model.add(labels[a] >= 0).only_enforce_if(chosen)
-            for hole in holes:
-                occupancy[hole].append(chosen)
     for occupants in occupancy.values():
         model.add_at_most_one(occupants)
+    owner_count = len(physical) + len(wires)
+    orders = [model.new_int_var(0, owner_count - 1, f"order_{i}") for i in range(owner_count)]
 
     # Send abstract flow from each net's first pin to all its pins.
     # Flow can cross strips only on installed jumpers carrying that net.
     balance = defaultdict(list)
-    for (a, b), candidates in edges.items():
+    for (a, b), edge_candidates in edges.items():
         linked = model.new_bool_var(f"link_{a}_{b}")
-        model.add(sum(candidates) == linked)  # Parallel wires between strips are redundant.
+        model.add(sum(edge_candidates) == linked)  # Parallel wires between strips are redundant.
         for n, net in enumerate(nets):
             capacity = len(net["pins"])
             active = model.new_bool_var(f"active_{n}_{a}_{b}")
@@ -159,14 +232,30 @@ def map_circuit(circuit, inventory, board, time_limit=30):
 
     model.minimize(sum(chosen for chosen, _, _ in wires))
     solver = cp_model.CpSolver()
-    solver.parameters.max_time_in_seconds = time_limit
     solver.parameters.num_search_workers = 8
-    status = solver.solve(model)
-    if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-        raise ValueError(
-            f"No mapping returned: {solver.status_name(status)}. "
-            "UNKNOWN means the time limit was reached without a solution."
-        )
+    solver.parameters.stop_after_first_solution = True
+    deadline = monotonic() + time_limit
+    known = set()
+    while True:
+        remaining = deadline - monotonic()
+        if remaining <= 0:
+            raise ValueError(
+                "UNKNOWN: time limit reached before a collision-free assembly was found"
+            )
+        solver.parameters.max_time_in_seconds = remaining
+        status = solver.solve(model)
+        if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+            reason = (
+                "No layout satisfies the part, wiring, and assembly constraints."
+                if status == cp_model.INFEASIBLE
+                else "No verified layout found within the search limit; not proof of infeasibility."
+            )
+            raise ValueError(f"No mapping returned: {solver.status_name(status)}. {reason}")
+        selected = [c for c in candidates if solver.value(c["chosen"])]
+        if not constrain_assembly(model, selected, orders, known, gripper["safety_margin_mm"]):
+            break
+    selected.sort(key=lambda c: (solver.value(orders[c["owner"]]), c["owner"]))
+    verify_assembly(selected, gripper["safety_margin_mm"])
     pin_to_hole = {}
     for cid, options in choices.items():
         holes = next(holes for chosen, holes in options if solver.value(chosen))
@@ -174,10 +263,11 @@ def map_circuit(circuit, inventory, board, time_limit=30):
             {f"{cid}.{pin}": hole for pin, hole in zip(instances[cid]["pins"], holes, strict=True)}
         )
     jumpers = []
-    for chosen, part, holes in wires:
+    for wire_index, (chosen, part, holes) in enumerate(wires):
         if solver.value(chosen):
             jumpers.append(
                 {
+                    "id": f"jumper:{wire_index + 1}",
                     "part_id": part["part_id"],
                     "pins": dict(zip(part["pins"], holes, strict=True)),
                     "net": nets[solver.value(labels[groups[holes[0]]])]["id"],
@@ -187,7 +277,24 @@ def map_circuit(circuit, inventory, board, time_limit=30):
         "circuit_id": circuit["circuit_id"],
         "board_id": board["board_id"],
         "status": solver.status_name(status),
+        "geometry_model": "2d_casing_and_opening_fingers",
+        "gripper": gripper,
+        "placements": [
+            {
+                "id": c["id"],
+                "part_id": c["part_id"],
+                "orientation_deg": c["shape"]["orientation_deg"],
+                "center_mm": c["shape"]["center_mm"],
+                "casing_id": c["shape"]["casing_id"],
+            }
+            for c in selected
+        ],
+        "assembly_order": [c["id"] for c in selected],
         "pin_to_hole": pin_to_hole,
+        "manual_connections": {
+            pin: next(h for chosen, h in options if solver.value(chosen))
+            for pin, options in manual_choices.items()
+        },
         "jumpers": jumpers,
     }
     verify_connections(result, nets, groups)
@@ -203,7 +310,8 @@ def verify_connections(result, nets, groups):
             g = parent[g]
         return g
 
-    occupied = list(result["pin_to_hole"].values())
+    pin_holes = {**result["pin_to_hole"], **result.get("manual_connections", {})}
+    occupied = list(pin_holes.values())
     for jumper in result["jumpers"]:
         a, b = jumper["pins"].values()
         occupied.extend((a, b))
@@ -212,7 +320,7 @@ def verify_connections(result, nets, groups):
         raise ValueError("Invalid result: a hole is occupied more than once")
     owners = {}
     for net in nets:
-        connected = {find(groups[result["pin_to_hole"][pin]]) for pin in net["pins"]}
+        connected = {find(groups[pin_holes[pin]]) for pin in net["pins"]}
         if len(connected) != 1:
             raise ValueError(f"Invalid result: disconnected net {net['id']}")
         group = connected.pop()
@@ -228,6 +336,8 @@ def main():
     parser.add_argument("--board", type=Path, default=HERE / "board_connections.json")
     parser.add_argument("--output", type=Path)
     parser.add_argument("--time-limit", type=float, default=30)
+    parser.add_argument("--casings", type=Path, default=DEFAULT_CASINGS)
+    parser.add_argument("--gripper", type=Path, default=HERE / "gripper.json")
     args = parser.parse_args()
     if args.time_limit <= 0:
         parser.error("--time-limit must be positive")
@@ -237,6 +347,8 @@ def main():
             read_json(args.inventory),
             read_json(args.board),
             args.time_limit,
+            read_json(args.casings),
+            read_json(args.gripper),
         )
     except (ValueError, KeyError, OSError) as error:
         parser.exit(1, f"{error}\n")

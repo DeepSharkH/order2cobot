@@ -465,7 +465,8 @@
         "positive",
         "negative"
       ],
-      "pin_spacing": 1
+      "pin_spacing": 1,
+      "placement_mode": "manual"
     }
   ]
 }
