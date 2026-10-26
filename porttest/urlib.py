@@ -473,4 +473,26 @@ def seat_x(n, fy, depth, tmax):
   textmsg(str_cat("seated ", str_cat(dy, str_cat(" t ", t))))
   return dy
 end
+
+def engage_x(n, fe, face, depth, tmax):
+  # engage with z stiff (2 mm deviation), x compliant: the x/z-compliant engage let z climb
+  # 3.9 mm and jam at 3.97 mm (port 2, 21:10). Ends in the 4 N n-only force mode like engage
+  tel(fe, 4)
+  end_force_mode()
+  force_mode(p[0, 0, 0, 0, 0, 0], [1, 1, 0, 0, 0, 0], [fe*n[0], fe*n[1], fe*n[2], 0, 0, 0], 2,
+             [0.003, 0.004, 0.002, 0.1, 0.1, 0.1])
+  t = 0
+  while t < tmax and adv_along(n, face) < depth:
+    sync()
+    t = t + get_steptime()
+  end
+  d = adv_along(n, face)
+  end_force_mode()
+  force_mode(p[0, 0, 0, 0, 0, 0], [norm(n[0]), norm(n[1]), norm(n[2]), 0, 0, 0], [4.0*n[0], 4.0*n[1], 4.0*n[2], 0, 0, 0], 2,
+             [0.01, 0.005, 0.01, 0.1, 0.1, 0.1])
+  sleep(0.3)
+  textmsg(str_cat(str_cat("engaged ", d), str_cat(" t ", t)))
+  textmsg("engpose ", get_actual_tcp_pose())
+  return d
+end
 '''

@@ -6,8 +6,8 @@ source: >-
   from both cameras (-38, -2, 187 mm) and the old breadboard touch (-41.7, -5.3, 193 mm).
   Uncertainty about +-4 mm; the tip touches (S5) cancel it for targeting.
 tcp_tip: [-0.041, -0.002, 0.189, 0.0, 0.0, 0.0]   # plug tip centre, plug points along flange -x
-tag_centre: [0.0009, 0.0081, 0.1927]               # gripper-cam chain (fixed cam: 0.0046, -0.0042, 0.1923)
-tag_normal: [-0.045, 0.988, -0.148]
+tag_centre: [0.0006, 0.0101, 0.1917]               # 2026-10-25T20:50 (was [0.0009, 0.0081, 0.1927]): shell shifted after the 20:23 seat               # gripper-cam chain (fixed cam: 0.0046, -0.0042, 0.1923)
+tag_normal: [-0.067, 0.957, -0.283]                # 2026-10-25T20:50 (was [-0.045, 0.988, -0.148])
 tag_to_tip: null                                    # set after the touches refine the tip
 collision_points:                                   # lowest/outermost parts, for clearance checks
   tip: [-0.041, -0.002, 0.193]

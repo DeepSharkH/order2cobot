@@ -55,9 +55,13 @@ def _guid(line):
 
 class URExec:
     def __init__(self):
+        t = time.monotonic()
         self.b = URBridge(client_name=CLIENT)
+        self.init_timing = {'initialize': round(time.monotonic() - t, 3)}
         self.app = self.guid = None
+        t = time.monotonic()
         self._ensure_app()
+        self.init_timing['ensure_app'] = round(time.monotonic() - t, 3)
 
     def _ensure_app(self):
         apps = call(self.b, 'program_list')['data']['programs']
@@ -95,11 +99,15 @@ class URExec:
         controller log, which is also how the step reports results."""
         # restore the flange TCP at the end: set_tcp persists and the controller is shared
         expr = (PREAMBLE if preamble else '') + script + ('\ntel(0, 0)\nset_tcp(p[0, 0, 0, 0, 0, 0])\n' if preamble else '')
+        tm = {'t0': time.monotonic(), 'marks': [], 'play': [], 'chars': len(expr), 'lines': expr.count('\n') + 1}
+        mark = lambda name: tm['marks'].append((name, round(time.monotonic() - tm['t0'], 3)))  # noqa: E731
         problems = lint(expr)
+        mark('lint')
         if problems:
             raise BridgeError('urscript_lint: ' + '; '.join(problems))
         r = call(self.b, 'program_update_node', appId=self.app, programId=self.app, guid=self.guid,
                  parameters={'expression': expr}, confirm=True)
+        mark('update_node')
         v = (r.get('data') or {}).get('validation') or {}
         if v and not v.get('valid', True):
             raise BridgeError(f'script invalid: {v}')
@@ -108,18 +116,25 @@ class URExec:
         if str(call(self.b, 'program_get_loaded')['data'].get('appId')) != str(self.app):
             call(self.b, 'program_load', appId=self.app, confirm=True)
             time.sleep(2)
+        mark('get_loaded')
         base = max(int(l['ts']) for l in self._log_list())
+        mark('psx_base')
         for attempt in range(4):
+            ta = time.monotonic()
             try:
                 call(self.b, 'program_run', action='play', confirm=True)
+                tm['play'].append(('ok', round(time.monotonic() - ta, 3)))
                 break
             except BridgeError as err:
+                kind = 'not_ready' if 'program_not_ready' in str(err) else 'timeout' if 'timeout' in str(err) else 'error'
+                tm['play'].append((kind, round(time.monotonic() - ta, 3)))
                 if 'program_not_ready' in str(err) and attempt < 3:   # still generating code after the edit
                     time.sleep(2)
                     continue
                 if 'timeout' not in str(err):     # the PUT often hangs although the program started
                     raise
                 break
+        mark('play_returned')
         t0 = time.monotonic()
         msgs, started, done = [], False, False
         while not done:
@@ -131,10 +146,14 @@ class URExec:
                     continue        # another client's program
                 if 'PROGRAM_XXX_STARTED' in m:
                     started = True
+                    mark('started_seen')
+                    tm['started_ctrl_ts'] = int(l['ts'])
                 elif m.startswith('text_msg'):
                     msgs.append(json.loads(m.split(' ', 1)[1])['text'])
                 elif 'PROGRAM_XXX_STOPPED' in m and started:
                     done = True
+                    mark('stopped_seen')
+                    tm['stopped_ctrl_ts'] = int(l['ts'])
                 elif l['level'] in ('WARNING', 'ERROR', 'FAULT') or 'protective_stop' in m:
                     msgs.append('!! ' + m)
             if not done and time.monotonic() - t0 > timeout:
@@ -144,7 +163,23 @@ class URExec:
         rs = call(self.b, 'robot_get_state')['data']
         if rs['safetymode'] != 'NORMAL':
             raise BridgeError(f'safety mode {rs["safetymode"]} after step: {msgs}')
-        return msgs, self.pose()
+        out = (msgs, self.pose())
+        mark('post')
+        self._log_timing(tm)
+        return out
+
+    def _log_timing(self, tm):
+        """Append this step's bridge timing (s from the start of run()) to data/bridge_timing.jsonl."""
+        rec = {'wall': time.time(), 'chars': tm['chars'], 'lines': tm['lines'], 'marks': tm['marks'],
+               'play': tm['play'], 'started_ctrl_ts': tm.get('started_ctrl_ts'),
+               'stopped_ctrl_ts': tm.get('stopped_ctrl_ts')}
+        if getattr(self, 'init_timing', None):
+            rec['init'], self.init_timing = self.init_timing, None
+        try:
+            with open(ROOT / 'data' / 'bridge_timing.jsonl', 'a') as f:
+                f.write(json.dumps(rec) + '\n')
+        except OSError:
+            pass
 
     def move_checked(self, pose, w3_ref=None, w3_tol=0.8, min_elbow=0.5, min_clear=0.10, v=0.25):
         """Joint move to `pose` (flange, base frame) after IK and safety checks; raises if any fails.
