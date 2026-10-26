@@ -19,6 +19,7 @@ import numpy as np
 
 class Camera:
     name = ''
+    kind = ''                 # what it measures, shown as a tag: 'RGB-D', 'RGB' or 'Depth'
     orthographic = False      # True: an orthographic grid (VisionaryCamera), not a pinhole image
 
     def __init__(self):
@@ -71,7 +72,9 @@ class Camera:
         return color
 
     def info(self):
-        return {'name': self.name, 'ok': self.error is None and self.color is not None,
+        cfg = getattr(self, 'cfg', None) or {}
+        return {'name': self.name, 'model': cfg.get('model', self.name), 'kind': self.kind,
+                'ok': self.error is None and self.color is not None,
                 'error': self.error, 'size': self.size, 'fps': round(self.fps, 1),
                 'K': None if self.K is None else np.asarray(self.K).tolist(),
                 'dist': np.asarray(self.dist).ravel().tolist(),
@@ -91,17 +94,22 @@ def usb_present(vendor):
 
 
 class RealSenseCamera(Camera):
+    kind = 'RGB-D'
+
     def __init__(self, cfg):
         super().__init__()
         self.cfg = cfg
         self.name = cfg.get('label', 'Fixed D435')
+        self.dead_modes = set()    # modes that started but never delivered a frame (USB 2 bandwidth)
 
     def _run(self):
         if not usb_present(self.cfg.get('usb_vendor', '8086')):
+            self.dead_modes.clear()            # re-plugged: maybe on USB 3 again
             raise RuntimeError('D435 not on USB (re-plug it)')
         import pyrealsense2 as rs
         last_err = None
-        for w, h, fps in [tuple(m) for m in self.cfg.get('modes', [[1280, 720, 15], [640, 480, 15]])]:
+        modes = [tuple(m) for m in self.cfg.get('modes', [[1280, 720, 15], [640, 480, 15]])]
+        for w, h, fps in [m for m in modes if m not in self.dead_modes] or modes[-1:]:
             pipe, conf = rs.pipeline(), rs.config()
             if self.cfg.get('serial'):
                 conf.enable_device(str(self.cfg['serial']))
@@ -124,17 +132,19 @@ class RealSenseCamera(Camera):
             align = rs.align(rs.stream.color)
             depth_dt = 1.0 / self.cfg.get('depth_hz', 5)
             self.error = None
-            t0, n = time.time(), 0
+            t0, n, got = time.time(), 0, False
             t_last = t_depth = time.time()
             while not self._stop:
                 # poll + sleep instead of wait_for_frames, which blocks with the GIL held
                 fr = pipe.poll_for_frames()
                 if not fr:
                     if time.time() - t_last > 5:
-                        raise RuntimeError('D435: no frames for 5 s')
+                        if not got:
+                            self.dead_modes.add((w, h, fps))
+                        raise RuntimeError(f'D435: no frames for 5 s at {w}x{h}@{fps}')
                     time.sleep(0.005)
                     continue
-                t_last = time.time()
+                t_last, got = time.time(), True
                 depth = None
                 if t_last - t_depth >= depth_dt:       # aligning depth to color is the costly part
                     t_depth = t_last
@@ -169,6 +179,8 @@ def find_uvc(name_match):
 
 
 class UVCCamera(Camera):
+    kind = 'RGB'
+
     def __init__(self, cfg):
         super().__init__()
         self.cfg = cfg
@@ -216,6 +228,8 @@ class UVCCamera(Camera):
 class OrbbecCamera(UVCCamera):
     """Gripper Gemini 335Lg through the Orbbec SDK: color + depth aligned to
     color (every 1/depth_hz s), factory intrinsics."""
+
+    kind = 'RGB-D'
 
     def _laser_on(self, ob, dev):
         """Active stereo needs the IR projector: without it plain surfaces (plate, switch)
@@ -300,6 +314,7 @@ class VisionaryCamera(Camera):
     v = 0 means no reading. color = the intensity image, depth = that z in metres
     (0 = none, so it is a height, not a range), cloud() = the grid points."""
 
+    kind = 'Depth'
     orthographic = True       # grid spacing does not grow with distance (outlier filter)
 
     def __init__(self, cfg):

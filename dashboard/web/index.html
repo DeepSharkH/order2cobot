@@ -29,19 +29,15 @@
     <section class="section scene">
       <div class="section-head">
         <h2>Scene</h2>
-        <div class="legend">
+        <div class="legend" id="scene-legend">
           <span><i class="sw sw-arm"></i>UR3e</span>
           <span><i class="sw sw-board"></i>CAD targets</span>
-          <span><i class="sw sw-cam"></i>Fixed cam</span>
-          <span><i class="sw sw-gcam"></i>Gripper cam</span>
         </div>
         <div class="tools">
           <div class="seg" id="view-seg"><span class="lbl">View</span>
             <button data-view="free" class="on" title="Orbit freely (0)">Free</button>
-            <button data-view="fixed" title="Look through the fixed D435 (1)">Fixed cam</button>
-            <button data-view="gripper" title="Look through the gripper camera (2)">Gripper cam</button>
           </div>
-          <button id="btn-cloud" class="toggle on" title="Depth clouds from both cameras">Cloud</button>
+          <button id="btn-cloud" class="toggle on" title="Depth clouds of the placed cameras">Cloud</button>
           <button id="btn-cad" class="toggle on" title="CAD models (switch, breadboard) at their registered / anchored poses, semi-transparent">CAD</button>
           <button id="btn-ovl" class="toggle on" title="Draw detections and the calibrated robot/board onto the feeds">Overlays</button>
           <button id="btn-view" title="Reset the view">Reset</button>
@@ -78,7 +74,7 @@
     </section>
 
     <section class="section side">
-      <div class="section-head"><h2>Calibration</h2></div>
+      <div class="section-head"><h2>Robot</h2></div>
       <div class="cards" id="cards"></div>
     </section>
   </main>

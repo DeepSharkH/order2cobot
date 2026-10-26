@@ -23,12 +23,14 @@ board:
 
 fixed_camera:              # RealSense D435 above the table
   label: Fixed D435
+  model: RealSense D435     # name on the view buttons and 3D labels
   serial: "818312071128"
-  modes: [[1280, 720, 30], [640, 480, 30]]   # first that works (USB2 only gets 640x480)
+  modes: [[1280, 720, 30], [1280, 720, 10], [1280, 720, 6], [640, 480, 30]]   # first that works; on USB 2, 720p only at 10/6 fps
   depth_hz: 5              # depth aligned to color this often (point cloud, base alignment)
 
 gripper_camera:            # Orbbec Gemini 335Lg on the gripper, color over UVC
   label: Gripper Gemini 335Lg
+  model: Gemini 335Lg
   match: Orbbec            # first Orbbec V4L2 node that streams YUYV (was /dev/video6)
   size: [1280, 720]
   fps: 30
@@ -39,8 +41,9 @@ gripper_camera:            # Orbbec Gemini 335Lg on the gripper, color over UVC
 
 tof_camera:                # SICK Visionary-T Mini AP (ToF, no colour) on enP7p1s0f2, Nova app over HTTP
   label: SICK T Mini
+  model: Visionary-T Mini
   ip: 192.168.136.1        # its own address (not the documented 192.168.1.10); Jetson side 192.168.136.100/24
-  hz: 10                   # Nova heightmap polls; a frame is ~0.9 MB of JSON, ~65 ms
+  hz: 15                   # Nova heightmap polls; a frame is ~0.9 MB of JSON, ~65 ms to fetch, so ~15 is the ceiling
   timeout_s: 2.0
   cloud_stride: 1          # 512x424 grid, mostly empty outside Nova's working range
   # pose: T_world_tcam in scene_file once calibrated (not yet: test position)

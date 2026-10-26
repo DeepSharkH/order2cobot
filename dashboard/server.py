@@ -571,6 +571,7 @@ def _camera(cls, cfg):
     if cfg.get('enabled', True):
         return cls(cfg).start()
     cam = Camera()
+    cam.cfg, cam.kind = cfg, cls.kind
     cam.name, cam.error = cfg.get('label', cls.__name__), 'disabled in config'
     return cam
 
