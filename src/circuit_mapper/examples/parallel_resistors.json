@@ -1,0 +1,33 @@
+{
+  "schema_version": "1.0",
+  "circuit_id": "parallel_resistors",
+  "description": "Geometry demonstration: two parallel resistors, using available casings. No power source or external connector is modeled.",
+  "components": [
+    {
+      "id": "R1",
+      "part_id": "resistor_1kohm_gap_0"
+    },
+    {
+      "id": "R2",
+      "part_id": "resistor_10kohm_gap_0"
+    }
+  ],
+  "nets": [
+    {
+      "id": "A",
+      "pins": [
+        "R1.1",
+        "R2.1"
+      ]
+    },
+    {
+      "id": "B",
+      "pins": [
+        "R1.2",
+        "R2.2"
+      ]
+    }
+  ],
+  "unconnected_pins": [],
+  "unresolved_questions": []
+}

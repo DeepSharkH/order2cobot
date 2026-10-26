@@ -9,6 +9,7 @@ dependencies = [
     "msgpack>=1.2.3",
     "numpy>=2.2.6",
     "opencv-python-headless>=5.0.0.93",
+    "ortools>=9.15.6755",
     "pydantic>=2.7",
     "pydantic-settings>=2.3",
     "python-dotenv>=1.2.4",

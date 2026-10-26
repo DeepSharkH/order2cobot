@@ -582,6 +582,7 @@
   ],
   "geometry": {
     "unit": "hole_pitch",
+    "hole_pitch_mm": 2.54,
     "column_positions": {
       "A": 0,
       "B": 1,
