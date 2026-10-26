@@ -1,0 +1,57 @@
+# Simulated workcell, robot base frame (metres unless noted).
+#
+# Object poses: the cadguide state (data/cad/<name>.yaml: fit, else registration) when this
+# checkout has one, else the snapshot below (cadguide fit of 2026-10-26 11:25 / 11:33).
+# truth_offset_mm moves the simulated object away from where the CAD guidance believes it is,
+# so a skill's search has something to find. Contact: a stiff spring on the TCP point.
+
+floor_z: 0.0063            # plate top (bottom of the switch case)
+stiffness: 15000.0         # N/m, every surface
+friction: 0.2              # sliding friction coefficient
+protective_stop_N: 100.0   # contact force that trips a protective stop (C153-like)
+ft_noise_N: 0.08           # F/T sensor noise, 1 sigma
+
+# Joint positions at start and after a reset (the real arm on 2026-10-26 16:47)
+home_q: [-0.8734, -0.4335, 0.6657, -3.2802, -1.2919, -3.7012]
+
+objects:
+  ls108g:
+    kind: switch
+    truth_offset_mm: [0.0, 0.0, 0.0]
+    snapshot:
+      T: [[0.999892, 0.011083, 0.009635, -0.273523],
+          [-0.011082, 0.999939, -0.000107, 0.168805],
+          [-0.009636, 0.0, 0.999954, 0.006348],
+          [0, 0, 0, 1]]
+      scale: [0.99513, 1.0]
+    # tp-link LS108G (dashboard/web/models/cad/ls108g.json): origin = centre of the case
+    # bottom, port face toward -y, x along the row (port 1 at -x), z up. mm.
+    size_mm: [158.0, 99.1, 25.0]
+    face_y_mm: -49.55
+    port_x_mm: [-50.925, -36.375, -21.825, -7.275, 7.275, 21.825, 36.375, 50.925]
+    port_z_mm: 14.0
+    seat_depth_mm: 13.0
+    clearance_mm: 0.3      # plug tip play in the port
+    funnel_mm: 1.2         # extra capture width at the mouth (plug nose chamfer)
+    funnel_depth_mm: 1.5
+    hold_N: 5.0            # contact springs + latch, static friction along the port: 6 N slides in,
+    hold_from_mm: 1.1      # rising from 0 at hold_from to hold_N at hold_full: 4 N stalls ~2.2 mm in
+    hold_full_mm: 2.5      # (robot, 10-25: stalls 1.1-1.6 mm in at 4 N; tune against new runs)
+  breadboard:
+    kind: breadboard
+    truth_offset_mm: [0.0, 0.0, 0.0]
+    snapshot:
+      T: [[-0.015137, 0.999883, -0.002382, -0.305742],
+          [-0.999817, -0.015164, -0.011635, -0.024562],
+          [-0.01167, 0.002206, 0.999929, 0.015767],
+          [0, 0, 0, 1]]
+      scale: [1.0, 1.0]
+    # MB-102 60-row board (dashboard/web/models/cad/breadboard.json): origin = centre of the
+    # top face, x across the columns a->j, y toward row 1, z up. Holes from that file.
+    size_mm: [55.0, 165.1, 8.15]
+    depth_mm: 7.09
+    clearance_mm: 0.15
+    funnel_mm: 0.6
+    funnel_depth_mm: 0.6
+    hold_N: 1.5            # spring-contact friction on a pin pair being pulled
+    hold_from_mm: 1.0

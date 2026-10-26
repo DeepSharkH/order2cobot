@@ -153,11 +153,58 @@ class BoardGrid:
             raise ValueError(f"{spec.name}: no CAD model, so no holes")
         return cls(spec.model, spec.size[0], instances or spec.instances or 1, **orientation)
 
+    @classmethod
+    def from_holes_json(
+        cls, path: str, flip_u: bool = False, flip_v: bool = False, numbers: int | None = None
+    ) -> "BoardGrid":
+        """A one-piece board from a hole table (assets/models/cad/breadboard.py output, e.g.
+        dashboard/web/models/cad/breadboard.json: 'a1'..'j60', 'L+1'..'R-50', mm, x across
+        a -> j, y towards number 1). One "half" (H1), numbers as printed, centred on its holes.
+        `numbers` re-lays the terminal strips for a board with another count of numbers (the
+        830-point MB-102 has 63) from the table's rows a-j and pitch; its rails are left out
+        (their grouping depends on the board)."""
+        import json
+
+        raw = json.loads(open(path).read())["holes"]
+        if numbers is not None:
+            a1 = np.array(raw["a1"])
+            step = np.array(raw["a2"]) - a1
+            raw = {
+                f"{r}{k}": (np.array(raw[f"{r}1"]) + (k - 1) * step).tolist()
+                for r in "abcdefghij"
+                for k in range(1, numbers + 1)
+            }
+        su = -1.0 if flip_u else 1.0
+        sv = -1.0 if flip_v else 1.0
+        xy = np.array(list(raw.values()))[:, :2] / 1000
+        mid = (xy.min(0) + xy.max(0)) / 2
+        holes: list[Hole] = []
+        for name, (x, y, _) in raw.items():
+            uv = (su * -(y / 1000 - mid[1]), sv * (x / 1000 - mid[0]))
+            if name[0] in "LR":
+                row, k = name[1] + name[0], int(name[2:])
+                holes.append(Hole(f"H1:{row}{k}", 1, "rail", row, k, f"H1:{row}", uv))
+            else:
+                row, k = name[0].upper(), int(name[1:])
+                strip = "A-E" if row <= "E" else "F-J"
+                holes.append(Hole(f"H1:{row}{k}", 1, "terminal", row, k, f"H1:{k}{strip}", uv))
+        g = cls.__new__(cls)
+        g.orientation = {"flip_u": flip_u, "flip_v": flip_v, "rail_plus": "table"}
+        g._args = ("json", path, numbers)
+        g.holes = holes
+        g.uv = np.array([h.uv for h in holes])
+        g.index = {h.name: k for k, h in enumerate(holes)}
+        g._tree = cKDTree(g.uv)
+        return g
+
     def __getitem__(self, name: str) -> Hole:
         return self.holes[self.index[name]]
 
     def relabel(self, **orientation: Any) -> "BoardGrid":
         """The same holes labelled for another orientation (geometry unchanged)."""
+        if self._args[0] == "json":
+            o = {**self.orientation, **orientation}
+            return BoardGrid.from_holes_json(self._args[1], o["flip_u"], o["flip_v"], self._args[2])
         return BoardGrid(*self._args, **{**self.orientation, **orientation})
 
     # ── geometry ─────────────────────────────────────────────────────────────
@@ -239,6 +286,7 @@ class BoardGrid:
         shifts_u: int = 3,
         shifts_v: int = 2,
         iters: int = 8,
+        turns: tuple[float, ...] = (0.0, np.pi),
     ) -> dict[str, Any]:
         """Rigid 2D correction (du, dv, dyaw) of the grid onto hole centres detected in the board
         frame (e.g. from a gripper-cam close-up, placed with the box pose). The initial pose is
@@ -248,14 +296,16 @@ class BoardGrid:
         The hole pattern is symmetric under a half turn (about a point 0.67 mm off the box
         centre per CAD), so a turned fit puts every hole at the same place: positions are fixed,
         labels are not. `turned` says the labels of the fit are those of the box turned half a
-        turn (`relabel(flip_u=not, flip_v=not)`); only a printed number can decide.
+        turn (`relabel(flip_u=not, flip_v=not)`); only a printed number can decide. Once it has,
+        `turns=(0.0,)` keeps the labels of this grid's orientation (the turned twin, 0.67 mm
+        away, would otherwise count as the runner-up).
         Returns the best hypothesis, its rms, matched share, and the best score of a hypothesis
         that puts the holes elsewhere: close to the best means the index is ambiguous (another
         view, or more of the board's gaps in it)."""
         P = np.atleast_2d(np.asarray(uv_seen, float))
         hyps = []
         for turn, su, sv in itertools.product(
-            (0.0, np.pi), range(-shifts_u, shifts_u + 1), range(-shifts_v, shifts_v + 1)
+            turns, range(-shifts_u, shifts_u + 1), range(-shifts_v, shifts_v + 1)
         ):
             T = np.array([su * PITCH, sv * PITCH, turn])
             for _ in range(iters):

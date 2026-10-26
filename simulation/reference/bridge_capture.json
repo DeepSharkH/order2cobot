@@ -1,0 +1,6012 @@
+{
+ "initialize": {
+  "protocolVersion": "2025-06-18",
+  "capabilities": {
+   "tools": {
+    "listChanged": true
+   },
+   "resources": {
+    "listChanged": true
+   }
+  },
+  "serverInfo": {
+   "name": "polyscopex-mcp-companion",
+   "version": "0.1.36+build.10.gdac3630"
+  },
+  "instructions": "This server bridges you to a Universal Robots PolyScope X robot/simulator. A physically-present\noperator watches your work live on the pendant's AI Agent Bridge sidebar and can pause you at any time.\n\nIf you are new to this robot, START by calling `bridge_orient` \u00e2\u0080\u0094 it returns a one-shot situational brief\n(your access tier, robot + program state, installed URCaps, and suggested next steps). Then call\n`mcp_get_guide` (no argument) to list the shipped how-to guides, and read `getting-started` before you\nauthor anything \u00e2\u0080\u0094 it covers the author\u00e2\u0086\u0092validate\u00e2\u0086\u0092load\u00e2\u0086\u0092run loop and the fail-fast rules (trust\n`hostValidated:true`, not just `valid:true`).\n\nAt the START of every task, call `bridge_report_activity` with a concise `goal` stating what you intend\nto accomplish. As you complete meaningful steps, call it again with a short `note`; when the task is\nfinished, call it with `phase:\"done\"` to clear the goal. This keeps the operator informed and able to\nsupervise safely \u00e2\u0080\u0094 treat it like narrating your plan and progress in a chat.\n\nIf a call is blocked (you are paused or out of scope), call `bridge_my_status` to see why. After a companion restart or unknown Mcp-Session-Id, re-POST initialize (omit Mcp-Session-Id); probe GET /readiness on the bridge base URL when tools are unreachable. Prefer the read-only tools to observe state before making changes."
+ },
+ "tools": [
+  {
+   "name": "urcap_list",
+   "title": "List installed URCapX'es",
+   "description": "List URCapX'es installed on the active target (vendor/urcap id, name, version) via the urservice listing API. Read effect (D1).",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false
+   },
+   "annotations": {
+    "title": "List installed URCapX'es",
+    "readOnlyHint": true,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "urcap_install",
+   "title": "Install a URCapX",
+   "description": "Install a .urcapx onto the active target by STREAMING the artifact to the controller (robot-api), GB-safe and toolchain-free (ADR-040). Pass source as exactly one of {path} (a built .urcapx on disk), {url} (http(s):// or file://, fetched+streamed), or {inline_base64} (small artifacts only). Same vendor/urcap id updates in place (persisted data preserved) unless force_replace:true (delete then install). Write effect (D6/Adjust access): autonomous on the sim, grant-once on a real robot. After upload it confirms the URCap is registered (urcap_list) and its contributions loaded (urcap_status). Identity is read from the artifact manifest; pass identity to enable the update/force-replace flow (required on the mock backend).",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "source": {
+      "type": "object",
+      "properties": {
+       "path": {
+        "description": "Path to a .urcapx on the MCP host filesystem (streamed).",
+        "type": "string",
+        "minLength": 1
+       },
+       "url": {
+        "description": "http(s):// or file:// URL to fetch + stream.",
+        "type": "string",
+        "minLength": 1
+       },
+       "inline_base64": {
+        "description": "Base64 of a SMALL .urcapx (bounded by MAX_INPUT_CHARS); escape hatch, not the main path.",
+        "type": "string",
+        "minLength": 1
+       },
+       "filename": {
+        "description": "Filename to advertise for an inline source (default urcap.urcapx).",
+        "type": "string",
+        "minLength": 1
+       }
+      },
+      "additionalProperties": false,
+      "description": "Exactly one of path / url / inline_base64."
+     },
+     "force_replace": {
+      "description": "Delete an existing same-identity URCap before installing (loses persisted data). Default false = update in place.",
+      "type": "boolean"
+     },
+     "identity": {
+      "description": "URCapX identity; optional on fresh install (read from manifest), required for update/force-replace and on the mock backend.",
+      "type": "object",
+      "properties": {
+       "vendorId": {
+        "type": "string",
+        "minLength": 1,
+        "description": "URCapX vendor id (manifest metadata.vendorID)."
+       },
+       "urcapId": {
+        "type": "string",
+        "minLength": 1,
+        "description": "URCapX id (manifest metadata.urcapID)."
+       },
+       "name": {
+        "description": "URCapX name (presentation only).",
+        "type": "string",
+        "minLength": 1
+       },
+       "version": {
+        "description": "URCapX version (presentation only).",
+        "type": "string",
+        "minLength": 1
+       }
+      },
+      "required": [
+       "vendorId",
+       "urcapId"
+      ],
+      "additionalProperties": false
+     },
+     "expected_fingerprint": {
+      "description": "sha256 of the artifact from urcap build (GAP-017); install fail-closes on a mismatch.",
+      "type": "string",
+      "minLength": 1
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "source"
+    ]
+   },
+   "annotations": {
+    "title": "Install a URCapX",
+    "readOnlyHint": false,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "urcap_remove",
+   "title": "Remove a URCapX",
+   "description": "Remove an installed URCapX from the active target by vendor/urcap id, natively over robot-api (ADR-040). Get the identity from urcap_list. Destructive effect (D6/Manage access \u00e2\u0080\u0094 removal wipes the URCap's persisted data): autonomous on the sim, grant-once (operator step-up optional) on a real robot. Confirms removal via urcap_list.",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "vendor_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Vendor id of the URCapX to remove (from urcap_list)."
+     },
+     "urcap_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "URCapX id to remove (from urcap_list)."
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "vendor_id",
+     "urcap_id"
+    ]
+   },
+   "annotations": {
+    "title": "Remove a URCapX",
+    "readOnlyHint": false,
+    "destructiveHint": true
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "robot_get_state",
+   "title": "Get robot state",
+   "description": "Read current robot mode, safety mode, control mode and operational mode from the PolyScope X Robot API, PLUS a derived motion-runnable summary (MG-13): `remoteControlEnabled` (controlmode=REMOTE \u00e2\u0080\u0094 the exact HTTP-403 precondition), `motionRunnable` (do the controller's mode/safety gates permit program_run play/resume right now \u00e2\u0080\u0094 NOT a claim the program is loaded/valid), and `motionRunnableReason` (names the first blocker, or why motion is permitted). Target-aware: on the sim `motionRunnable` is true (the Remote Control gate is a real-robot boundary). Read-only (D2).",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false
+   },
+   "annotations": {
+    "title": "Get robot state",
+    "readOnlyHint": true,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "robot_set_robot_state",
+   "title": "Set robot state (power / brake release / safety recovery)",
+   "description": "Set robot state via the Robot API (PUT /robotstate/v1/state): POWER_ON | POWER_OFF | BRAKE_RELEASE | UNLOCK_PROTECTIVE_STOP | RESTART_SAFETY. POWER_ON energizes the arm (\u00e2\u0086\u0092 IDLE, brakes engaged \u00e2\u0080\u0094 no motion); BRAKE_RELEASE releases the brakes (\u00e2\u0086\u0092 RUNNING) and can let the arm settle slightly under gravity; POWER_OFF de-energizes. Bring an idle arm to a program-runnable state with POWER_ON then BRAKE_RELEASE. The controller fail-closes (HTTP 403 \u00e2\u0086\u0092 remote_control_required) unless it is in Remote Control mode \u00e2\u0080\u0094 the same hardware gate as program_run \u00e2\u0080\u0094 so this is never bypassable by the MCP. Effect: write. Observe the outcome with robot_get_state.",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "action": {
+      "type": "string",
+      "enum": [
+       "POWER_ON",
+       "POWER_OFF",
+       "BRAKE_RELEASE",
+       "UNLOCK_PROTECTIVE_STOP",
+       "RESTART_SAFETY"
+      ],
+      "description": "Robot-state action. POWER_ON\u00e2\u0086\u0092BRAKE_RELEASE to reach RUNNING; POWER_OFF to de-energize; UNLOCK_PROTECTIVE_STOP / RESTART_SAFETY to recover safety."
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "action"
+    ]
+   },
+   "annotations": {
+    "title": "Set robot state (power / brake release / safety recovery)",
+    "readOnlyHint": false,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "robot_inverse_kinematics",
+   "title": "Inverse kinematics",
+   "description": "Compute the joint positions (radians) that reach a target TCP pose (position [x,y,z] m, orientation [rx,ry,rz] rotation vector rad). Optional qNear joint seed biases the solution (accepts either the {base..wrist3} object OR a [j0..j5] array \u00e2\u0080\u0094 the same shape a move node's waypoint.qNear uses); omitted \u00e2\u0086\u0092 seeded from the robot's current joints. Pure computation, read-only (D2); no motion. Requires the AI Agent Bridge webapp mounted on the pendant.",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "pose": {
+      "type": "object",
+      "properties": {
+       "position": {
+        "type": "array",
+        "prefixItems": [
+         {
+          "type": "number"
+         },
+         {
+          "type": "number"
+         },
+         {
+          "type": "number"
+         }
+        ]
+       },
+       "orientation": {
+        "type": "array",
+        "prefixItems": [
+         {
+          "type": "number"
+         },
+         {
+          "type": "number"
+         },
+         {
+          "type": "number"
+         }
+        ]
+       }
+      },
+      "required": [
+       "position",
+       "orientation"
+      ]
+     },
+     "qNear": {
+      "anyOf": [
+       {
+        "type": "object",
+        "properties": {
+         "base": {
+          "type": "number"
+         },
+         "shoulder": {
+          "type": "number"
+         },
+         "elbow": {
+          "type": "number"
+         },
+         "wrist1": {
+          "type": "number"
+         },
+         "wrist2": {
+          "type": "number"
+         },
+         "wrist3": {
+          "type": "number"
+         }
+        },
+        "required": [
+         "base",
+         "shoulder",
+         "elbow",
+         "wrist1",
+         "wrist2",
+         "wrist3"
+        ]
+       },
+       {
+        "type": "array",
+        "prefixItems": [
+         {
+          "type": "number"
+         },
+         {
+          "type": "number"
+         },
+         {
+          "type": "number"
+         },
+         {
+          "type": "number"
+         },
+         {
+          "type": "number"
+         },
+         {
+          "type": "number"
+         }
+        ]
+       }
+      ]
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "pose"
+    ]
+   },
+   "annotations": {
+    "title": "Inverse kinematics",
+    "readOnlyHint": true,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "robot_forward_kinematics",
+   "title": "Forward kinematics",
+   "description": "Compute the TCP pose (position [x,y,z] m, orientation [rx,ry,rz] rotation vector rad) for a set of joint positions (radians), given as either the {base..wrist3} object OR a [j0..j5] array (the same shape a move node's waypoint.qNear uses). Pure computation, read-only (D2); no motion. Requires the AI Agent Bridge webapp mounted on the pendant.",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "jointPositions": {
+      "anyOf": [
+       {
+        "type": "object",
+        "properties": {
+         "base": {
+          "type": "number"
+         },
+         "shoulder": {
+          "type": "number"
+         },
+         "elbow": {
+          "type": "number"
+         },
+         "wrist1": {
+          "type": "number"
+         },
+         "wrist2": {
+          "type": "number"
+         },
+         "wrist3": {
+          "type": "number"
+         }
+        },
+        "required": [
+         "base",
+         "shoulder",
+         "elbow",
+         "wrist1",
+         "wrist2",
+         "wrist3"
+        ]
+       },
+       {
+        "type": "array",
+        "prefixItems": [
+         {
+          "type": "number"
+         },
+         {
+          "type": "number"
+         },
+         {
+          "type": "number"
+         },
+         {
+          "type": "number"
+         },
+         {
+          "type": "number"
+         },
+         {
+          "type": "number"
+         }
+        ]
+       }
+      ]
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "jointPositions"
+    ]
+   },
+   "annotations": {
+    "title": "Forward kinematics",
+    "readOnlyHint": true,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "robot_get_pose",
+   "title": "Get current robot pose",
+   "description": "Read the robot's current position as a typed waypoint (TCP pose, reference frame, and the near-joint configuration). Read-only (D2). Requires the AI Agent Bridge webapp mounted on the pendant. If the arm is powered off (no direct pose) the pose is DERIVED from the live joint encoders via forward kinematics and tagged 'derivedVia' \u00e2\u0080\u0094 so a parked arm still yields a usable waypoint.",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false
+   },
+   "annotations": {
+    "title": "Get current robot pose",
+    "readOnlyHint": true,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "robot_get_joint_positions",
+   "title": "Get current joint positions",
+   "description": "Read the robot's current joint positions (base, shoulder, elbow, wrist1-3, radians). Read-only (D2). Requires the AI Agent Bridge webapp mounted on the pendant.",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false
+   },
+   "annotations": {
+    "title": "Get current joint positions",
+    "readOnlyHint": true,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "robot_get_kinematic_info",
+   "title": "Get robot kinematic info",
+   "description": "Read the robot's calibrated kinematic info \u00e2\u0080\u0094 per-link Denavit-Hartenberg parameters (DHTheta, DHa, DHd, DHAlpha) and checksum. Read-only (D2). Requires the AI Agent Bridge webapp mounted on the pendant.",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false
+   },
+   "annotations": {
+    "title": "Get robot kinematic info",
+    "readOnlyHint": true,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "smartskill_list",
+   "title": "List smart skills",
+   "description": "List the smart-skill instances configured in the loaded application \u00e2\u0080\u0094 each with its `type` (skill kind, e.g. ur-center, ur-retract, ur-move-into-contact), `name` (the configured instance), `enabled`, `version`, and `parameters`. Read-only (D2). Requires the AI Agent Bridge webapp mounted on the pendant. (Executing a smart skill is not offered \u00e2\u0080\u0094 it is motion, gated off by policy.)",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false
+   },
+   "annotations": {
+    "title": "List smart skills",
+    "readOnlyHint": true,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "smartskill_status",
+   "title": "Smart-skill execution status",
+   "description": "Read smart-skill execution status: `active` (the currently-running instance, or null) and `executionAllowed` (whether the host would permit a skill to run now \u00e2\u0080\u0094 false if the 3PE enabling device is disengaged, the robot is powered off, or Freedrive is enabled). Informational, read-only (D2). Requires the AI Agent Bridge webapp mounted on the pendant.",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false
+   },
+   "annotations": {
+    "title": "Smart-skill execution status",
+    "readOnlyHint": true,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "smartskill_run",
+   "title": "Run a smart skill",
+   "description": "Run a configured smart-skill instance by `type` (e.g. ur-center, ur-retract, ur-move-into-contact) and optional `name` (disambiguates instances of the same type; omitted \u00e2\u0086\u0092 the first). Discover valid ids with smartskill_list. MOTION-tier (ADR-054): requires a 'Move & run' grant and PHYSICALLY MOVES the arm on a real robot. The host fails closed (execution_not_allowed) unless it permits a run \u00e2\u0080\u0094 the 3PE enabling device engaged, robot powered, not in Freedrive \u00e2\u0080\u0094 which is the hardware safety floor. Resolves on START, not completion; observe progress via smartskill_status and halt with smartskill_stop.",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "type": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Smart-skill kind, e.g. ur-center (see smartskill_list `type`)."
+     },
+     "name": {
+      "description": "Instance name to disambiguate same-type instances (optional).",
+      "type": "string"
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "type"
+    ]
+   },
+   "annotations": {
+    "title": "Run a smart skill",
+    "readOnlyHint": false,
+    "destructiveHint": true
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "smartskill_stop",
+   "title": "Stop the active smart skill",
+   "description": "Stop the currently-running smart skill (stopInstance). De-escalating write-tier (ADR-054) \u00e2\u0080\u0094 always reachable below the Move & run grant so a running skill can be halted. A no-op success when none is running.",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false
+   },
+   "annotations": {
+    "title": "Stop the active smart skill",
+    "readOnlyHint": false,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "signal_list",
+   "title": "List source signals (live)",
+   "description": "List the runtime source signals (I/O) of the loaded application \u00e2\u0080\u0094 each with `group`, `source`, `signalID`, `name`, `direction` (IN/OUT), `valueType` (BOOLEAN/FLOAT/REGISTER/CUSTOM), and its current live `value` (null when it could not be observed). Use the group+source+signalID to address a signal for signal_set / signal_toggle. Read-only (D2). Requires the AI Agent Bridge webapp mounted on the pendant.",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false
+   },
+   "annotations": {
+    "title": "List source signals (live)",
+    "readOnlyHint": true,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "signal_set",
+   "title": "Set a source signal",
+   "description": "Set a runtime signal to a value: boolean for a digital signal, number for float/register. Address it by `group` + `source` + `signal` (from signal_list). Write (D9); ACTUATES real equipment on a real robot (autonomous within an Adjust+ grant, confirm on the dev-host). Host-validated before applied; fails closed if the host rejects the value or the frontend is not mounted.",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "group": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Source group id (signal_list `group`)."
+     },
+     "source": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Source id (signal_list `source`)."
+     },
+     "signal": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Signal id (signal_list `signalID`)."
+     },
+     "value": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "number"
+       }
+      ],
+      "description": "Boolean for digital; number for float/register."
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "group",
+     "source",
+     "signal",
+     "value"
+    ]
+   },
+   "annotations": {
+    "title": "Set a source signal",
+    "readOnlyHint": false,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "signal_toggle",
+   "title": "Toggle a boolean signal",
+   "description": "Toggle a BOOLEAN output: read its current value and set the inverse. Address it by `group` + `source` + `signal` (from signal_list). Write (D9); ACTUATES real equipment on a real robot. Boolean signals only \u00e2\u0080\u0094 non-boolean or an unreadable current value fails closed (use signal_set with an explicit value instead).",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "group": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Source group id (signal_list `group`)."
+     },
+     "source": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Source id (signal_list `source`)."
+     },
+     "signal": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Signal id (signal_list `signalID`)."
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "group",
+     "source",
+     "signal"
+    ]
+   },
+   "annotations": {
+    "title": "Toggle a boolean signal",
+    "readOnlyHint": false,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "program_get_state",
+   "title": "Get program state",
+   "description": "Read the current program lifecycle state (STOPPED/PLAYING/PAUSED) from the Robot API. Read-only (D2).",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false
+   },
+   "annotations": {
+    "title": "Get program state",
+    "readOnlyHint": true,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "program_load",
+   "title": "Load a program into the pendant UI (write)",
+   "description": "Load/activate an authored application as the loaded program. Confirms by read-back (GET /program/v1/loaded): returns success ONLY when the loaded-program read-back matches the request; otherwise a load_unconfirmed error \u00e2\u0080\u0094 never a fabricated success (ADR-038). Effect: write \u00e2\u0080\u0094 autonomous on sim, manual-confirm on a real robot; never motion (ADR-036/038). Pass { appId } (preferred) or { programName }; a programId (e.g. from program_create / program_get_loaded) is also accepted \u00e2\u0080\u0094 load resolves by appId/programName, so the application's program is activated. Use program_get_state to observe lifecycle state.",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "appId": {
+      "description": "Application id to load (preferred; from program_list).",
+      "type": "string"
+     },
+     "programName": {
+      "description": "Program name to load (the Robot API's native key).",
+      "type": "string"
+     },
+     "programId": {
+      "description": "Accepted for convenience (MG-16); advisory \u00e2\u0080\u0094 load resolves by appId/programName, so it is ignored here.",
+      "type": "string"
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false
+   },
+   "annotations": {
+    "title": "Load a program into the pendant UI (write)",
+    "readOnlyHint": false,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "program_import",
+   "title": "Import a program (.urpx) into the library (write)",
+   "description": "Import a .urpx program onto the active target by STREAMING the artifact to the controller (robot-api POST/PUT /programs/v1/), GB-safe and toolchain-free \u00e2\u0080\u0094 the program-side analogue of urcap_install. Pass source as exactly one of {path} (a .urpx on the MCP HOST's filesystem \u00e2\u0080\u0094 the robot side when the MCP is on-robot, NOT the machine running the agent), {url} (http(s):// or file://, fetched+streamed by the host), {staged_id} (bytes you streamed to the host via artifact_put \u00e2\u0080\u0094 the client\u00e2\u0086\u0092host route when the host is remote and the .urpx lives on your machine), or {inline_base64} (tiny .urpx only). Default imports as NEW (POST); a name collision fails closed as program_exists \u00e2\u0080\u0094 set force_replace:true to update in place (PUT). Confirms by GET /programs/v1/ read-back (ADR-038); returns import_unconfirmed if the upload was accepted but the program did not appear. Effect: write \u00e2\u0080\u0094 autonomous on sim, manual-confirm on a real robot; never motion. The .urpx carries its own program name; after import, load it with program_load { programName } then program_run.",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "source": {
+      "type": "object",
+      "properties": {
+       "path": {
+        "description": "Path to a .urpx on the MCP HOST's filesystem (streamed). The host is the robot side when the MCP runs on-robot \u00e2\u0080\u0094 NOT the machine running the agent.",
+        "type": "string",
+        "minLength": 1
+       },
+       "url": {
+        "description": "http(s):// or file:// URL the HOST fetches + streams.",
+        "type": "string",
+        "minLength": 1
+       },
+       "inline_base64": {
+        "description": "Base64 of a TINY .urpx (bounded by MAX_INPUT_CHARS); escape hatch, not the main path. For a real program use staged_id.",
+        "type": "string",
+        "minLength": 1
+       },
+       "staged_id": {
+        "description": "Handle from artifact_put \u00e2\u0080\u0094 bytes you streamed to the host in chunks. The client\u00e2\u0086\u0092host route when the host is remote and the .urpx lives on your machine (ADR-056).",
+        "type": "string",
+        "minLength": 1
+       },
+       "filename": {
+        "description": "Filename to advertise (cosmetic; the program name comes from the .urpx). Default program.urpx / the path basename.",
+        "type": "string",
+        "minLength": 1
+       }
+      },
+      "additionalProperties": false,
+      "description": "Exactly one of path / url / staged_id / inline_base64."
+     },
+     "force_replace": {
+      "description": "Update an existing program in place (PUT) instead of importing new (POST). Default false; a name collision then fails closed as program_exists.",
+      "type": "boolean"
+     },
+     "expected_fingerprint": {
+      "description": "sha256 the streamed bytes must hash to (GAP-017); import fail-closes on a mismatch.",
+      "type": "string",
+      "minLength": 1
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "source"
+    ]
+   },
+   "annotations": {
+    "title": "Import a program (.urpx) into the library (write)",
+    "readOnlyHint": false,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "artifact_put",
+   "title": "Stage an artifact to the host in chunks (write)",
+   "description": "Stream an operator-held artifact (e.g. a .urpx on the machine talking to the agent) to the MCP host in base64 chunks, for import when the host is remote/on-robot and source.path can't reach it. First call: omit stage_id and send seq:0 \u00e2\u0080\u0094 the response returns the minted stage_id. Subsequent calls: pass that stage_id with strictly increasing seq; set final:true on the last chunk. Each chunk must fit under MAX_INPUT_CHARS; the reassembled artifact is bounded by a total cap (a GB .urcapx must use host-side streaming via source.path/url instead \u00e2\u0080\u0094 ADR-040). On final, the host hashes the bytes (fail-closes on an expected_fingerprint mismatch, GAP-017) and returns { stage_id, complete:true, bytes, fingerprint }. Then call program_import { source: { staged_id: stage_id } }. Effect: write \u00e2\u0080\u0094 never contacts the controller and never moves the arm.",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "base64_chunk": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Base64 of this chunk's bytes. Keep each chunk under MAX_INPUT_CHARS."
+     },
+     "seq": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991,
+      "description": "0-based chunk index. Must be 0 on the first (stage-minting) call and strictly increase thereafter."
+     },
+     "final": {
+      "type": "boolean",
+      "description": "True on the last chunk: the host closes the file, hashes it, and returns the completed stage_id."
+     },
+     "stage_id": {
+      "description": "Handle from the first call's response. Omit ONLY on the first (seq:0) chunk \u00e2\u0080\u0094 the host mints and returns one.",
+      "type": "string",
+      "minLength": 1
+     },
+     "filename": {
+      "description": "Filename to remember for the multipart part at import time (cosmetic; the program name comes from the .urpx).",
+      "type": "string",
+      "minLength": 1
+     },
+     "expected_fingerprint": {
+      "description": "sha256 the reassembled bytes must hash to (GAP-017). Checked on the final chunk; staging fail-closes and discards on a mismatch.",
+      "type": "string",
+      "minLength": 1
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "base64_chunk",
+     "seq",
+     "final"
+    ]
+   },
+   "annotations": {
+    "title": "Stage an artifact to the host in chunks (write)",
+    "readOnlyHint": false,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "application_list_io",
+   "title": "List application IO",
+   "description": "Enumerate the LOADED application's IO ports, read in-process from the host's own SourceService. Every port is qualified by `group` (the source group, e.g. ur-robot-io) + `source` (e.g. ur-robot-tool-io) + `sourceName`, because a port id like `CI 0` or `DO 0` repeats across sources and the bare name is not an identity. DECLARATIONS only \u00e2\u0080\u0094 no live values; use signal_list for those. Read (D1). Requires the AI Agent Bridge webapp mounted on the pendant; degrades to a structured gap otherwise.",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false
+   },
+   "annotations": {
+    "title": "List application IO",
+    "readOnlyHint": true,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "application_list_signals",
+   "title": "List application signals",
+   "description": "Enumerate the LOADED application's declared signals, read in-process from the host's own SourceService. Each entry carries `group` + `source` + `sourceName` alongside `name`, so signals that share an id across sources (CI 0, DO 0) stay distinct and addressable. DECLARATIONS only (name/type/access) \u00e2\u0080\u0094 no live values; use signal_list to read or signal_set/signal_toggle to write those. Read (D1). Requires the AI Agent Bridge webapp mounted on the pendant; degrades to a structured gap otherwise.",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false
+   },
+   "annotations": {
+    "title": "List application signals",
+    "readOnlyHint": true,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "application_list_variables",
+   "title": "List application variables",
+   "description": "Enumerate application/installation/global variables (name, type, scope, value) on the active target. Read (D1). Live values ride the ROS 2 / Foxglove bridge (global/shared variable-update topics, ADR-007 RosAdapter). Degrades to a structured gap where no live variable channel is reachable.",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false
+   },
+   "annotations": {
+    "title": "List application variables",
+    "readOnlyHint": true,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "system_list_topics",
+   "title": "List ROS 2 / Foxglove topics",
+   "description": "Enumerate ROS 2 / Foxglove topics on the active target (name, type, direction). Read (D1). Degrades to a structured gap until the ADR-007 RosAdapter (Foxglove/rosbridge) lands.",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false
+   },
+   "annotations": {
+    "title": "List ROS 2 / Foxglove topics",
+    "readOnlyHint": true,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "program_list",
+   "title": "List programs",
+   "description": "List applications on the target. Each entry's `id` is the appId every authoring tool needs (program_get, program_add_node, \u00e2\u0080\u00a6) \u00e2\u0080\u0094 always pass that id, never a name. `name` is the APPLICATION name, which may differ from the loaded program's own name; to target the active program use program_get_loaded (returns its appId + programId). Read (D1).",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false
+   },
+   "annotations": {
+    "title": "List programs",
+    "readOnlyHint": true,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "program_get_loaded",
+   "title": "Get the loaded program",
+   "description": "Read which program is currently loaded/active on the controller and the ids your authoring needs: `loaded` (the program's own name), `appId`, and `programId` (pass these two to program_get / program_add_node / program_update_node \u00e2\u0080\u0094 in-process authoring lands in the loaded program). Resolves the appId by the program's OWN name, so it works even when the application is named differently from its program; `applicationName` is included only when it differs. Reads the Robot API directly, so it answers even when the pendant frontend is not mounted. Read (D2).",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false
+   },
+   "annotations": {
+    "title": "Get the loaded program",
+    "readOnlyHint": true,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "program_list_node_types",
+   "title": "List program node types",
+   "description": "The node toolbox: valid program-node types and whether each allows children. Read (D1).",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false
+   },
+   "annotations": {
+    "title": "List program node types",
+    "readOnlyHint": true,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "program_describe_node_type",
+   "title": "Describe a program node type",
+   "description": "Describe one program node type so you can form a valid program_add_node call: whether it allows children, its factory version, the default parameters that will be applied, and \u00e2\u0080\u0094 for authorable nodes \u00e2\u0080\u0094 an `authoring` hint giving the ergonomic `parameters` to pass (e.g. ur-module/ur-function take `name`, ur-call-function takes `function` by name, moves take `waypoint.qNear`), where the node belongs (e.g. modules go under the ur-modules node), and a worked example. Read (D1).",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "type": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Node type, e.g. ur-linear-move, ur-set, ur-if."
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "type"
+    ]
+   },
+   "annotations": {
+    "title": "Describe a program node type",
+    "readOnlyHint": true,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "program_create",
+   "title": "Create a program",
+   "description": "Create a new program (application shell + root program node). Returns a structurally-validated shell on the `rest-fallback` channel BY DESIGN \u00e2\u0080\u0094 a not-yet-loaded program has no in-process host-validation path (see the response `note`); host-truth begins after program_load, on the first program_add_node/program_validate. A live shell also inherits the platform's standard symbolHistory waypoint-name templates (harmless declarations). Write (D4).",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Program/application name."
+     },
+     "robotType": {
+      "description": "Robot type (default from profile, e.g. UR5).",
+      "type": "string"
+     },
+     "view": {
+      "description": "Tree in the response: outline (default; nodes + guids + short labels) or full (every parameter \u00e2\u0080\u0094 large).",
+      "type": "string",
+      "enum": [
+       "outline",
+       "full"
+      ]
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "name"
+    ]
+   },
+   "annotations": {
+    "title": "Create a program",
+    "readOnlyHint": false,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "program_get",
+   "title": "Get a program tree",
+   "description": "Read an application and its program tree (summarized as an indented node list, each line ending with the node's FULL guid). view defaults to `outline` \u00e2\u0080\u0094 every node + guid + a short identifying label (folderName, moveType, signal, assigned variable/value, expression\u00e2\u0080\u00a6), with the heavy per-waypoint pose math and advanced motion blocks dropped. Pass view:'full' for the complete parameters of every node (large \u00e2\u0080\u0094 a big program can exceed the result token limit, so reach for it only on a small program or after locating the node of interest in the outline). Read (D2).",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "appId": {
+      "anyOf": [
+       {
+        "type": "string",
+        "minLength": 1
+       },
+       {
+        "type": "number"
+       }
+      ],
+      "description": "Application id (from program_list / program_get_loaded). A number is accepted and coerced."
+     },
+     "programId": {
+      "description": "Optional: the program's id within the app (from program_get_loaded). Fetches that specific program; omit for the app's first program.",
+      "type": "string"
+     },
+     "view": {
+      "description": "outline (default): nodes + guids + short labels, geometry dropped. full: every parameter (large).",
+      "type": "string",
+      "enum": [
+       "outline",
+       "full"
+      ]
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "appId"
+    ]
+   },
+   "annotations": {
+    "title": "Get a program tree",
+    "readOnlyHint": true,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "program_add_node",
+   "title": "Add a program node",
+   "description": "Insert a node into the program tree under a parent (by guid) at an optional position. BUILD IN BATCHES: pass `children` to author a whole subtree (e.g. a module with functions, or a routine of moves) in ONE call \u00e2\u0080\u0094 it is built and inserted in a single host op for about the cost of one node, where every single add is a full pendant round-trip (~0.5\u00e2\u0080\u00931.5 s). To batch a run of sibling steps, wrap them in one ur-folder with the steps as its children. The insert appends (the parent's existing children are preserved). The response carries a `validation` block ({valid, messages, hostValidated}) for the WHOLE program after the edit (the pendant's own verdict once its post-edit validation has run), plus `nodeValidity` for the added node alone \u00e2\u0080\u0094 read it as you build: valid:false does NOT mean the add failed (the node WAS written), it flags what still needs fixing (e.g. an undefined/untaught move waypoint) so you can correct it now instead of discovering it at program_run. The response tree is an OUTLINE (nodes, guids, short labels); pass view:\"full\", or call program_get, for every parameter. Write (D4).",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "appId": {
+      "type": "string",
+      "minLength": 1
+     },
+     "programId": {
+      "type": "string",
+      "minLength": 1
+     },
+     "parentGuid": {
+      "description": "Parent node guid. Default (omitted): appended to the end of the main program body \u00e2\u0080\u0094 the executable `ur-code` section \u00e2\u0080\u0094 never to the ur-program root or another section (MG-21).",
+      "type": "string"
+     },
+     "position": {
+      "description": "0-based index among the parent's children to insert AT \u00e2\u0080\u0094 inserts BETWEEN existing children (0 = first, \u00e2\u0089\u00a5 count = append). Default: append.",
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+     },
+     "type": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Node type (see program_list_node_types), e.g. ur-comment, ur-folder, ur-if, ur-loop, ur-assignment, ur-halt, ur-popup (operator message \u00e2\u0080\u0094 lowers to an Operator input node in message mode; parameters { message, level?, blocking? }), ur-circle (full circle \u00e2\u0080\u0094 lowers to a ur-folder of 2 ur-move-c arcs; parameters { waypoints:[via1,end1,via2,end2], tcpSpeed?, tcpAcceleration? }), schunk-grip / schunk-release / schunk-acknowledge (SCHUNK gripper \u00e2\u0080\u0094 lower to the SCHUNK program node; parameters { gripper, \u00e2\u0080\u00a6 } per program_describe_node_type)."
+     },
+     "parameters": {
+      "description": "Node parameters (merged over type defaults).",
+      "type": "object",
+      "propertyNames": {
+       "type": "string"
+      },
+      "additionalProperties": {}
+     },
+     "children": {
+      "description": "Optional child subtree ({type,parameters,children} recursively). When present the node is built and inserted as a multi-node subtree in one host op.",
+      "type": "array",
+      "items": {
+       "$ref": "#/$defs/__schema0"
+      },
+      "$defs": {
+       "__schema0": {
+        "type": "object",
+        "properties": {
+         "type": {
+          "type": "string",
+          "minLength": 1
+         },
+         "parameters": {
+          "type": "object",
+          "propertyNames": {
+           "type": "string"
+          },
+          "additionalProperties": {}
+         },
+         "children": {
+          "type": "array",
+          "items": {
+           "$ref": "#/$defs/__schema0"
+          }
+         }
+        },
+        "required": [
+         "type"
+        ]
+       }
+      }
+     },
+     "view": {
+      "description": "Tree in the response: outline (default; nodes + guids + short labels) or full (every parameter \u00e2\u0080\u0094 large).",
+      "type": "string",
+      "enum": [
+       "outline",
+       "full"
+      ]
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "appId",
+     "programId",
+     "type"
+    ]
+   },
+   "annotations": {
+    "title": "Add a program node",
+    "readOnlyHint": false,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "program_update_node",
+   "title": "Update a program node",
+   "description": "Update (parameterize) a node's parameters by guid. The response tree is an OUTLINE (nodes, guids, short labels); pass view:\"full\", or call program_get, for every parameter. Write (D4).",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "appId": {
+      "type": "string",
+      "minLength": 1
+     },
+     "programId": {
+      "type": "string",
+      "minLength": 1
+     },
+     "guid": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Target node guid."
+     },
+     "parameters": {
+      "type": "object",
+      "propertyNames": {
+       "type": "string"
+      },
+      "additionalProperties": {},
+      "description": "Parameters to merge into the node."
+     },
+     "view": {
+      "description": "Tree in the response: outline (default; nodes + guids + short labels) or full (every parameter \u00e2\u0080\u0094 large).",
+      "type": "string",
+      "enum": [
+       "outline",
+       "full"
+      ]
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "appId",
+     "programId",
+     "guid",
+     "parameters"
+    ]
+   },
+   "annotations": {
+    "title": "Update a program node",
+    "readOnlyHint": false,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "program_move_node",
+   "title": "Move a program node",
+   "description": "Move/reparent a node by guid to a new parent and/or position. The pendant has no move, so the node (with its subtree) is removed and re-inserted: it gets a NEW guid, returned as `guid` \u00e2\u0080\u0094 use that one afterwards. The response tree is an OUTLINE (nodes, guids, short labels); pass view:\"full\", or call program_get, for every parameter. Write (D4).",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "appId": {
+      "type": "string",
+      "minLength": 1
+     },
+     "programId": {
+      "type": "string",
+      "minLength": 1
+     },
+     "guid": {
+      "type": "string",
+      "minLength": 1
+     },
+     "parentGuid": {
+      "description": "New parent guid (default: keep current parent).",
+      "type": "string"
+     },
+     "position": {
+      "description": "New 0-based index among the target parent's children (0 = first, \u00e2\u0089\u00a5 count = last). Default: append.",
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+     },
+     "view": {
+      "description": "Tree in the response: outline (default; nodes + guids + short labels) or full (every parameter \u00e2\u0080\u0094 large).",
+      "type": "string",
+      "enum": [
+       "outline",
+       "full"
+      ]
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "appId",
+     "programId",
+     "guid"
+    ]
+   },
+   "annotations": {
+    "title": "Move a program node",
+    "readOnlyHint": false,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "program_delete_node",
+   "title": "Delete a program node",
+   "description": "Delete a node (and its subtree) by guid. The response tree is an OUTLINE (nodes, guids, short labels); pass view:\"full\", or call program_get, for every parameter. Write (D4).",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "appId": {
+      "type": "string",
+      "minLength": 1
+     },
+     "programId": {
+      "type": "string",
+      "minLength": 1
+     },
+     "guid": {
+      "type": "string",
+      "minLength": 1
+     },
+     "view": {
+      "description": "Tree in the response: outline (default; nodes + guids + short labels) or full (every parameter \u00e2\u0080\u0094 large).",
+      "type": "string",
+      "enum": [
+       "outline",
+       "full"
+      ]
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "appId",
+     "programId",
+     "guid"
+    ]
+   },
+   "annotations": {
+    "title": "Delete a program node",
+    "readOnlyHint": false,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "program_validate",
+   "title": "Validate a program",
+   "description": "Validate the program tree: node types/structure AND deep Move-node checks \u00e2\u0080\u0094 every ur-linear-move/ur-joint-move/ur-move-c/ur-move-p must have a DEFINED waypoint (catches the dead-program false-green where a move target was silently dropped). Returns {valid, messages, channel, hostValidated}. hostValidated:false means this is structural deep validation, not the pendant's host validator \u00e2\u0080\u0094 a valid:true is necessary but does not by itself guarantee program_run/play acceptance. Read (D7).",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "appId": {
+      "type": "string",
+      "minLength": 1
+     },
+     "programId": {
+      "description": "Accepted for convenience (MG-16) \u00e2\u0080\u0094 the id program_create / program_add_node use. Advisory: an application has one main program, so this resolves by appId and ignores it.",
+      "type": "string"
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "appId"
+    ]
+   },
+   "annotations": {
+    "title": "Validate a program",
+    "readOnlyHint": true,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "program_generate_script",
+   "title": "Generate URScript",
+   "description": "Generate URScript from the program tree (client-side codegen, ADR-010). Read-only (D2) \u00e2\u0080\u0094 a pure transform of the tree, writes nothing; a good way to read a program's logic without walking the node tree.",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "appId": {
+      "anyOf": [
+       {
+        "type": "string",
+        "minLength": 1
+       },
+       {
+        "type": "number"
+       }
+      ],
+      "description": "Application id. A number is accepted and coerced."
+     },
+     "programId": {
+      "description": "Accepted for convenience (MG-16) \u00e2\u0080\u0094 the id program_create / program_add_node use. Advisory: an application has one main program, so this resolves by appId and ignores it.",
+      "type": "string"
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "appId"
+    ]
+   },
+   "annotations": {
+    "title": "Generate URScript",
+    "readOnlyHint": true,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "program_delete",
+   "title": "Delete a program",
+   "description": "Delete an application (program) entirely. Destructive (D10); manual-confirm gated on a real robot. FAILS CLOSED (MG-48) if the target is the currently-LOADED/active application: deleting the loaded app leaves the controller with a dangling loaded pointer that wedges the pendant on 'Execute application on load behaviors' and jams the in-process authoring channel for every connection. Load a DIFFERENT program first (program_load { appId } \u00e2\u0080\u0094 e.g. the Default application), then delete this one.",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "appId": {
+      "type": "string",
+      "minLength": 1
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "appId"
+    ]
+   },
+   "annotations": {
+    "title": "Delete a program",
+    "readOnlyHint": false,
+    "destructiveHint": true
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "operator_get_screen",
+   "title": "Get the operator screen",
+   "description": "Read which operator screen is active and the default screen's Status and Configuration items (by name). `editable` is true only while the default screen is active. Read (D5).",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "appId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Application id."
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "appId"
+    ]
+   },
+   "annotations": {
+    "title": "Get the operator screen",
+    "readOnlyHint": true,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "operator_list_widget_types",
+   "title": "List operator widget types",
+   "description": "The default screen's item kinds: status (shows a variable), value-input (the operator sets a variable) and dropdown (the operator picks a function). Read (D1).",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false
+   },
+   "annotations": {
+    "title": "List operator widget types",
+    "readOnlyHint": true,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "operator_describe_widget_type",
+   "title": "Describe an operator widget type",
+   "description": "Describe one item kind so you can form a valid operator_add_widget call: its required/optional fields and value types. Read (D1).",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "type": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Item kind: status, value-input, or dropdown."
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "type"
+    ]
+   },
+   "annotations": {
+    "title": "Describe an operator widget type",
+    "readOnlyHint": true,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "operator_add_widget",
+   "title": "Add an operator screen item",
+   "description": "Add a Status or Configuration item to the DEFAULT operator screen (refused unless it is the active screen). The item declares its own variable (status, value-input) or function (dropdown) named `widget.name`; the pendant may add a suffix to keep it unique, and the returned `name` is the one to use afterwards. Write (D5); real-robot manual-confirm.",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "appId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Application id."
+     },
+     "kind": {
+      "type": "string",
+      "enum": [
+       "status",
+       "value-input",
+       "dropdown"
+      ],
+      "description": "status, value-input or dropdown (see operator_describe_widget_type)."
+     },
+     "widget": {
+      "type": "object",
+      "properties": {
+       "name": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Symbol name for the item's variable or function (letters, digits, underscores)."
+       },
+       "description": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Operator-facing label; unique on the screen."
+       },
+       "valueType": {
+        "description": "status / value-input: the variable's type (default integer).",
+        "type": "string",
+        "enum": [
+         "integer",
+         "float",
+         "string",
+         "boolean"
+        ]
+       },
+       "initialValue": {
+        "description": "status: the variable's initial value.",
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "number"
+         },
+         {
+          "type": "boolean"
+         }
+        ]
+       },
+       "value": {
+        "description": "value-input: the current value.",
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "number"
+         },
+         {
+          "type": "boolean"
+         }
+        ]
+       },
+       "min": {
+        "description": "value-input (integer/float): lower bound.",
+        "type": "number"
+       },
+       "max": {
+        "description": "value-input (integer/float): upper bound.",
+        "type": "number"
+       },
+       "options": {
+        "description": "dropdown: the functions the operator chooses between.",
+        "type": "array",
+        "items": {
+         "type": "object",
+         "properties": {
+          "function": {
+           "type": "string",
+           "minLength": 1,
+           "description": "An existing function in the program (see program_get)."
+          },
+          "module": {
+           "description": "Its module; omit or \"\" for a global function.",
+           "type": "string"
+          }
+         },
+         "required": [
+          "function"
+         ]
+        }
+       }
+      },
+      "required": [
+       "name",
+       "description"
+      ],
+      "description": "The item to add."
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "appId",
+     "kind",
+     "widget"
+    ]
+   },
+   "annotations": {
+    "title": "Add an operator screen item",
+    "readOnlyHint": false,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "operator_update_widget",
+   "title": "Update an operator screen item",
+   "description": "Update a default-screen item by name: description; a status item's initialValue; a value-input's value/min/max (null clears a bound); a dropdown's options. Refused unless the default screen is active. Write (D5); real-robot manual-confirm.",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "appId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Application id."
+     },
+     "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The item's name (see operator_get_screen)."
+     },
+     "description": {
+      "description": "New operator-facing label.",
+      "type": "string"
+     },
+     "initialValue": {
+      "description": "status: new initial value.",
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "number"
+       },
+       {
+        "type": "boolean"
+       }
+      ]
+     },
+     "value": {
+      "description": "value-input: new value.",
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "number"
+       },
+       {
+        "type": "boolean"
+       }
+      ]
+     },
+     "min": {
+      "description": "value-input: new lower bound, or null to clear it.",
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "max": {
+      "description": "value-input: new upper bound, or null to clear it.",
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "options": {
+      "description": "dropdown: the new list of functions.",
+      "type": "array",
+      "items": {
+       "type": "object",
+       "properties": {
+        "function": {
+         "type": "string",
+         "minLength": 1,
+         "description": "An existing function in the program (see program_get)."
+        },
+        "module": {
+         "description": "Its module; omit or \"\" for a global function.",
+         "type": "string"
+        }
+       },
+       "required": [
+        "function"
+       ]
+      }
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "appId",
+     "name"
+    ]
+   },
+   "annotations": {
+    "title": "Update an operator screen item",
+    "readOnlyHint": false,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "operator_remove_widget",
+   "title": "Remove an operator screen item",
+   "description": "Remove a default-screen Status or Configuration item by name. Refused unless the default screen is active. Write (D5); real-robot manual-confirm.",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "appId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Application id."
+     },
+     "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The item's name."
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "appId",
+     "name"
+    ]
+   },
+   "annotations": {
+    "title": "Remove an operator screen item",
+    "readOnlyHint": false,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "operator_set_active_screen",
+   "title": "Set the active operator screen",
+   "description": "Choose the active operator screen. On a robot or simulator this is REFUSED (operator_screen_select_unavailable): PolyScope X exposes no service for it, so the operator selects the screen on the pendant. Only the offline mock changes it. Write (D5).",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "appId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Application id."
+     },
+     "screen": {
+      "type": "string",
+      "minLength": 1,
+      "description": "ur-operator-screen-default or a custom screen type."
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "appId",
+     "screen"
+    ]
+   },
+   "annotations": {
+    "title": "Set the active operator screen",
+    "readOnlyHint": false,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "logic_program_list_node_types",
+   "title": "List logic-program node types",
+   "description": "The node toolbox FILTERED to a logic context: program-node types valid in a Logic Program (robot-only move nodes are excluded). Read (D1).",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "appId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Application id (selects the live toolbox)."
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "appId"
+    ]
+   },
+   "annotations": {
+    "title": "List logic-program node types",
+    "readOnlyHint": true,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "logic_program_create",
+   "title": "Create a logic program",
+   "description": "Create a Logic Program. On a robot/sim this is REFUSED (logic_program_single): PolyScope X has exactly one logic program per application and no way to add another \u00e2\u0080\u0094 call logic_program_list for its logicId and author into it with logic_program_add_node. Only the offline mock backend creates logic programs. Write (D4).",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "appId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Application id the logic program belongs to."
+     },
+     "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Logic program name."
+     },
+     "autoPlay": {
+      "type": "string",
+      "enum": [
+       "ALWAYS",
+       "NEVER"
+      ],
+      "description": "Auto-play on app load: ALWAYS (run automatically) or NEVER."
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "appId",
+     "name"
+    ]
+   },
+   "annotations": {
+    "title": "Create a logic program",
+    "readOnlyHint": false,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "logic_program_list",
+   "title": "List logic programs",
+   "description": "List the Logic Programs on an application (logicId, name, autoPlayOptions). Read (D1).",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "appId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Application id."
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "appId"
+    ]
+   },
+   "annotations": {
+    "title": "List logic programs",
+    "readOnlyHint": true,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "logic_program_get",
+   "title": "Get a logic program tree",
+   "description": "Read a Logic Program and its node tree: an outline by default (nodes, guids, short labels); view:'full' for every parameter. Read (D2).",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "appId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Application id."
+     },
+     "logicId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Logic program id (see logic_program_list)."
+     },
+     "view": {
+      "description": "outline (default): nodes + guids + short labels. full: every parameter.",
+      "type": "string",
+      "enum": [
+       "outline",
+       "full"
+      ]
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "appId",
+     "logicId"
+    ]
+   },
+   "annotations": {
+    "title": "Get a logic program tree",
+    "readOnlyHint": true,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "logic_program_delete",
+   "title": "Delete a logic program",
+   "description": "Delete a Logic Program. On a robot/sim this is REFUSED (logic_program_single): the application's one logic program cannot be removed \u00e2\u0080\u0094 empty it with logic_program_delete_node instead. Only the offline mock backend deletes logic programs. Destructive (D10); manual-confirm gated on a real robot.",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "appId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Application id."
+     },
+     "logicId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Logic program id."
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "appId",
+     "logicId"
+    ]
+   },
+   "annotations": {
+    "title": "Delete a logic program",
+    "readOnlyHint": false,
+    "destructiveHint": true
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "logic_program_add_node",
+   "title": "Add a logic-program node",
+   "description": "Insert a node into the logic-program tree under a parent (by guid). A robot-only node (e.g. a move) is REFUSED with a teaching error (allowedInLogicProgram). BUILD IN BATCHES: pass `children` to author a whole subtree (e.g. an if with its body) in ONE call. The response carries a `validation` block ({valid, messages, hostValidated}) and `nodeValidity` \u00e2\u0080\u0094 the pendant's verdict on the added node (a logic edit has no whole-program verdict). The pendant edits only the program its editor shows: if it shows the main program, the operator is asked to open the Logic Program first, and the call waits for them (an `operator` span in diagnostics). Write (D4).",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "appId": {
+      "type": "string",
+      "minLength": 1
+     },
+     "logicId": {
+      "type": "string",
+      "minLength": 1
+     },
+     "parentGuid": {
+      "description": "Parent node guid (default: the logic program itself \u00e2\u0080\u0094 its logicId).",
+      "type": "string"
+     },
+     "position": {
+      "description": "Index among the parent's children (default: append).",
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+     },
+     "type": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Node type (see logic_program_list_node_types), e.g. ur-if, ur-loop, ur-assignment, ur-set, ur-comment."
+     },
+     "parameters": {
+      "description": "Node parameters (merged over type defaults).",
+      "type": "object",
+      "propertyNames": {
+       "type": "string"
+      },
+      "additionalProperties": {}
+     },
+     "children": {
+      "description": "Optional child subtree ({type,parameters,children} recursively), built and inserted in one host op.",
+      "type": "array",
+      "items": {
+       "$ref": "#/$defs/__schema0"
+      },
+      "$defs": {
+       "__schema0": {
+        "type": "object",
+        "properties": {
+         "type": {
+          "type": "string",
+          "minLength": 1
+         },
+         "parameters": {
+          "type": "object",
+          "propertyNames": {
+           "type": "string"
+          },
+          "additionalProperties": {}
+         },
+         "children": {
+          "type": "array",
+          "items": {
+           "$ref": "#/$defs/__schema0"
+          }
+         }
+        },
+        "required": [
+         "type"
+        ]
+       }
+      }
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "appId",
+     "logicId",
+     "type"
+    ]
+   },
+   "annotations": {
+    "title": "Add a logic-program node",
+    "readOnlyHint": false,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "logic_program_update_node",
+   "title": "Update a logic-program node",
+   "description": "Update (parameterize) a logic-program node by guid. Write (D4).",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "appId": {
+      "type": "string",
+      "minLength": 1
+     },
+     "logicId": {
+      "type": "string",
+      "minLength": 1
+     },
+     "guid": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Target node guid."
+     },
+     "parameters": {
+      "type": "object",
+      "propertyNames": {
+       "type": "string"
+      },
+      "additionalProperties": {},
+      "description": "Parameters to merge into the node."
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "appId",
+     "logicId",
+     "guid",
+     "parameters"
+    ]
+   },
+   "annotations": {
+    "title": "Update a logic-program node",
+    "readOnlyHint": false,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "logic_program_move_node",
+   "title": "Move a logic-program node",
+   "description": "Move/reparent a logic-program node by guid. Write (D4).",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "appId": {
+      "type": "string",
+      "minLength": 1
+     },
+     "logicId": {
+      "type": "string",
+      "minLength": 1
+     },
+     "guid": {
+      "type": "string",
+      "minLength": 1
+     },
+     "parentGuid": {
+      "description": "New parent guid (default: keep current parent).",
+      "type": "string"
+     },
+     "position": {
+      "description": "New index among the target parent's children.",
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "appId",
+     "logicId",
+     "guid"
+    ]
+   },
+   "annotations": {
+    "title": "Move a logic-program node",
+    "readOnlyHint": false,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "logic_program_delete_node",
+   "title": "Delete a logic-program node",
+   "description": "Delete a node (and its subtree) from the logic-program tree by guid. Write (D4).",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "appId": {
+      "type": "string",
+      "minLength": 1
+     },
+     "logicId": {
+      "type": "string",
+      "minLength": 1
+     },
+     "guid": {
+      "type": "string",
+      "minLength": 1
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "appId",
+     "logicId",
+     "guid"
+    ]
+   },
+   "annotations": {
+    "title": "Delete a logic-program node",
+    "readOnlyHint": false,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "logic_program_set_autoplay",
+   "title": "Set logic-program auto-play",
+   "description": "Set a Logic Program's autoPlayOptions (ALWAYS runs it on app load; NEVER does not). Write (D4).",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "appId": {
+      "type": "string",
+      "minLength": 1
+     },
+     "logicId": {
+      "type": "string",
+      "minLength": 1
+     },
+     "mode": {
+      "type": "string",
+      "enum": [
+       "ALWAYS",
+       "NEVER"
+      ],
+      "description": "Auto-play on app load: ALWAYS (run automatically) or NEVER."
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "appId",
+     "logicId",
+     "mode"
+    ]
+   },
+   "annotations": {
+    "title": "Set logic-program auto-play",
+    "readOnlyHint": false,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "logic_program_run",
+   "title": "Run a logic program (MOTION)",
+   "description": "Start the application's Logic Program, as the pendant's Run Program button does (LogicProgramExecutionService). SIMULATOR ONLY \u00e2\u0080\u0094 on a real robot it returns a gap: this path is not behind the controller's Remote Control check, so start it from the pendant. MOTION tier (ADR-005/ADR-028/ADR-042): requires a 'Move & run' grant. Returns the state reported after the start.",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "appId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Application id."
+     },
+     "logicId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Logic program id to run."
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "appId",
+     "logicId"
+    ]
+   },
+   "annotations": {
+    "title": "Run a logic program (MOTION)",
+    "readOnlyHint": false,
+    "destructiveHint": true
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "logic_program_pause",
+   "title": "Pause a logic program",
+   "description": "Pause the running Logic Program (LogicProgramExecutionService). Works on the simulator and a real robot. Write/motion-adjacent (ADR-028 \u00c2\u00a73): sim autonomous, real-robot manual-confirm.",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "appId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Application id."
+     },
+     "logicId": {
+      "description": "Logic program id (optional; the controller tracks the running program).",
+      "type": "string"
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "appId"
+    ]
+   },
+   "annotations": {
+    "title": "Pause a logic program",
+    "readOnlyHint": false,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "logic_program_resume",
+   "title": "Resume a logic program (MOTION)",
+   "description": "Resume a paused Logic Program (LogicProgramExecutionService). SIMULATOR ONLY, like logic_program_run \u00e2\u0080\u0094 resuming restarts motion; on a real robot resume it from the pendant. MOTION tier: requires a 'Move & run' grant.",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "appId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Application id."
+     },
+     "logicId": {
+      "description": "Logic program id (optional).",
+      "type": "string"
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "appId"
+    ]
+   },
+   "annotations": {
+    "title": "Resume a logic program (MOTION)",
+    "readOnlyHint": false,
+    "destructiveHint": true
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "logic_program_stop",
+   "title": "Stop a logic program",
+   "description": "Stop the running Logic Program (LogicProgramExecutionService). Works on the simulator and a real robot. Write/motion-adjacent (ADR-028 \u00c2\u00a73): sim autonomous, real-robot manual-confirm.",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "appId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Application id."
+     },
+     "logicId": {
+      "description": "Logic program id (optional).",
+      "type": "string"
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "appId"
+    ]
+   },
+   "annotations": {
+    "title": "Stop a logic program",
+    "readOnlyHint": false,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "logic_program_get_state",
+   "title": "Get logic-program run state",
+   "description": "Read the Logic Program's execution state as the pendant reports it (LogicProgramExecutionService: STOPPED/RUNNING/PAUSED/...; UNKNOWN with the raw status when unrecognised). Read (D2).",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "appId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Application id."
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "appId"
+    ]
+   },
+   "annotations": {
+    "title": "Get logic-program run state",
+    "readOnlyHint": true,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "application_get_config",
+   "title": "Get application config",
+   "description": "Read the application's TCP/payload/mounting, frames and variables, plus its configured sources + signal declarations. `sources` is the HOST's own SourceService view, group-qualified (`groupId` + `sourceID` \u00e2\u0080\u0094 a signal id like `DO 0` repeats across sources, so the pair is the identity). Read (D2). Safety is NOT writable on this surface (read it via application_get_safety).",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "appId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Application id. It must be the loaded application (program_load)."
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "appId"
+    ]
+   },
+   "annotations": {
+    "title": "Get application config",
+    "readOnlyHint": true,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "application_list_tcps",
+   "title": "List the configured TCPs",
+   "description": "List every configured tool centre point across all end effectors \u00e2\u0080\u0094 id, name, pose (x/y/z/rx/ry/rz with units) \u00e2\u0080\u0094 and which one is the application default. Call this before application_set_tcp to get a tcpId. Read (D2).",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "appId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Application id. It must be the loaded application (program_load)."
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "appId"
+    ]
+   },
+   "annotations": {
+    "title": "List the configured TCPs",
+    "readOnlyHint": true,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "application_set_tcp",
+   "title": "Configure a tool TCP",
+   "description": "Add, update or select a tool centre point on the application's end effector (ur-end-effector). mode:'update' (default) changes an existing TCP's pose and/or name \u00e2\u0080\u0094 targeting the active one unless you pass tcpId/name; mode:'add' creates a new NAMED TCP; mode:'select' only changes which TCP is active. Only the pose components you supply are written. Write (D0); MOTION-ADJACENT \u00e2\u0080\u0094 a real-robot call ALWAYS requires confirm (ADR-022 \u00c2\u00a75), and that includes 'select', because repointing the default TCP changes the active tool frame. Returns only the tool section (payload, endEffectors, tcps, defaultTcp), not the whole configuration (application_get_config reads that).",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "appId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Application id. It must be the loaded application (program_load)."
+     },
+     "mode": {
+      "description": "update = change an existing TCP (default); add = create a new named one; select = only change which is active.",
+      "type": "string",
+      "enum": [
+       "update",
+       "add",
+       "select"
+      ]
+     },
+     "tcpId": {
+      "description": "Target TCP id (see application_list_tcps). Omit on update to target the active TCP.",
+      "type": "string",
+      "minLength": 1
+     },
+     "name": {
+      "description": "add: the new TCP's name (required). update/select: resolve the TARGET by name when tcpId is absent.",
+      "type": "string",
+      "minLength": 1
+     },
+     "newName": {
+      "description": "update: rename the resolved TCP. Kept separate from `name` so one field never means both 'find this' and 'call it this'.",
+      "type": "string",
+      "minLength": 1
+     },
+     "endEffectorId": {
+      "description": "add: which end effector hosts the TCP. Defaults to the active one.",
+      "type": "string",
+      "minLength": 1
+     },
+     "makeDefault": {
+      "description": "Make this TCP the application default. Defaults to false on add, so adding a tool definition never silently retargets the robot.",
+      "type": "boolean"
+     },
+     "tcp": {
+      "description": "Pose {x,y,z,rx,ry,rz} (metres / radians). Required for add/update; rejected for select.",
+      "type": "object",
+      "propertyNames": {
+       "type": "string"
+      },
+      "additionalProperties": {}
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "appId"
+    ]
+   },
+   "annotations": {
+    "title": "Configure a tool TCP",
+    "readOnlyHint": false,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "application_add_end_effector",
+   "title": "Add an end effector",
+   "description": "Add a new end effector (a fitted tool) with its payload. This is how you give the robot a tool: the built-in 'Robot' end effector is NOT editable \u00e2\u0080\u0094 it represents the bare robot with its Tool_flange, and the pendant blocks editing it too. Add yours here, then give it a TCP with application_set_tcp { mode:'add', endEffectorId }. Write (D0); MOTION-ADJACENT \u00e2\u0080\u0094 a real-robot call ALWAYS requires confirm (ADR-022 \u00c2\u00a75). Returns only the tool section (payload, endEffectors, tcps, defaultTcp), not the whole configuration (application_get_config reads that).",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "appId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Application id. It must be the loaded application (program_load)."
+     },
+     "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Operator-facing name for the tool, e.g. 'MIG torch'."
+     },
+     "mass": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Total tool mass in kilograms (\u00e2\u0089\u00a5 0)."
+     },
+     "cog": {
+      "description": "Centre of gravity [x,y,z] in metres.",
+      "type": "array",
+      "items": {
+       "type": "number"
+      }
+     },
+     "inertia": {
+      "description": "Inertia tensor [Ixx,Iyy,Izz,Ixy,Ixz,Iyz] (kg\u00c2\u00b7m\u00c2\u00b2).",
+      "type": "array",
+      "items": {
+       "type": "number"
+      }
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "appId",
+     "name",
+     "mass"
+    ]
+   },
+   "annotations": {
+    "title": "Add an end effector",
+    "readOnlyHint": false,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "application_set_payload",
+   "title": "Set the tool payload",
+   "description": "Set an end effector's payload mass (kg) and optional centre-of-gravity / inertia. Targets the active end effector unless endEffectorId is given. The built-in 'Robot' end effector cannot be configured \u00e2\u0080\u0094 use application_add_end_effector to create your own tool first. Write (D0); MOTION-ADJACENT \u00e2\u0080\u0094 a real-robot call ALWAYS requires confirm (ADR-022 \u00c2\u00a75). Returns only the tool section (payload, endEffectors, tcps, defaultTcp), not the whole configuration (application_get_config reads that).",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "appId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Application id. It must be the loaded application (program_load)."
+     },
+     "endEffectorId": {
+      "description": "Which end effector to configure (see application_get_config). Defaults to the active one.",
+      "type": "string",
+      "minLength": 1
+     },
+     "mass": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Payload mass in kilograms (\u00e2\u0089\u00a5 0)."
+     },
+     "cog": {
+      "description": "Centre of gravity [x,y,z] in metres.",
+      "type": "array",
+      "items": {
+       "type": "number"
+      }
+     },
+     "inertia": {
+      "description": "Inertia tensor [Ixx,Iyy,Izz,Ixy,Ixz,Iyz] (kg\u00c2\u00b7m\u00c2\u00b2).",
+      "type": "array",
+      "items": {
+       "type": "number"
+      }
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "appId",
+     "mass"
+    ]
+   },
+   "annotations": {
+    "title": "Set the tool payload",
+    "readOnlyHint": false,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "application_set_mounting",
+   "title": "Set the robot mounting",
+   "description": "Set the robot mounting base angle (or rotation) and optional tilt (ur-mounting). Provide at least one. Write (D0); MOTION-ADJACENT \u00e2\u0080\u0094 a real-robot call ALWAYS requires confirm (ADR-022 \u00c2\u00a75). Returns only mounting, not the whole configuration (application_get_config reads that).",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "appId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Application id. It must be the loaded application (program_load)."
+     },
+     "baseAngle": {
+      "description": "Base rotation about Z, in degrees.",
+      "type": "number"
+     },
+     "rotation": {
+      "description": "Alias for baseAngle (MountingService.setMounting rotation).",
+      "type": "number"
+     },
+     "tilt": {
+      "description": "Mounting tilt, in degrees.",
+      "type": "number"
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "appId"
+    ]
+   },
+   "annotations": {
+    "title": "Set the robot mounting",
+    "readOnlyHint": false,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "application_add_frame",
+   "title": "Add a feature frame",
+   "description": "Add a named feature frame at a pose (ur-frames). Write (D0); real-robot manual-confirm. Returns only frames, not the whole configuration (application_get_config reads that).",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "appId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Application id. It must be the loaded application (program_load)."
+     },
+     "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Frame name (unique within the application)."
+     },
+     "pose": {
+      "type": "object",
+      "propertyNames": {
+       "type": "string"
+      },
+      "additionalProperties": {},
+      "description": "Pose object, e.g. {x,y,z,rx,ry,rz} (metres / radians). Only the components you provide are written."
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "appId",
+     "name",
+     "pose"
+    ]
+   },
+   "annotations": {
+    "title": "Add a feature frame",
+    "readOnlyHint": false,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "application_move_frame",
+   "title": "Move a feature frame",
+   "description": "Reposition an existing feature frame to a new pose (ur-frames). Write (D0); real-robot manual-confirm. Returns only frames, not the whole configuration (application_get_config reads that).",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "appId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Application id. It must be the loaded application (program_load)."
+     },
+     "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Existing frame name (see application_get_config)."
+     },
+     "pose": {
+      "type": "object",
+      "propertyNames": {
+       "type": "string"
+      },
+      "additionalProperties": {},
+      "description": "Pose object, e.g. {x,y,z,rx,ry,rz} (metres / radians). Only the components you provide are written."
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "appId",
+     "name",
+     "pose"
+    ]
+   },
+   "annotations": {
+    "title": "Move a feature frame",
+    "readOnlyHint": false,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "application_delete_frame",
+   "title": "Delete a feature frame",
+   "description": "Remove a feature frame by name (ur-frames). Write (D0); real-robot manual-confirm. Returns only frames, not the whole configuration (application_get_config reads that).",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "appId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Application id. It must be the loaded application (program_load)."
+     },
+     "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Frame name to remove."
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "appId",
+     "name"
+    ]
+   },
+   "annotations": {
+    "title": "Delete a feature frame",
+    "readOnlyHint": false,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "application_add_source",
+   "title": "Add an industrial-I/O source",
+   "description": "Add a Source (any installed fieldbus or I/O type) to a source GROUP. The host performs the write via SourceNodeService, so it validates and persists it. Only groups the host marks `isDynamic` accept new sources \u00e2\u0080\u0094 the built-in hardware group (ur-robot-io) is fixed and returns a teaching error naming the dynamic groups. Registry-driven & type-agnostic: any sourceID + opaque config, no per-type code (ADR-022 \u00c2\u00a78). Call `application_list_source_types` for valid sourceIDs and `application_get_config` for the groups. Write (D0); real-robot manual-confirm. Returns only sources, not the whole configuration (application_get_config reads that).",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "appId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Application id. It must be the loaded application (program_load)."
+     },
+     "groupId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Source GROUP id (SourcesNode.groupId), e.g. ur-robot-io or ur-modbus. REQUIRED \u00e2\u0080\u0094 a sourceID is unique only within its group. See application_get_config.sources, where every row carries its groupId."
+     },
+     "sourceID": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Source type/instance id from application_list_source_types."
+     },
+     "signals": {
+      "type": "array",
+      "items": {
+       "type": "object",
+       "properties": {
+        "signalID": {
+         "type": "string",
+         "minLength": 1,
+         "description": "Signal id within the source."
+        },
+        "direction": {
+         "description": "e.g. IN / OUT.",
+         "type": "string"
+        },
+        "valueType": {
+         "description": "BOOLEAN / FLOAT / REGISTER / CUSTOM (the host's SignalValueTypeEnum).",
+         "type": "string"
+        }
+       },
+       "required": [
+        "signalID"
+       ],
+       "additionalProperties": {}
+      },
+      "description": "Signals: [{ signalID, direction?, valueType? }]."
+     },
+     "config": {
+      "type": "object",
+      "propertyNames": {
+       "type": "string"
+      },
+      "additionalProperties": {},
+      "description": "Source-type config; opaque to the MCP, validated by the host on apply."
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "appId",
+     "groupId",
+     "sourceID",
+     "signals"
+    ]
+   },
+   "annotations": {
+    "title": "Add an industrial-I/O source",
+    "readOnlyHint": false,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "application_configure_source",
+   "title": "Configure an industrial-I/O source",
+   "description": "Update a configured Source's signals and/or its opaque per-type config, which maps to the host's own `Source.parameters` (ADR-022 \u00c2\u00a78c passthrough). Host-validated via SourceNodeService. Fixed groups (isDynamic:false) are refused \u00e2\u0080\u0094 their signal lists are host-generated. Write (D0); real-robot manual-confirm. Returns only sources, not the whole configuration (application_get_config reads that).",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "appId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Application id. It must be the loaded application (program_load)."
+     },
+     "groupId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Source GROUP id (SourcesNode.groupId), e.g. ur-robot-io or ur-modbus. REQUIRED \u00e2\u0080\u0094 a sourceID is unique only within its group. See application_get_config.sources, where every row carries its groupId."
+     },
+     "sourceID": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Configured source id (see application_get_config)."
+     },
+     "signals": {
+      "description": "Replacement signals.",
+      "type": "array",
+      "items": {
+       "type": "object",
+       "properties": {
+        "signalID": {
+         "type": "string",
+         "minLength": 1,
+         "description": "Signal id within the source."
+        },
+        "direction": {
+         "description": "e.g. IN / OUT.",
+         "type": "string"
+        },
+        "valueType": {
+         "description": "BOOLEAN / FLOAT / REGISTER / CUSTOM (the host's SignalValueTypeEnum).",
+         "type": "string"
+        }
+       },
+       "required": [
+        "signalID"
+       ],
+       "additionalProperties": {}
+      }
+     },
+     "config": {
+      "type": "object",
+      "propertyNames": {
+       "type": "string"
+      },
+      "additionalProperties": {},
+      "description": "Source-type config; opaque to the MCP, validated by the host on apply."
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "appId",
+     "groupId",
+     "sourceID"
+    ]
+   },
+   "annotations": {
+    "title": "Configure an industrial-I/O source",
+    "readOnlyHint": false,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "application_remove_source",
+   "title": "Remove an industrial-I/O source",
+   "description": "Remove a configured Source from its group. Host-validated via SourceNodeService; refused on a fixed group (isDynamic:false), whose sources are built-in hardware rather than configuration. Write (D0); real-robot manual-confirm. Returns only sources, not the whole configuration (application_get_config reads that).",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "appId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Application id. It must be the loaded application (program_load)."
+     },
+     "groupId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Source GROUP id (SourcesNode.groupId), e.g. ur-robot-io or ur-modbus. REQUIRED \u00e2\u0080\u0094 a sourceID is unique only within its group. See application_get_config.sources, where every row carries its groupId."
+     },
+     "sourceID": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Configured source id to remove."
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "appId",
+     "groupId",
+     "sourceID"
+    ]
+   },
+   "annotations": {
+    "title": "Remove an industrial-I/O source",
+    "readOnlyHint": false,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "application_set_signal",
+   "title": "Set / label a source signal",
+   "description": "Set a signal's declaration and/or its operator-facing label on a configured Source. The label is written into the group node's own `parameters.sourceConfig.labelMap` (per-group, so ids cannot collide across groups) and the host performs the write. Relabelling works on a FIXED group too \u00e2\u0080\u0094 but creating a signal, or changing direction/valueType there, is refused, because those describe built-in hardware. Creating a signal requires both direction and valueType (the host declares both non-optional). Write (D0); real-robot manual-confirm. Returns only that one signal, under its source (sources[0].signals[0]), not the whole configuration (application_get_config reads that).",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "appId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Application id. It must be the loaded application (program_load)."
+     },
+     "groupId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Source GROUP id (SourcesNode.groupId), e.g. ur-robot-io or ur-modbus. REQUIRED \u00e2\u0080\u0094 a sourceID is unique only within its group. See application_get_config.sources, where every row carries its groupId."
+     },
+     "sourceID": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Configured source id."
+     },
+     "signalID": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Signal id (created if absent)."
+     },
+     "direction": {
+      "description": "e.g. IN / OUT.",
+      "type": "string"
+     },
+     "valueType": {
+      "description": "BOOLEAN / FLOAT / REGISTER / CUSTOM (the host's SignalValueTypeEnum).",
+      "type": "string"
+     },
+     "label": {
+      "description": "Operator-facing label (sourceConfig.labelMap).",
+      "type": "string"
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "appId",
+     "groupId",
+     "sourceID",
+     "signalID"
+    ]
+   },
+   "annotations": {
+    "title": "Set / label a source signal",
+    "readOnlyHint": false,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "application_get_safety",
+   "title": "Read safety configuration",
+   "description": "Read the application's safety configuration and the safety CRC checksum (GET /safety/crc). view:\"summary\" (default) gives the normal/reduced robot and joint limits, the planes that restrict, safe home, tool direction/positions and the assigned safety I/O, leaving out unused slots; view:\"full\" gives the ~20 raw setting domains (applicationContent.safety.settings, ~12 KB). Compare `crc` to detect a changed configuration. READ-ONLY by construction \u00e2\u0080\u0094 safety is NEVER writable through the MCP (ADR-022 \u00c2\u00a74). Read (D2). Degrades to a structured gap where no live safety channel is reachable (safety values are never fabricated).",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "appId": {
+      "description": "Application id to scope the safety.settings read (the CRC is read app-agnostically).",
+      "type": "string",
+      "minLength": 1
+     },
+     "view": {
+      "description": "summary (default): the limits and what is enabled. full: every raw settings domain (large).",
+      "type": "string",
+      "enum": [
+       "summary",
+       "full"
+      ]
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false
+   },
+   "annotations": {
+    "title": "Read safety configuration",
+    "readOnlyHint": true,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "application_set_variable",
+   "title": "Define / assign an application variable",
+   "description": "Define or reassign an application variable DECLARATION (upsert by name) in applicationContent (ur-application-variables). Provide name (+ optional type/value/scope). Write (D0); real-robot manual-confirm. Operates on the declaration store \u00e2\u0080\u0094 read live runtime VALUES via application_list_variables. Returns only variables, not the whole configuration (application_get_config reads that).",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "appId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Application id. It must be the loaded application (program_load)."
+     },
+     "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Variable name (the upsert key)."
+     },
+     "type": {
+      "description": "Value type, e.g. \"int\", \"float\", \"bool\", \"string\", \"pose\".",
+      "type": "string"
+     },
+     "value": {
+      "description": "Initial / default value."
+     },
+     "scope": {
+      "description": "Scope encoding, e.g. \"application\" or \"installation\".",
+      "type": "string"
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "appId",
+     "name"
+    ]
+   },
+   "annotations": {
+    "title": "Define / assign an application variable",
+    "readOnlyHint": false,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "application_delete_variable",
+   "title": "Delete an application variable",
+   "description": "Remove an application variable declaration by name (ur-application-variables). Destructive (D10); real-robot manual-confirm. Returns a self-correcting teaching error when the variable is not found. Returns only variables, not the whole configuration (application_get_config reads that).",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "appId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Application id. It must be the loaded application (program_load)."
+     },
+     "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Variable name to remove (see application_get_config / application_list_variables)."
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "appId",
+     "name"
+    ]
+   },
+   "annotations": {
+    "title": "Delete an application variable",
+    "readOnlyHint": false,
+    "destructiveHint": true
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "application_list_source_types",
+   "title": "List source types",
+   "description": "Enumerate the valid Source types from the live source registry (urplus/source/contributions) so you can choose a sourceID before application_add_source. Registry-driven \u00e2\u0080\u0094 never a hardcoded list (ADR-022 \u00c2\u00a78). Read (D1). Degrades to a structured gap when the registry is unreachable.",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false
+   },
+   "annotations": {
+    "title": "List source types",
+    "readOnlyHint": true,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "psx_logs",
+   "title": "Read controller/PSX logs",
+   "description": "Read recent controller/PolyScope X log lines via polyscopex-services /logs, filtered by time window / level / source. Read (D2). Lines are secret-redacted before return. Degrades to a structured gap where no live log channel is confirmed.",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "since": {
+      "description": "Lower time bound (ISO-8601, inclusive), e.g. 2026-06-12T08:00:00Z.",
+      "type": "string",
+      "minLength": 1
+     },
+     "level": {
+      "description": "Severity filter (case-insensitive), e.g. info, warning, error.",
+      "type": "string",
+      "minLength": 1
+     },
+     "source": {
+      "description": "Source/logger filter (case-insensitive substring), e.g. safety, URControl.",
+      "type": "string",
+      "minLength": 1
+     },
+     "limit": {
+      "description": "Max lines to return (most recent kept; default 100, ceiling 1000).",
+      "type": "integer",
+      "exclusiveMinimum": 0,
+      "maximum": 1000
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false
+   },
+   "annotations": {
+    "title": "Read controller/PSX logs",
+    "readOnlyHint": true,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "psx_export_flight_record",
+   "title": "Export a flight record",
+   "description": "Produce a redacted diagnostic flight-record bundle (prefers the SW 10.14 Robot API flight-report endpoint, falls back to a polyscopex-services /logs bundle) and deliver it to the bounded agent workspace, returning a SHA-256. Write (D2): sim-autonomous, real-robot manual-confirm. Degrades to a structured gap when no source is available.",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "dest": {
+      "description": "Output filename (basename only; sanitized and written under the bounded workspace flight-records dir). Default: a timestamped name.",
+      "type": "string",
+      "minLength": 1
+     },
+     "window": {
+      "description": "Free-form time-window label recorded in the bundle header, e.g. last-1h.",
+      "type": "string",
+      "minLength": 1
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false
+   },
+   "annotations": {
+    "title": "Export a flight record",
+    "readOnlyHint": false,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "urcap_status",
+   "title": "Get URCapX contribution load state",
+   "description": "Read the contribution load state for an installed URCapX: whether all declared contributions (application/program nodes, daemons) actually loaded, declared vs loaded contribution names, and the last error (if any). Read effect (D1). Degrades to a structured gap when the contribution-load API is not confirmed on the active backend. Pairs with urcap_verify_installed (GAP-017).",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "vendorId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Vendor identifier of the URCapX to inspect."
+     },
+     "urcapId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "URCapX identifier to inspect."
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "vendorId",
+     "urcapId"
+    ]
+   },
+   "annotations": {
+    "title": "Get URCapX contribution load state",
+    "readOnlyHint": true,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "server_capabilities",
+   "title": "Server capabilities & version stamp",
+   "description": "Report the live MCP server identity, build stamp (git sha + build time + bundled flag), active target, and the EXACT tool surface (count + names/effects/domains) actually exposed on this transport. Read-only. The structural guard (DOC-005) so a stale deployment can never silently diverge from source.",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false
+   },
+   "annotations": {
+    "title": "Server capabilities & version stamp",
+    "readOnlyHint": true,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "program_run",
+   "title": "Run a program (playback control)",
+   "description": "Set program playback on the active target via the Robot API (PUT /program/v1/state): play | pause | resume | stop (default play). The currently-LOADED program runs \u00e2\u0080\u0094 load it first (program_load). play/resume are MOTION-tier (ADR-042): they require a 'Move & run' grant and, on a REAL robot, PHYSICALLY MOVE the arm. The controller fail-closes (HTTP 403 -> remote_control_required) unless it is in Remote Control mode and powered \u00e2\u0080\u0094 that hardware gate is the safety boundary. pause/stop are write-tier and always reachable (so a running program can be halted). Takes NO appId/programId (MG-16): it controls whatever program is currently LOADED \u00e2\u0080\u0094 select one first with program_load { appId }, then program_run. play/resume are safeguarded against a just-edited program: they wait (host-truth ProgramExecutionService.isProgramReady) for the controller to finish validating/generating code before dispatching, and return program_not_ready (never dispatching) if it does not clear in time \u00e2\u0080\u0094 instead of a play that starts and instantly aborts.",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "action": {
+      "description": "Playback action (default play). play/resume start physical motion on a real robot (motion tier).",
+      "type": "string",
+      "enum": [
+       "play",
+       "pause",
+       "resume",
+       "stop"
+      ]
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false
+   },
+   "annotations": {
+    "title": "Run a program (playback control)",
+    "readOnlyHint": false,
+    "destructiveHint": true
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "bridge_get_config",
+   "title": "Get AI Agent Bridge config",
+   "description": "Read the Bridge's robot-wide settings (paused, allowNewConnections, activeTarget) plus source markers. Read-only.",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false
+   },
+   "annotations": {
+    "title": "Get AI Agent Bridge config",
+    "readOnlyHint": true,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "bridge_my_status",
+   "title": "This connection's access + suspension state",
+   "description": "Report THIS connection's own authority: { tier, allowedEffects, state, paused, reason? } plus connectionId/client/liveSession/connectionStatus for reconnect diagnostics (MG-7). tier is the granted access level (observe|adjust|full|move); allowedEffects is what it may do now (read|write|destructive|motion). state is 'active' | 'paused' (global Pause) \u00e2\u0080\u0094 a REVOKED connection cannot call at all (its credential fails, so treat any hard connection failure as suspended). liveSession=false with a valid credential means re-POST initialize (omit Mcp-Session-Id). Answers even while paused (read-only). Call it before higher-tier actions, or after a refusal, to know why.",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false
+   },
+   "annotations": {
+    "title": "This connection's access + suspension state",
+    "readOnlyHint": true,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "bridge_describe_config",
+   "title": "Describe AI Agent Bridge config schema",
+   "description": "Return the settings JSON schema inline (field names, types, allowed values, which are operator-sovereign). Discover the config shape instead of guessing (ADR-009).",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false
+   },
+   "annotations": {
+    "title": "Describe AI Agent Bridge config schema",
+    "readOnlyHint": true,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "bridge_list_connections",
+   "title": "List AI Agent Bridge connections",
+   "description": "List the live paired connections with their granted scope and per-connection stats (reads, changes, last-activity, connected-since). Read-only introspection (REQ-mcp-116).",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false
+   },
+   "annotations": {
+    "title": "List AI Agent Bridge connections",
+    "readOnlyHint": true,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "bridge_pause",
+   "title": "Pause all agent activity",
+   "description": "Engage the global pause kill-switch \u00e2\u0080\u0094 refuses all agent activity (including the caller). Tighten-only; an agent may pause but only the operator may resume (REQ-mcp-117).",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false
+   },
+   "annotations": {
+    "title": "Pause all agent activity",
+    "readOnlyHint": false,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "bridge_resume",
+   "title": "Resume agent activity (operator-only)",
+   "description": "Lift the global pause. OPERATOR-SOVEREIGN: refused for any agent connection (loosening) \u00e2\u0080\u0094 only the operator may resume, from the Bridge screen.",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false
+   },
+   "annotations": {
+    "title": "Resume agent activity (operator-only)",
+    "readOnlyHint": false,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "bridge_set_allow_new",
+   "title": "Set allow-new-connections (operator-only)",
+   "description": "Enable/disable new admissions. OPERATOR-SOVEREIGN: refused for any agent connection (loosening the door is operator-only).",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "allow": {
+      "type": "boolean",
+      "description": "Whether to allow new connection admissions."
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "allow"
+    ]
+   },
+   "annotations": {
+    "title": "Set allow-new-connections (operator-only)",
+    "readOnlyHint": false,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "bridge_set_mode",
+   "title": "Set a connection's access mode (operator-only)",
+   "description": "Change a connection's granted access mode. OPERATOR-SOVEREIGN: refused for any agent connection (no self-escalation, no lateral grant \u00e2\u0080\u0094 raising scope is the operator's grant-once consent).",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "connectionId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The connection to modify."
+     },
+     "mode": {
+      "type": "string",
+      "enum": [
+       "observe",
+       "adjust",
+       "full",
+       "move"
+      ],
+      "description": "New access mode (observe|adjust|full|move). 'move' (Move & run) grants real-robot motion (ADR-042)."
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "connectionId",
+     "mode"
+    ]
+   },
+   "annotations": {
+    "title": "Set a connection's access mode (operator-only)",
+    "readOnlyHint": false,
+    "destructiveHint": true
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "bridge_revoke_connection",
+   "title": "Revoke a connection (operator-only)",
+   "description": "Soft-revoke a connection: it stays listed but is denied every tool fail-closed until re-enabled (ADR-046). OPERATOR-SOVEREIGN: refused for any agent connection (no lateral control of peers).",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "connectionId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The connection to revoke."
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "connectionId"
+    ]
+   },
+   "annotations": {
+    "title": "Revoke a connection (operator-only)",
+    "readOnlyHint": false,
+    "destructiveHint": true
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "bridge_enable_connection",
+   "title": "Re-enable a revoked connection (operator-only)",
+   "description": "Clear a connection's revocation, restoring its granted access level (ADR-046). OPERATOR-SOVEREIGN: refused for any agent connection.",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "connectionId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The connection to re-enable."
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "connectionId"
+    ]
+   },
+   "annotations": {
+    "title": "Re-enable a revoked connection (operator-only)",
+    "readOnlyHint": false,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "bridge_delete_connection",
+   "title": "Delete a connection (operator-only)",
+   "description": "Permanently delete a connection, invalidating its credential + fingerprint. Irreversible (ADR-046). OPERATOR-SOVEREIGN: refused for any agent connection.",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "connectionId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The connection to delete."
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "connectionId"
+    ]
+   },
+   "annotations": {
+    "title": "Delete a connection (operator-only)",
+    "readOnlyHint": false,
+    "destructiveHint": true
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "change_history",
+   "title": "List change history",
+   "description": "Audit/introspection feed of MCP program changes (application-config writes are not journaled): id, time, tool, summary, and before/after snapshot hashes. Filter by appId / limit / sinceTs. Read (D2).",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "appId": {
+      "description": "Filter to one application id.",
+      "type": "string"
+     },
+     "limit": {
+      "description": "Max records (newest first).",
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+     },
+     "sinceTs": {
+      "description": "Only changes at/after this epoch-ms.",
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false
+   },
+   "annotations": {
+    "title": "List change history",
+    "readOnlyHint": true,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "change_diff",
+   "title": "Diff two change points",
+   "description": "What differs between the program after change `from` and after change `to`: `added` and `removed` subtrees (their top node, with parent), `changed` nodes (which parameter keys, with an outline label before and after) and `moved` nodes (new parent and/or index; a node a move re-inserted under a new guid carries `fromGuid`). Read (D2).",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "appId": {
+      "type": "string",
+      "minLength": 1
+     },
+     "from": {
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991,
+      "description": "Change id to diff FROM."
+     },
+     "to": {
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991,
+      "description": "Change id to diff TO."
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "appId",
+     "from",
+     "to"
+    ]
+   },
+   "annotations": {
+    "title": "Diff two change points",
+    "readOnlyHint": true,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "change_checkpoint",
+   "title": "Create a checkpoint",
+   "description": "Snapshot the current program as a named savepoint you can revert to later. Read/meta (D2).",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "appId": {
+      "type": "string",
+      "minLength": 1
+     },
+     "label": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Human label for the checkpoint."
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "appId",
+     "label"
+    ]
+   },
+   "annotations": {
+    "title": "Create a checkpoint",
+    "readOnlyHint": true,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "change_revert",
+   "title": "Revert changes",
+   "description": "Restore a program to a prior state. Default (no 'to') undoes the LAST change. 'to'=<changeId> restores the state as of after that change. Snapshot-anchored restore (deterministic); the revert is itself a recorded, redoable change. If live state diverged from the last recorded change (e.g. a human edited on the pendant), it refuses unless force:true. On a robot or simulator the snapshot is applied as ordinary node edits through the pendant's editor (removes, parameter restores, moves, re-adds), so PolyScope X saves the program and regenerates its script; never a REST write. Re-added nodes get new ids. A refused edit stops it with revert_partial (how far it got); more than 60 edits \u00e2\u0086\u0092 revert_too_large. Write (D4).",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "appId": {
+      "type": "string",
+      "minLength": 1
+     },
+     "to": {
+      "description": "Change id to restore to (its post-state). Omit to undo the last change.",
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+     },
+     "force": {
+      "description": "Override the divergence guard (apply even if live state changed outside the ledger).",
+      "type": "boolean"
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "appId"
+    ]
+   },
+   "annotations": {
+    "title": "Revert changes",
+    "readOnlyHint": false,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "bridge_report_activity",
+   "title": "Report current goal / progress to the operator",
+   "description": "Forward what you are doing to the operator's pendant sidebar (like your chat's plan/tool stream). Set `goal` to state/replace your current objective; add a `note` to narrate a step; set `phase:\"done\"` to clear the goal when finished. Read-only display \u00e2\u0080\u0094 changes no robot/sim state, and answers even while paused. Call it FIRST at the start of every task (state your goal), then again as you make progress \u00e2\u0080\u0094 the operator relies on it to supervise you safely.",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "goal": {
+      "description": "Your current objective (sets/replaces the displayed goal).",
+      "type": "string",
+      "maxLength": 500
+     },
+     "note": {
+      "description": "A short progress note appended to the feed.",
+      "type": "string",
+      "maxLength": 500
+     },
+     "phase": {
+      "description": "Lifecycle hint; \"done\" clears the current goal.",
+      "type": "string",
+      "enum": [
+       "start",
+       "progress",
+       "done"
+      ]
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false
+   },
+   "annotations": {
+    "title": "Report current goal / progress to the operator",
+    "readOnlyHint": true,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "bridge_orient",
+   "title": "Orientation brief (start here)",
+   "description": "One-shot situational brief for a cold start: THIS connection's access tier + allowed effects, the robot's state + motion-runnable summary, the currently loaded program and its run state, the installed URCaps, a list of the domain guides (fetch with mcp_get_guide), and suggested next steps. Composes the reads an agent would otherwise chain by hand (robot_get_state / program_get_loaded / urcap_list / bridge_my_status) into a single orientation, plus which in-process channels the pendant is serving (program editing, robot position, smart skills, signals, application config). Read-only (D-x); each section degrades to { unavailable } instead of failing the brief.",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false
+   },
+   "annotations": {
+    "title": "Orientation brief (start here)",
+    "readOnlyHint": true,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "mcp_get_guide",
+   "title": "Get an agent domain guide",
+   "description": "Fetch server-shipped PolyScope X domain knowledge (ADR-009). Call with no id to LIST every guide (id + title + summary); call with { id } to read one guide's full body. This is the tool-only fallback for the resource://psx/guide/* MCP resources \u00e2\u0080\u0094 start with { id: 'getting-started' }. Read (D-x).",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "id": {
+      "description": "Guide id to fetch (e.g. 'getting-started'). Omit to list all guides.",
+      "type": "string"
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false
+   },
+   "annotations": {
+    "title": "Get an agent domain guide",
+    "readOnlyHint": true,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "bridge_ask_operator",
+   "title": "Ask the operator on the pendant (blocks until answered)",
+   "description": "Put a QUESTION or INSTRUCTION on the operator's pendant and BLOCK until they respond (or it times out). Use it for human-in-the-loop teaching: ask the operator to freedrive the arm to a pose, actuate a gripper, confirm it is safe to proceed, or TYPE A VALUE \u00e2\u0080\u0094 then read the result (e.g. robot_get_pose, or the returned `text`) and continue. kind:'teach-pose' marks a freedrive hand-guide step; 'confirm' a yes/proceed; 'choice' a pick-one; 'acknowledge' a one-button OK; 'text' a free-text entry (the operator types a value into a field \u00e2\u0080\u0094 the answer comes back on `text`, not `choiceId`; pass `placeholder` for a hint). For a NUMBER (e.g. a ur-loop count) set kind:'text' + inputType:'number' with optional integer/min/max \u00e2\u0080\u0094 the value is validated client-side AND server-side (fail-closed), and the parsed number is returned on `value`. Non-modal on the pendant, so the operator can still engage freedrive. Read-only (D-x): it changes no robot state and grants no authority \u00e2\u0080\u0094 the actions you take AFTER go through their normal gates. FAIL-CLOSED: no operator / timeout returns answered:false (treat as NOT done \u00e2\u0080\u0094 never proceed as if the physical step happened).",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "prompt": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500,
+      "description": "The question or instruction to show the operator on the pendant."
+     },
+     "kind": {
+      "description": "How the pendant renders/resolves it. Default 'confirm'. 'teach-pose' = a freedrive hand-guide step; 'text' = a free-text field (answer returns on `text`).",
+      "type": "string",
+      "enum": [
+       "confirm",
+       "choice",
+       "acknowledge",
+       "teach-pose",
+       "text"
+      ]
+     },
+     "choices": {
+      "description": "The buttons to offer (id + label). Defaults per kind (e.g. Confirm/Skip). For kind:'text' the operator types the answer; any buttons are extra (e.g. Skip).",
+      "minItems": 1,
+      "maxItems": 5,
+      "type": "array",
+      "items": {
+       "type": "object",
+       "properties": {
+        "id": {
+         "type": "string",
+         "minLength": 1,
+         "maxLength": 40
+        },
+        "label": {
+         "type": "string",
+         "minLength": 1,
+         "maxLength": 60
+        }
+       },
+       "required": [
+        "id",
+        "label"
+       ]
+      }
+     },
+     "context": {
+      "description": "Optional extra detail / why, shown under the prompt.",
+      "type": "string",
+      "maxLength": 1000
+     },
+     "placeholder": {
+      "description": "For kind:'text': a placeholder hint shown in the entry field (e.g. 'e.g. 42' or 'gripper name'). Ignored by the button kinds.",
+      "type": "string",
+      "maxLength": 120
+     },
+     "inputType": {
+      "description": "For kind:'text': 'number' makes the field numeric and VALIDATES the answer (client-side + server-side, fail-closed) against integer/min/max. Default 'text' (any string). Use 'number' for a ur-loop count, an offset, etc.",
+      "type": "string",
+      "enum": [
+       "text",
+       "number"
+      ]
+     },
+     "integer": {
+      "description": "For inputType:'number': require a whole number (e.g. a loop count).",
+      "type": "boolean"
+     },
+     "min": {
+      "description": "For inputType:'number': inclusive minimum (e.g. 1 for a loop count).",
+      "type": "number"
+     },
+     "max": {
+      "description": "For inputType:'number': inclusive maximum.",
+      "type": "number"
+     },
+     "expiresInSec": {
+      "description": "Fail-closed timeout (seconds); clamped to [10,1800]. Default 300. Teaching can take minutes \u00e2\u0080\u0094 set generously.",
+      "type": "integer",
+      "exclusiveMinimum": 0,
+      "maximum": 1800
+     },
+     "confirm": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "prompt"
+    ]
+   },
+   "annotations": {
+    "title": "Ask the operator on the pendant (blocks until answered)",
+    "readOnlyHint": true,
+    "destructiveHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  }
+ ],
+ "calls": {
+  "bridge_my_status": {
+   "structuredContent": {
+    "status": "success",
+    "data": {
+     "tier": "observe",
+     "allowedEffects": [
+      "read"
+     ],
+     "state": "active",
+     "paused": false,
+     "connectionId": "971a24ac-b673-4c00-8557-53616d4792cf",
+     "client": "order2cobot-sim-capture",
+     "liveSession": true,
+     "connectionStatus": "active"
+    },
+    "diagnostics": {
+     "target": "robot",
+     "host": "servicegateway:80",
+     "durationMs": 2,
+     "traceId": "5a470d06-c119-4651-8721-3fd1c3124cca",
+     "phases": [
+      {
+       "label": "handler",
+       "count": 1,
+       "totalMs": 1
+      }
+     ],
+     "spans": [
+      {
+       "label": "handler",
+       "atMs": 0,
+       "durationMs": 1
+      }
+     ]
+    }
+   }
+  },
+  "robot_get_state": {
+   "structuredContent": {
+    "status": "success",
+    "data": {
+     "robotmode": "RUNNING",
+     "safetymode": "NORMAL",
+     "controlmode": "LOCAL",
+     "operationalmode": "MANUAL",
+     "apiVersion": "3.1.6",
+     "source": "local",
+     "remoteControlEnabled": false,
+     "motionRunnable": false,
+     "motionRunnableReason": "program_run play would be refused: controlmode=LOCAL (need REMOTE \u00e2\u0080\u0094 switch the pendant to Remote Control)."
+    },
+    "diagnostics": {
+     "target": "robot",
+     "host": "servicegateway:80",
+     "durationMs": 103,
+     "traceId": "6513c6ea-f57f-47ad-ab41-ef45fadf1a96",
+     "phases": [
+      {
+       "label": "rest",
+       "count": 4,
+       "totalMs": 274
+      },
+      {
+       "label": "handler",
+       "count": 1,
+       "totalMs": 103
+      }
+     ],
+     "spans": [
+      {
+       "label": "rest",
+       "atMs": 0,
+       "durationMs": 38,
+       "detail": "local GET /universal-robots/robot-api/robotstate/v1/robotmode -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 1,
+       "durationMs": 59,
+       "detail": "local GET /universal-robots/robot-api/system/v1/controlmode -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 1,
+       "durationMs": 77,
+       "detail": "local GET /universal-robots/robot-api/robotstate/v1/safetymode -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 3,
+       "durationMs": 100,
+       "detail": "local GET /universal-robots/robot-api/system/v1/operationalmode -> 200"
+      },
+      {
+       "label": "handler",
+       "atMs": 0,
+       "durationMs": 103
+      }
+     ]
+    }
+   }
+  },
+  "robot_get_joint_positions": {
+   "structuredContent": {
+    "status": "success",
+    "data": {
+     "base": -0.8734,
+     "shoulder": -0.4335,
+     "elbow": 0.6657,
+     "wrist1": -3.2802,
+     "wrist2": -1.2919,
+     "wrist3": -3.7012,
+     "channel": "in-process",
+     "hostValidated": true
+    },
+    "diagnostics": {
+     "target": "robot",
+     "host": "servicegateway:80",
+     "durationMs": 53,
+     "traceId": "24980a0b-b541-4bb1-80ea-bda058f64b34",
+     "phases": [
+      {
+       "label": "robot-position",
+       "count": 1,
+       "totalMs": 52
+      },
+      {
+       "label": "handler",
+       "count": 1,
+       "totalMs": 52
+      }
+     ],
+     "spans": [
+      {
+       "label": "robot-position",
+       "atMs": 0,
+       "durationMs": 52,
+       "detail": "getJointPositions"
+      },
+      {
+       "label": "handler",
+       "atMs": 0,
+       "durationMs": 52
+      }
+     ]
+    }
+   }
+  },
+  "robot_get_pose": {
+   "structuredContent": {
+    "status": "success",
+    "data": {
+     "frame": "base",
+     "pose": {
+      "orientation": [
+       -1.7712955331250213,
+       1.8644163929546145,
+       2.285138528843658
+      ],
+      "position": [
+       -0.45734156198747233,
+       0.30007892571317163,
+       0.2809076793840831
+      ]
+     },
+     "qNear": {
+      "base": -0.8734,
+      "shoulder": -0.4335,
+      "elbow": 0.6657,
+      "wrist1": -3.2802,
+      "wrist2": -1.2919,
+      "wrist3": -3.7012
+     },
+     "channel": "in-process",
+     "hostValidated": true
+    },
+    "diagnostics": {
+     "target": "robot",
+     "host": "servicegateway:80",
+     "durationMs": 41,
+     "traceId": "b5bee03d-5ed2-4419-95b3-756ff43f082e",
+     "phases": [
+      {
+       "label": "robot-position",
+       "count": 1,
+       "totalMs": 40
+      },
+      {
+       "label": "handler",
+       "count": 1,
+       "totalMs": 40
+      }
+     ],
+     "spans": [
+      {
+       "label": "robot-position",
+       "atMs": 0,
+       "durationMs": 40,
+       "detail": "getPose"
+      },
+      {
+       "label": "handler",
+       "atMs": 0,
+       "durationMs": 40
+      }
+     ]
+    }
+   }
+  },
+  "robot_get_kinematic_info": {
+   "structuredContent": {
+    "status": "success",
+    "data": {
+     "0": {
+      "DHTheta": 6.795071608167724e-08,
+      "DHa": -6.405474211349648e-05,
+      "DHd": 0.1517516220518496,
+      "DHAlpha": 1.5700482710345973,
+      "checksum": 4294967295
+     },
+     "1": {
+      "DHTheta": 1.2948657503113712,
+      "DHa": -0.06639211795279173,
+      "DHd": 78.08563641409161,
+      "DHAlpha": 0.0030027796444576107,
+      "checksum": 4294967295
+     },
+     "2": {
+      "DHTheta": 5.792460546123739,
+      "DHa": -0.1478966878474833,
+      "DHd": -33.94424893708645,
+      "DHAlpha": 0.003478581070003448,
+      "checksum": 4294967295
+     },
+     "3": {
+      "DHTheta": -0.8041438354413329,
+      "DHa": 0.00011733694481778539,
+      "DHd": -44.010646653229585,
+      "DHAlpha": 1.5703148625397612,
+      "checksum": 4294967295
+     },
+     "4": {
+      "DHTheta": -5.140122277640102e-08,
+      "DHa": -0.00012850161849745689,
+      "DHd": 0.08516514956296438,
+      "DHAlpha": -1.5727692010205476,
+      "checksum": 4294967295
+     },
+     "5": {
+      "DHTheta": -1.4142161257162111e-07,
+      "DHa": 0,
+      "DHd": 0.09177133654767783,
+      "DHAlpha": 0,
+      "checksum": 4294967295
+     },
+     "channel": "in-process",
+     "hostValidated": true
+    },
+    "diagnostics": {
+     "target": "robot",
+     "host": "servicegateway:80",
+     "durationMs": 60,
+     "traceId": "b58f0d3e-f2f5-4caf-9b70-c6ccbb0bc722",
+     "phases": [
+      {
+       "label": "robot-position",
+       "count": 1,
+       "totalMs": 57
+      },
+      {
+       "label": "handler",
+       "count": 1,
+       "totalMs": 57
+      }
+     ],
+     "spans": [
+      {
+       "label": "robot-position",
+       "atMs": 0,
+       "durationMs": 57,
+       "detail": "getKinematicInfo"
+      },
+      {
+       "label": "handler",
+       "atMs": 0,
+       "durationMs": 57
+      }
+     ]
+    }
+   }
+  },
+  "program_list": {
+   "structuredContent": {
+    "status": "success",
+    "data": {
+     "programs": [
+      {
+       "id": "0",
+       "name": "go_home",
+       "robotType": "UR3"
+      },
+      {
+       "id": "1",
+       "name": "open_gripper",
+       "robotType": "UR3"
+      },
+      {
+       "id": "2",
+       "name": "scan_checkerboard",
+       "robotType": "UR3"
+      },
+      {
+       "id": "3",
+       "name": "pick_and_place",
+       "robotType": "UR3"
+      },
+      {
+       "id": "4",
+       "name": "close_gripper",
+       "robotType": "UR3"
+      },
+      {
+       "id": "5",
+       "name": "pick_place_modules",
+       "robotType": "UR3"
+      },
+      {
+       "id": "6",
+       "name": "qwen_sample",
+       "robotType": "UR3"
+      },
+      {
+       "id": "7",
+       "name": "breadboard",
+       "robotType": "UR3"
+      },
+      {
+       "id": "8",
+       "name": "qwen_led",
+       "robotType": "UR3"
+      },
+      {
+       "id": "9",
+       "name": "demo_2",
+       "robotType": "UR3"
+      },
+      {
+       "id": "10",
+       "name": "rj45_qa",
+       "robotType": "UR3"
+      },
+      {
+       "id": "11",
+       "name": "pick_place_o2c_01",
+       "robotType": "UR3"
+      },
+      {
+       "id": "12",
+       "name": "circuit",
+       "robotType": "UR3"
+      },
+      {
+       "id": "13",
+       "name": "pick_place_cli_02",
+       "robotType": "UR3"
+      },
+      {
+       "id": "14",
+       "name": "circuit_claude",
+       "robotType": "UR3"
+      },
+      {
+       "id": "16",
+       "name": "circuit_claude_new",
+       "robotType": "UR3"
+      },
+      {
+       "id": "17",
+       "name": "circuit_claude_advanced",
+       "robotType": "UR3"
+      },
+      {
+       "id": "18",
+       "name": "circuit_claude_high",
+       "robotType": "UR3"
+      },
+      {
+       "id": "19",
+       "name": "challenge2_hard_v1",
+       "robotType": "UR3"
+      },
+      {
+       "id": "20",
+       "name": "smoke_final_output_160107",
+       "robotType": "UR3"
+      },
+      {
+       "id": "21",
+       "name": "challenge2_hard_v2",
+       "robotType": "UR3"
+      },
+      {
+       "id": "22",
+       "name": "circuit_claude_cad",
+       "robotType": "UR3"
+      },
+      {
+       "id": "23",
+       "name": "challenge1_medium",
+       "robotType": "UR3"
+      },
+      {
+       "id": "24",
+       "name": "challenge1_medium_v2",
+       "robotType": "UR3"
+      },
+      {
+       "id": "25",
+       "name": "challenge1_medium_v2_fixed",
+       "robotType": "UR3"
+      },
+      {
+       "id": "26",
+       "name": "challenge1_medium_v2_2",
+       "robotType": "UR3"
+      },
+      {
+       "id": "27",
+       "name": "protoboard_wire",
+       "robotType": "UR3"
+      },
+      {
+       "id": "28",
+       "name": "protoboard_wire2",
+       "robotType": "UR3"
+      }
+     ]
+    },
+    "diagnostics": {
+     "target": "robot",
+     "host": "servicegateway:80",
+     "durationMs": 26,
+     "traceId": "e31423d2-2a2e-471a-9f36-4d2a08276ab8",
+     "phases": [
+      {
+       "label": "handler",
+       "count": 1,
+       "totalMs": 25
+      },
+      {
+       "label": "rest",
+       "count": 1,
+       "totalMs": 24
+      }
+     ],
+     "spans": [
+      {
+       "label": "rest",
+       "atMs": 0,
+       "durationMs": 24,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications -> 200"
+      },
+      {
+       "label": "handler",
+       "atMs": 0,
+       "durationMs": 25
+      }
+     ]
+    }
+   }
+  },
+  "program_get_loaded": {
+   "structuredContent": {
+    "status": "success",
+    "data": {
+     "loaded": "protoboard_wire2",
+     "appId": "28",
+     "programId": "28",
+     "source": "local"
+    },
+    "diagnostics": {
+     "target": "robot",
+     "host": "servicegateway:80",
+     "durationMs": 455,
+     "traceId": "4b34a2f1-4005-402c-92ba-17022d179171",
+     "phases": [
+      {
+       "label": "rest",
+       "count": 30,
+       "totalMs": 6004
+      },
+      {
+       "label": "handler",
+       "count": 1,
+       "totalMs": 454
+      }
+     ],
+     "spans": [
+      {
+       "label": "rest",
+       "atMs": 0,
+       "durationMs": 92,
+       "detail": "local GET /universal-robots/robot-api/program/v1/loaded -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 92,
+       "durationMs": 15,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 109,
+       "durationMs": 79,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/2/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 108,
+       "durationMs": 111,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/1/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 108,
+       "durationMs": 116,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/0/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 110,
+       "durationMs": 127,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/4/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 110,
+       "durationMs": 130,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/3/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 111,
+       "durationMs": 145,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/6/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 114,
+       "durationMs": 149,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/7/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 115,
+       "durationMs": 158,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/8/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 111,
+       "durationMs": 179,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/5/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 118,
+       "durationMs": 192,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/10/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 117,
+       "durationMs": 205,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/9/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 121,
+       "durationMs": 208,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/11/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 122,
+       "durationMs": 209,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/12/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 125,
+       "durationMs": 212,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/14/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 129,
+       "durationMs": 230,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/17/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 127,
+       "durationMs": 240,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/16/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 125,
+       "durationMs": 247,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/13/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 133,
+       "durationMs": 246,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/19/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 129,
+       "durationMs": 254,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/18/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 136,
+       "durationMs": 254,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/20/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 141,
+       "durationMs": 254,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/22/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 138,
+       "durationMs": 268,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/21/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 146,
+       "durationMs": 264,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/23/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 148,
+       "durationMs": 273,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/24/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 150,
+       "durationMs": 288,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/25/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 160,
+       "durationMs": 280,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/27/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 155,
+       "durationMs": 288,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/26/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 163,
+       "durationMs": 291,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/28/programs -> 200"
+      },
+      {
+       "label": "handler",
+       "atMs": 0,
+       "durationMs": 454
+      }
+     ]
+    }
+   }
+  },
+  "psx_logs": {
+   "structuredContent": {
+    "status": "success",
+    "data": {
+     "lines": [
+      {
+       "ts": "1793022647969",
+       "level": "INFO",
+       "source": "RTMACHINE",
+       "message": "PROGRAM_XXX_STARTED {\"name\":\"rj45_qa4a90\"}"
+      },
+      {
+       "ts": "1793022650403",
+       "level": "INFO",
+       "source": "RTMACHINE",
+       "message": "PROGRAM_XXX_STOPPED {\"name\":\"rj45_qa4a90\"}"
+      },
+      {
+       "ts": "1793023117485",
+       "level": "INFO",
+       "source": "RTMACHINE",
+       "message": "PROGRAM_XXX_STARTED {\"name\":\"rj45_qa4a90\"}"
+      },
+      {
+       "ts": "1793023117686",
+       "level": "INFO",
+       "source": "RTMACHINE",
+       "message": "PROGRAM_XXX_STOPPED {\"name\":\"rj45_qa4a90\"}"
+      },
+      {
+       "ts": "1793024593120",
+       "level": "INFO",
+       "source": "RTMACHINE",
+       "message": "com_ur_controller_error_codes.211.args.2.text {\"parameter1\":\"0\"}"
+      },
+      {
+       "ts": "1793024816952",
+       "level": "INFO",
+       "source": "RTMACHINE",
+       "message": "com_ur_controller_error_codes.211.args.1.text {\"parameter1\":\"0\"}"
+      },
+      {
+       "ts": "1793026117245",
+       "level": "WARNING",
+       "source": "RTMACHINE",
+       "message": "com_ur_controller_runtime_exceptions.syntax_error_on_line {\"parameter2\":\"end\",\"parameter1\":\"1693\"}"
+      },
+      {
+       "ts": "1793026215384",
+       "level": "WARNING",
+       "source": "RTMACHINE",
+       "message": "com_ur_controller_runtime_exceptions.syntax_error_on_line {\"parameter2\":\"end\",\"parameter1\":\"1696\"}"
+      },
+      {
+       "ts": "1793026358823",
+       "level": "INFO",
+       "source": "RTMACHINE",
+       "message": "PROGRAM_XXX_STARTED {\"name\":\"protoboard_wire2ca9a\"}"
+      },
+      {
+       "ts": "1793026360828",
+       "level": "INFO",
+       "source": "RTMACHINE",
+       "message": "text_msg {\"text\":\"Not able to open socket rq to host: 127.0.0.1 at port: 63352 : Connection timed out\\n\"}"
+      },
+      {
+       "ts": "1793026360828",
+       "level": "INFO",
+       "source": "RTMACHINE",
+       "message": "text_msg {\"text\":\"rq open 127.0.0.1 False\"}"
+      },
+      {
+       "ts": "1793026362840",
+       "level": "INFO",
+       "source": "RTMACHINE",
+       "message": "text_msg {\"text\":\"Not able to open socket rq to host: 172.17.0.1 at port: 63352 : Connection timed out\\n\"}"
+      },
+      {
+       "ts": "1793026362840",
+       "level": "INFO",
+       "source": "RTMACHINE",
+       "message": "text_msg {\"text\":\"rq open 172.17.0.1 False\"}"
+      },
+      {
+       "ts": "1793026362841",
+       "level": "INFO",
+       "source": "RTMACHINE",
+       "message": "PROGRAM_XXX_STOPPED {\"name\":\"protoboard_wire2ca9a\"}"
+      },
+      {
+       "ts": "1793028192958",
+       "level": "INFO",
+       "source": "RTMACHINE",
+       "message": "com_ur_controller_error_codes.211.args.2.text {\"parameter1\":\"0\"}"
+      }
+     ],
+     "count": 100,
+     "source": "polyscopex-services",
+     "backend": "local"
+    },
+    "diagnostics": {
+     "target": "robot",
+     "host": "servicegateway:80",
+     "durationMs": 145,
+     "traceId": "ad81dfc4-8034-42b6-a9c3-80397c73952b",
+     "phases": [
+      {
+       "label": "handler",
+       "count": 1,
+       "totalMs": 143
+      },
+      {
+       "label": "rest",
+       "count": 1,
+       "totalMs": 118
+      }
+     ],
+     "spans": [
+      {
+       "label": "rest",
+       "atMs": 0,
+       "durationMs": 118,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/logs?limit=100 -> 200"
+      },
+      {
+       "label": "handler",
+       "atMs": 0,
+       "durationMs": 143
+      }
+     ]
+    }
+   }
+  },
+  "program_get_10": {
+   "structuredContent": {
+    "status": "success",
+    "data": {
+     "appId": "10",
+     "programId": "10",
+     "rootGuid": "b51783b4-a925-4dad-b6ac-4996798a050f",
+     "tree": [
+      "ur-program (name=\"rj45_qa\") [b51783b4-a925-4dad-b6ac-4996798a050f]",
+      "  ur-modules [1c2a4237-77c3-4493-ad5e-b44255bcef5c]",
+      "  ur-functions [b98d7568-b39e-4a37-9a75-81d3b78a0f81]",
+      "    ur-function [8777994b-c554-4a92-a1f8-a96b2806398a]",
+      "  ur-before-start [07f7d973-424f-4c89-b6fc-3465e6737d12]",
+      "  ur-configuration [e3c88c15-e72b-444e-894a-d3f1b489366a]",
+      "  ur-status [14525a23-5340-4fdc-bd5c-d547e06ebd82]",
+      "  ur-code (loopForever=false) [847e3f9b-2d97-46b3-9da2-cd521f4f8627]",
+      "    ur-script (expression=\"set_target_payload(1.5, [0.0, 0.0, 0.06])\\nset_tcp(p[-0.041, -0.002, 0.189, 0.0, 0.0, 0.0])\\n\\ndef tel(flim, phase):\\n  # telemetry for porttest.telemetry (RTDE): force limi"
+     ],
+     "channel": "rest-fallback",
+     "validation": {
+      "valid": true,
+      "messages": [],
+      "hostValidated": false
+     },
+     "validationNote": "structurally accepted, not host-validated (rest-fallback channel; ADR-043 AR4)"
+    },
+    "diagnostics": {
+     "target": "robot",
+     "host": "servicegateway:80",
+     "durationMs": 1094,
+     "traceId": "20f9e330-6fcc-4c0b-87f5-8e2781955297",
+     "phases": [
+      {
+       "label": "rest",
+       "count": 32,
+       "totalMs": 6636
+      },
+      {
+       "label": "handler",
+       "count": 1,
+       "totalMs": 1086
+      }
+     ],
+     "spans": [
+      {
+       "label": "rest",
+       "atMs": 0,
+       "durationMs": 696,
+       "detail": "local GET /universal-robots/robot-api/program/v1/loaded -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 696,
+       "durationMs": 7,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 705,
+       "durationMs": 89,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/0/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 706,
+       "durationMs": 89,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/1/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 712,
+       "durationMs": 83,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/3/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 707,
+       "durationMs": 89,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/2/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 716,
+       "durationMs": 106,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/4/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 716,
+       "durationMs": 126,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/5/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 719,
+       "durationMs": 128,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/7/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 718,
+       "durationMs": 142,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/6/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 720,
+       "durationMs": 160,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/8/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 721,
+       "durationMs": 169,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/9/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 721,
+       "durationMs": 174,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/10/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 721,
+       "durationMs": 176,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/11/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 722,
+       "durationMs": 189,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/12/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 722,
+       "durationMs": 206,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/13/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 722,
+       "durationMs": 219,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/14/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 723,
+       "durationMs": 232,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/17/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 723,
+       "durationMs": 246,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/16/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 723,
+       "durationMs": 253,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/18/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 724,
+       "durationMs": 268,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/19/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 724,
+       "durationMs": 275,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/21/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 724,
+       "durationMs": 294,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/20/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 725,
+       "durationMs": 295,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/22/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 725,
+       "durationMs": 299,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/23/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 725,
+       "durationMs": 305,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/24/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 726,
+       "durationMs": 318,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/25/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 727,
+       "durationMs": 322,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/26/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 727,
+       "durationMs": 326,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/27/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 728,
+       "durationMs": 333,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/28/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 1061,
+       "durationMs": 8,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/10/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 1069,
+       "durationMs": 14,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/10/programs/10 -> 200"
+      },
+      {
+       "label": "handler",
+       "atMs": 0,
+       "durationMs": 1086
+      }
+     ]
+    }
+   }
+  },
+  "program_get_28": {
+   "structuredContent": {
+    "status": "success",
+    "data": {
+     "appId": "28",
+     "programId": "28",
+     "rootGuid": "b407ac6b-6c40-4cee-b2f3-033169d0f30e",
+     "tree": [
+      "ur-program (name=\"protoboard_wire2\") [b407ac6b-6c40-4cee-b2f3-033169d0f30e]",
+      "  ur-modules [1ea2a8d0-dd4e-4a00-8b3b-c8148673cbd1]",
+      "  ur-functions [aa9bebfe-3776-4a44-91c0-9849cb158f53]",
+      "    ur-function [f13a570c-a5f1-4a26-a58a-033ee2644e1f]",
+      "  ur-before-start [07328218-71b9-41b3-af0c-3e287854ceef]",
+      "  ur-configuration [12051eab-deac-4523-a073-8c09e44f6cc0]",
+      "  ur-status [9b55d770-953e-4a07-b3ac-0c617d602bf3]",
+      "  ur-code (loopForever=false) [fb14d670-b843-4f59-950f-4b9685eab8fa]",
+      "    ur-script (expression=\"set_target_payload(1.5, [0.0, 0.0, 0.06])\\nset_tcp(p[0.0, 0.0, 0.213, 0.0, 0.0, 0.0])\\n\\ndef tel(flim, phase):\\n  # telemetry for porttest.telemetry (RTDE): force limit in u"
+     ],
+     "channel": "rest-fallback",
+     "validation": {
+      "valid": true,
+      "messages": [],
+      "hostValidated": false
+     },
+     "validationNote": "structurally accepted, not host-validated (rest-fallback channel; ADR-043 AR4)"
+    },
+    "diagnostics": {
+     "target": "robot",
+     "host": "servicegateway:80",
+     "durationMs": 432,
+     "traceId": "80882b9f-9a25-408d-b7c5-78ddecc239f5",
+     "phases": [
+      {
+       "label": "rest",
+       "count": 31,
+       "totalMs": 4074
+      },
+      {
+       "label": "handler",
+       "count": 1,
+       "totalMs": 428
+      }
+     ],
+     "spans": [
+      {
+       "label": "rest",
+       "atMs": 0,
+       "durationMs": 101,
+       "detail": "local GET /universal-robots/robot-api/program/v1/loaded -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 101,
+       "durationMs": 17,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 119,
+       "durationMs": 41,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/0/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 125,
+       "durationMs": 45,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/7/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 120,
+       "durationMs": 54,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/2/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 128,
+       "durationMs": 61,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/11/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 120,
+       "durationMs": 74,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/1/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 124,
+       "durationMs": 73,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/6/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 121,
+       "durationMs": 87,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/3/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 123,
+       "durationMs": 94,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/5/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 126,
+       "durationMs": 95,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/9/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 122,
+       "durationMs": 103,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/4/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 127,
+       "durationMs": 102,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/10/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 125,
+       "durationMs": 107,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/8/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 129,
+       "durationMs": 115,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/12/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 131,
+       "durationMs": 117,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/18/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 130,
+       "durationMs": 133,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/16/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 132,
+       "durationMs": 137,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/19/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 132,
+       "durationMs": 163,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/17/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 130,
+       "durationMs": 168,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/13/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 130,
+       "durationMs": 173,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/14/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 132,
+       "durationMs": 182,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/20/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 134,
+       "durationMs": 188,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/24/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 141,
+       "durationMs": 199,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/28/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 133,
+       "durationMs": 213,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/21/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 134,
+       "durationMs": 222,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/23/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 135,
+       "durationMs": 227,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/25/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 139,
+       "durationMs": 235,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/27/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 134,
+       "durationMs": 260,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/22/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 137,
+       "durationMs": 259,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/26/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 397,
+       "durationMs": 29,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/28/programs/28 -> 200"
+      },
+      {
+       "label": "handler",
+       "atMs": 0,
+       "durationMs": 428
+      }
+     ]
+    }
+   }
+  },
+  "program_get_state": {
+   "structuredContent": {
+    "status": "success",
+    "data": {
+     "state": "STOPPED",
+     "apiVersion": "3.1.6",
+     "source": "local"
+    },
+    "diagnostics": {
+     "target": "robot",
+     "host": "servicegateway:80",
+     "durationMs": 13,
+     "traceId": "3d92618a-2cc7-43cf-b7f5-88cc55737d39",
+     "phases": [
+      {
+       "label": "handler",
+       "count": 1,
+       "totalMs": 12
+      },
+      {
+       "label": "rest",
+       "count": 1,
+       "totalMs": 11
+      }
+     ],
+     "spans": [
+      {
+       "label": "rest",
+       "atMs": 1,
+       "durationMs": 11,
+       "detail": "local GET /universal-robots/robot-api/program/v1/state -> 200"
+      },
+      {
+       "label": "handler",
+       "atMs": 0,
+       "durationMs": 12
+      }
+     ]
+    }
+   }
+  },
+  "bridge_orient": {
+   "structuredContent": {
+    "status": "success",
+    "data": {
+     "you": {
+      "tier": "observe",
+      "allowedEffects": [
+       "read"
+      ],
+      "target": "robot",
+      "state": "active"
+     },
+     "robot": {
+      "robotmode": "IDLE",
+      "safetymode": "NORMAL",
+      "controlmode": "LOCAL",
+      "operationalmode": "MANUAL",
+      "apiVersion": "3.1.6",
+      "source": "local",
+      "remoteControlEnabled": false,
+      "motionRunnable": false,
+      "motionRunnableReason": "program_run play would be refused: controlmode=LOCAL (need REMOTE \u00e2\u0080\u0094 switch the pendant to Remote Control); robotmode=IDLE (need RUNNING \u00e2\u0080\u0094 power on + release brakes)."
+     },
+     "program": {
+      "loaded": {
+       "loaded": "protoboard_wire2",
+       "appId": "28",
+       "programId": "28",
+       "source": "local"
+      },
+      "state": {
+       "state": "STOPPED",
+       "apiVersion": "3.1.6",
+       "source": "local"
+      }
+     },
+     "installedUrcaps": {
+      "source": "urservice",
+      "count": 12,
+      "urcaps": [
+       {
+        "vendorId": "universal-robots",
+        "urcapId": "ur-ethernetip",
+        "name": "UR EtherNet/IP",
+        "version": "1.22.1"
+       },
+       {
+        "vendorId": "universal-robots",
+        "urcapId": "ur-profinet-g5",
+        "name": "UR Profinet",
+        "version": "2.5.4"
+       },
+       {
+        "vendorId": "universal-robots",
+        "urcapId": "urcap-system-api",
+        "name": "URCap System API",
+        "version": "5.0.133"
+       },
+       {
+        "vendorId": "universal-robots",
+        "urcapId": "ai-agent-bridge",
+        "name": "AI Agent Bridge",
+        "version": "0.1.36"
+       },
+       {
+        "vendorId": "universal-robots",
+        "urcapId": "urconnect",
+        "name": "UR Connect",
+        "version": "1.3.0"
+       },
+       {
+        "vendorId": "universal-robots",
+        "urcapId": "urconnect-main",
+        "name": "UR Connect Main",
+        "version": "1.3.1"
+       },
+       {
+        "vendorId": "universal-robots",
+        "urcapId": "web-frontend-app",
+        "name": "Web Frontend App",
+        "version": "1.2.0"
+       },
+       {
+        "vendorId": "robotiq",
+        "urcapId": "robotiq",
+        "name": "Robotiq",
+        "version": "4.2.1"
+       },
+       {
+        "vendorId": "universal-robots",
+        "urcapId": "foxglove-bridge",
+        "name": "foxglove-bridge",
+        "version": "1.1.8"
+       },
+       {
+        "vendorId": "universal-robots",
+        "urcapId": "polyscopex-services",
+        "name": "PolyScope X Services",
+        "version": "59.5.42"
+       },
+       {
+        "vendorId": "universal-robots",
+        "urcapId": "ros-message-compiler",
+        "name": "UR Ros2 Message compiler",
+        "version": "1.5.2"
+       },
+       {
+        "vendorId": "universal-robots",
+        "urcapId": "sw-licensing-psx",
+        "name": "SW Licensing PSX",
+        "version": "0.9.0"
+       }
+      ]
+     },
+     "frontend": {
+      "channels": {
+       "authoring": true,
+       "robot-position": true,
+       "smart-skills": true,
+       "signals": true,
+       "application": true
+      }
+     },
+     "guides": {
+      "hint": "Fetch a guide with mcp_get_guide { id }. Start with 'getting-started'.",
+      "available": [
+       {
+        "id": "getting-started",
+        "title": "Programming this robot with the AI Agent Bridge",
+        "summary": "Read this FIRST. The connect\u00e2\u0086\u0092orient\u00e2\u0086\u0092author\u00e2\u0086\u0092validate\u00e2\u0086\u0092load\u00e2\u0086\u0092run loop, the access tiers, and the fail-fast rules that keep you from declaring a dead program a success.",
+        "uri": "resource://psx/guide/getting-started"
+       },
+       {
+        "id": "program-authoring",
+        "title": "Authoring a PolyScope X program",
+        "summary": "How a PSX program is shaped (application shell + node tree), how to discover node types, and the add/validate rhythm \u00e2\u0080\u0094 including the batch children[] shortcut.",
+        "uri": "resource://psx/guide/program-authoring"
+       },
+       {
+        "id": "moves-and-waypoints",
+        "title": "Moves and waypoints (the #1 trap)",
+        "summary": "Move nodes need DEFINED waypoints or they are dead. How to supply qNear/pose, why hostValidated matters, and why a MoveC needs exactly two points.",
+        "uri": "resource://psx/guide/moves-and-waypoints"
+       },
+       {
+        "id": "safety-and-motion",
+        "title": "Safety, tiers and motion",
+        "summary": "What each access tier allows, why real-robot motion needs Remote Control, and what the MCP will never do. Read before program_run on hardware.",
+        "uri": "resource://psx/guide/safety-and-motion"
+       }
+      ]
+     },
+     "nextSteps": [
+      "Read the orientation guide: mcp_get_guide { id: 'getting-started' }.",
+      "State your goal to the operator: bridge_report_activity { goal: '\u00e2\u0080\u00a6' }.",
+      "You are OBSERVE (read-only). To author programs you need 'adjust': ask the user in your chat to have the operator raise it on the pendant.",
+      "A program is loaded ('protoboard_wire2'). Inspect it (program_get / program_validate) before editing.",
+      "Motion is currently blocked: program_run play would be refused: controlmode=LOCAL (need REMOTE \u00e2\u0080\u0094 switch the pendant to Remote Control); robotmode=IDLE (need RUNNING \u00e2\u0080\u0094 power on + release brakes)."
+     ],
+     "note": "Read the 'getting-started' guide before authoring. Trust hostValidated:true, not just valid:true \u00e2\u0080\u0094 a move with an undefined waypoint is a dead program even when it 'validates'."
+    },
+    "diagnostics": {
+     "target": "robot",
+     "host": "servicegateway:80",
+     "durationMs": 504,
+     "traceId": "a1cc7355-985b-44fe-b683-4779e0045781",
+     "phases": [
+      {
+       "label": "rest",
+       "count": 36,
+       "totalMs": 4031
+      },
+      {
+       "label": "handler",
+       "count": 1,
+       "totalMs": 503
+      }
+     ],
+     "spans": [
+      {
+       "label": "rest",
+       "atMs": 1,
+       "durationMs": 33,
+       "detail": "local GET /universal-robots/robot-api/robotstate/v1/robotmode -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 4,
+       "durationMs": 63,
+       "detail": "local GET /universal-robots/robot-api/system/v1/operationalmode -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 2,
+       "durationMs": 78,
+       "detail": "local GET /universal-robots/robot-api/robotstate/v1/safetymode -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 3,
+       "durationMs": 81,
+       "detail": "local GET /universal-robots/robot-api/system/v1/controlmode -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 85,
+       "durationMs": 107,
+       "detail": "local GET /universal-robots/robot-api/program/v1/loaded -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 192,
+       "durationMs": 17,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 210,
+       "durationMs": 48,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/1/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 209,
+       "durationMs": 53,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/0/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 212,
+       "durationMs": 59,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/2/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 212,
+       "durationMs": 64,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/3/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 219,
+       "durationMs": 63,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/9/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 220,
+       "durationMs": 65,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/11/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 221,
+       "durationMs": 79,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/12/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 220,
+       "durationMs": 87,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/10/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 214,
+       "durationMs": 98,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/4/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 222,
+       "durationMs": 99,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/16/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 223,
+       "durationMs": 101,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/18/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 216,
+       "durationMs": 114,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/5/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 223,
+       "durationMs": 116,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/17/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 221,
+       "durationMs": 123,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/13/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 218,
+       "durationMs": 130,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/7/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 217,
+       "durationMs": 138,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/6/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 219,
+       "durationMs": 141,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/8/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 224,
+       "durationMs": 144,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/19/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 222,
+       "durationMs": 162,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/14/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 225,
+       "durationMs": 166,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/20/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 225,
+       "durationMs": 169,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/21/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 225,
+       "durationMs": 176,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/23/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 225,
+       "durationMs": 187,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/22/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 225,
+       "durationMs": 191,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/24/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 226,
+       "durationMs": 196,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/25/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 227,
+       "durationMs": 206,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/27/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 227,
+       "durationMs": 216,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/26/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 228,
+       "durationMs": 224,
+       "detail": "local GET /universal-robots/polyscopex-services/polyscopex-services/rest-api/applications/28/programs -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 452,
+       "durationMs": 25,
+       "detail": "local GET /universal-robots/robot-api/program/v1/state -> 200"
+      },
+      {
+       "label": "rest",
+       "atMs": 480,
+       "durationMs": 12,
+       "detail": "local GET /universal-robots/urservice/api/v1/urcaps -> 200"
+      },
+      {
+       "label": "handler",
+       "atMs": 0,
+       "durationMs": 503
+      }
+     ]
+    }
+   }
+  }
+ },
+ "note": "Captured read-only from the real AI Agent Bridge (192.168.2.12) on 2026-10-26: initialize, tools/list and observe-tier calls. The simulator serves these tool schemas and the DH table."
+}

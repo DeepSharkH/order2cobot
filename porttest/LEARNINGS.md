@@ -458,3 +458,29 @@ base · FK · mount; fixed cam = board PnP. Stored in `configs/calibration/scene
      pecks plus a stiff seat (C157 came from x/z held within 1 mm).
   4. Move the fixed cam to port height, 30–45° to the side, so the opening stays visible
      while the plug approaches.
+
+## Protoboard wire (skill protoboard-wire, run 20261026-174057, real robot)
+
+Result: jumper_orig_5mm moved from H1:J49/J51 to H1:C28/C30 (labels as fitted on a one-piece
+65-number board; orientation not verified by a printed number, the user skipped that check).
+The operator confirmed the casing inside; no camera verification (dashboard :8090 went down at
+the end). 5 operator actions (2x Remote, gripper reconnect + arm moved up, re-grip after the
+fault, confirmations).
+
+- Vision: gripper-cam only (the checkerboard moved -> fixed cam 110 mm off in base). Far view
+  for depth (>= 0.34 m; nothing closer than 0.31 m, nothing on a thin casing below ~0.38 m),
+  near view at 200 mm for holes. Plane shifted +1.6 mm along n so the pitch reads 2.54 mm:
+  grid rms 0.094 mm, matched 0.98, 0.008 mm over 5 frames. Casing footprints from hidden holes
+  in two side views (camera-facing edge rule). Printed numbers unreadable at 3-4 px/mm.
+- Gripper: only via the bridge smart skills of close_gripper's application (100 % speed/force,
+  full stroke). The URCap lost the Hand-E once ("Gripper with ID 9 not found", "Invalid
+  request"); the operator reconnected it. Fingertips 222 mm below the flange; open fingers span
+  +-33 mm and touched a neighbouring 20 mm casing.
+- Forces: force after close 0.15 N; extraction peak 12.2 N; pin length ~7.8 mm; F/T ~6 N off
+  after the pull (re-zero every force step).
+- Insertion: 0.8 mm spiral missed (grasp->target 60 mm, hand-eye yaw ~0.7 deg -> ~1 mm);
+  1.2 mm found the holes 1.0 mm off. x/y-compliant seat_compliant (8 N, stale zero) ->
+  force_mode_singularity FAULT, power off, pins out. After the operator's re-grip: spiral hit
+  0.2 mm off, seat_z straight down 4.7 mm to the 15 N cap (5.5 mm past the surface) -> in.
+- Rule from the user: pins go in by straight z moves only; know where the pins are (vision)
+  before descending after any grip change.

@@ -52,7 +52,8 @@ class ObjectFinder:
     def state(self):
         return {'busy': self.busy,
                 'specs': [{'name': s.name, 'label': s.label, 'size_mm': [round(v * 1000, 2) for v in s.size],
-                           'instances': s.instances, 'images': s.images} for s in self.specs.values()],
+                           'instances': s.instances, 'images': s.images, 'mesh': s.mesh}
+                          for s in self.specs.values()],
                 'results': {n: _brief(r) for n, r in self.results.items()}}
 
     # ── inputs ──────────────────────────────────────────────────────────────

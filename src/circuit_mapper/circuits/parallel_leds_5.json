@@ -1,0 +1,118 @@
+{
+  "schema_version": "1.0",
+  "circuit_id": "parallel_leds_5",
+  "description": "Five red LEDs in parallel across the supply, each with its own 220 ohm series resistor: every branch runs VCC -> Rn -> Dn anode, Dn cathode -> GND.",
+  "components": [
+    {
+      "id": "J_POWER",
+      "part_id": "power_connector_2pin"
+    },
+    {
+      "id": "R1",
+      "part_id": "resistor_220ohm_gap_0"
+    },
+    {
+      "id": "R2",
+      "part_id": "resistor_220ohm_gap_0"
+    },
+    {
+      "id": "R3",
+      "part_id": "resistor_220ohm_gap_0"
+    },
+    {
+      "id": "R4",
+      "part_id": "resistor_220ohm_gap_0"
+    },
+    {
+      "id": "R5",
+      "part_id": "resistor_220ohm_gap_0"
+    },
+    {
+      "id": "D1",
+      "part_id": "led_red_gap_0"
+    },
+    {
+      "id": "D2",
+      "part_id": "led_red_gap_0"
+    },
+    {
+      "id": "D3",
+      "part_id": "led_red_gap_0"
+    },
+    {
+      "id": "D4",
+      "part_id": "led_red_gap_0"
+    },
+    {
+      "id": "D5",
+      "part_id": "led_red_gap_0"
+    }
+  ],
+  "nets": [
+    {
+      "id": "VCC",
+      "pins": [
+        "J_POWER.positive",
+        "R1.1",
+        "R2.1",
+        "R3.1",
+        "R4.1",
+        "R5.1"
+      ]
+    },
+    {
+      "id": "LED1_ANODE",
+      "pins": [
+        "R1.2",
+        "D1.anode"
+      ]
+    },
+    {
+      "id": "LED2_ANODE",
+      "pins": [
+        "R2.2",
+        "D2.anode"
+      ]
+    },
+    {
+      "id": "LED3_ANODE",
+      "pins": [
+        "R3.2",
+        "D3.anode"
+      ]
+    },
+    {
+      "id": "LED4_ANODE",
+      "pins": [
+        "R4.2",
+        "D4.anode"
+      ]
+    },
+    {
+      "id": "LED5_ANODE",
+      "pins": [
+        "R5.2",
+        "D5.anode"
+      ]
+    },
+    {
+      "id": "GND",
+      "pins": [
+        "J_POWER.negative",
+        "D1.cathode",
+        "D2.cathode",
+        "D3.cathode",
+        "D4.cathode",
+        "D5.cathode"
+      ]
+    }
+  ],
+  "unconnected_pins": [],
+  "assumptions": [
+    "An external regulated 5 V DC supply connects to J_POWER.",
+    "The request named no resistors; the user chose one 220 ohm series resistor per LED (about 13-15 mA per red LED at 5 V, about 75 mA total from the supply).",
+    "The user chose red LEDs. The _gap_0 variants (leads in adjacent holes) are used since no lead spacing was requested.",
+    "Generic LED forward voltage and current ratings must be verified for assembly."
+  ],
+  "unresolved_questions": []
+}

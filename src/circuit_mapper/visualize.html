@@ -1,0 +1,470 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Breadboard Layout</title>
+<style>
+:root {
+  --bg: #f5f4f1; --card: #ffffff; --text: #1d2026; --muted: #646a74; --line: #e2e0db;
+  --board: #f1ece2; --board-edge: #d6cdbb; --channel: #e2d9c7; --hole: #4a4740;
+  --strip: rgba(80, 70, 50, 0.07); --lead: #9aa0a8; --pin: #d9dde2; --pin-edge: #5b6068;
+  --label: #2b2e34; --label-halo: #f1ece2;
+  --ok: #1d7f46; --ok-bg: #e3f3e9; --warn: #9a6200; --warn-bg: #fbefd9; --bad: #b3261e; --bad-bg: #fbe4e2;
+  --focus: #1d2026;
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #15171b; --card: #1e2126; --text: #e7e9ec; --muted: #9aa1ab; --line: #2e3238;
+    --board: #2a2d33; --board-edge: #3a3e45; --channel: #23262b; --hole: #101114;
+    --strip: rgba(255, 255, 255, 0.05); --lead: #7d838c; --pin: #c3c8cf; --pin-edge: #2a2d33;
+    --label: #eef0f3; --label-halo: #2a2d33;
+    --ok: #6fd39a; --ok-bg: #173323; --warn: #f0b85a; --warn-bg: #3a2c12; --bad: #ff8a80; --bad-bg: #3d1a18;
+    --focus: #ffffff;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #15171b; --card: #1e2126; --text: #e7e9ec; --muted: #9aa1ab; --line: #2e3238;
+  --board: #2a2d33; --board-edge: #3a3e45; --channel: #23262b; --hole: #101114;
+  --strip: rgba(255, 255, 255, 0.05); --lead: #7d838c; --pin: #c3c8cf; --pin-edge: #2a2d33;
+  --label: #eef0f3; --label-halo: #2a2d33;
+  --ok: #6fd39a; --ok-bg: #173323; --warn: #f0b85a; --warn-bg: #3a2c12; --bad: #ff8a80; --bad-bg: #3d1a18;
+  --focus: #ffffff;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 var(--font); }
+main { max-width: 1240px; margin: 0 auto; padding: 24px 16px 48px; }
+h1 { font-size: 22px; margin: 0 0 4px; letter-spacing: -0.01em; }
+h2 { font-size: 15px; margin: 0 0 10px; }
+.sub { color: var(--muted); margin: 0 0 16px; max-width: 80ch; }
+.stats { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.stat { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; min-width: 92px; }
+.stat b { display: block; font-size: 18px; font-variant-numeric: tabular-nums; }
+.stat span { color: var(--muted); font-size: 12px; }
+.badge { display: inline-block; padding: 1px 8px; border-radius: 99px; font-size: 12px; font-weight: 600; }
+.ok { color: var(--ok); background: var(--ok-bg); }
+.warn { color: var(--warn); background: var(--warn-bg); }
+.bad { color: var(--bad); background: var(--bad-bg); }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px; margin-bottom: 16px; }
+.toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.seg button { font: inherit; font-size: 13px; color: var(--muted); background: transparent; border: 0; padding: 5px 12px; cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button[aria-pressed="true"] { color: var(--text); background: color-mix(in srgb, var(--text) 8%, transparent); font-weight: 600; }
+.key { color: var(--muted); font-size: 12px; }
+.boardwrap { overflow-x: auto; margin: 0 -4px; padding: 0 4px; }
+#board { display: block; width: 100%; min-width: 640px; height: auto; user-select: none; }
+#board.whole { min-width: 860px; }
+#info { min-height: 64px; border-top: 1px solid var(--line); margin-top: 10px; padding-top: 10px; }
+#info .hint { color: var(--muted); margin: 0; }
+#info h3 { font-size: 14px; margin: 0 0 6px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 860px) { .grid { grid-template-columns: 1fr; } }
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--muted); font-weight: 600; font-size: 12px; }
+tbody tr { cursor: pointer; }
+tbody tr:hover, tbody tr.active { background: color-mix(in srgb, var(--text) 6%, transparent); }
+td.mono { white-space: nowrap; }
+.mono, code { font-family: var(--mono); font-size: 12.5px; }
+.sw { display: inline-block; width: 11px; height: 11px; border-radius: 3px; vertical-align: -1px; margin-right: 6px; }
+.chip { display: inline-block; font-family: var(--mono); font-size: 12px; padding: 0 5px; margin: 1px 2px 1px 0; border-radius: 4px; background: color-mix(in srgb, var(--text) 7%, transparent); white-space: nowrap; }
+.muted { color: var(--muted); }
+details summary { cursor: pointer; font-weight: 600; }
+details ul { margin: 8px 0 0; padding-left: 20px; color: var(--muted); }
+footer { color: var(--muted); font-size: 12px; }
+/* board */
+.dim { opacity: 0.16; transition: opacity 120ms; }
+[data-focus] { cursor: pointer; }
+.comp.active .body, .jumper.active .wire { stroke: var(--focus); stroke-width: 2; }
+.lbl { font: 600 9px var(--font); fill: var(--label); paint-order: stroke; stroke: var(--label-halo); stroke-width: 3px; pointer-events: none; }
+.axis { font: 8.5px var(--mono); fill: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <h1 id="title"></h1>
+  <p class="sub" id="desc"></p>
+  <div class="stats" id="stats"></div>
+  <section class="card">
+    <div class="toolbar">
+      <div class="seg" role="group" aria-label="Board view">
+        <button type="button" data-view="fit" aria-pressed="true">Fit to circuit</button>
+        <button type="button" data-view="whole" aria-pressed="false">Whole board</button>
+      </div>
+      <span class="key">LED flat edge = cathode &middot; resistor bands = value &middot; shaded strip = net it carries</span>
+    </div>
+    <div class="boardwrap"><svg id="board" role="img" aria-label="Breadboard layout"></svg></div>
+    <div id="info"></div>
+  </section>
+  <div class="grid">
+    <section class="card"><h2>Nets</h2><table id="nets"></table></section>
+    <section class="card"><h2>Placement list</h2><table id="placements"></table></section>
+  </div>
+  <section class="card"><details id="notes"><summary>Circuit assumptions</summary><ul></ul></details></section>
+  <footer id="foot"></footer>
+</main>
+<script id="data" type="application/json">__DATA__</script>
+<script>
+const { circuit, mapping, board, parts } = JSON.parse(document.getElementById('data').textContent);
+const partById = Object.fromEntries(parts.map(p => [p.part_id, p]));
+const SVG = 'http://www.w3.org/2000/svg';
+
+function el(tag, attrs, parent) {
+  const e = document.createElementNS(SVG, tag);
+  for (const [k, v] of Object.entries(attrs || {})) if (v != null) e.setAttribute(k, v);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+function h(tag, attrs, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) if (v != null) e.setAttribute(k, v);
+  for (const k of kids.flat()) if (k != null) e.append(k);
+  return e;
+}
+
+// ---- nets and colours (unconnected pins are one-pin nets, as in the mapper) ----
+const nets = [...circuit.nets,
+  ...(circuit.unconnected_pins || []).map(p => ({ id: `UNCONNECTED:${p}`, pins: [p] }))];
+const netById = Object.fromEntries(nets.map(n => [n.id, n]));
+const pinNet = {};
+nets.forEach(n => n.pins.forEach(p => { pinNet[p] = n.id; }));
+const PALETTE = ['#e08a1e', '#16a394', '#8a5cd6', '#5a9e2f', '#d6589a', '#a0703c', '#2aa3c9', '#c9a227', '#7a6fd6', '#4f8f6a'];
+const netColor = {};
+let next = 0;
+for (const n of nets) {
+  if (n.id.startsWith('UNCONNECTED:')) netColor[n.id] = '#8b919a';
+  else if (/^(VCC|VDD|VIN|V\+|\+?\d+V\d*)$/i.test(n.id)) netColor[n.id] = '#d64545';
+  else if (/^(GND|VSS|0V)$/i.test(n.id)) netColor[n.id] = '#3d6fd6';
+  else netColor[n.id] = PALETTE[next++ % PALETTE.length];
+}
+const swatch = id => h('span', { class: 'sw', style: `background:${netColor[id] || 'transparent'}` });
+
+// ---- board geometry: rows run left to right, column J on top ----
+const G = board.geometry, R = G.rows;
+const colPos = G.column_positions;
+const maxCol = Math.max(...Object.values(colPos)), minCol = Math.min(...Object.values(colPos));
+const rowPos = r => R.first_position + (r - R.first) * R.spacing;
+const P = 18, MX = 30, MY = 30;
+const view = { lo: R.first, hi: R.last };
+const rowOf = hole => parseInt(hole.slice(1), 10);
+const inView = hole => rowOf(hole) >= view.lo && rowOf(hole) <= view.hi;
+const xy = hole => [MX + (rowPos(rowOf(hole)) - rowPos(view.lo)) * P,
+                    MY + (maxCol - colPos[hole[0]]) * P];
+
+const holeGroup = {};
+board.conductive_groups.forEach((g, i) => g.holes.forEach(x => { holeGroup[x] = i; }));
+const groupNet = {}, holeUse = {};
+for (const [pin, hole] of Object.entries(mapping.pin_to_hole)) {
+  groupNet[holeGroup[hole]] = pinNet[pin];
+  holeUse[hole] = pin;
+}
+const jumpers = mapping.jumpers.map((j, i) => ({ ...j, id: `W${i + 1}`, holes: Object.values(j.pins) }));
+jumpers.forEach(j => j.holes.forEach((x, k) => {
+  groupNet[holeGroup[x]] ??= j.net;
+  holeUse[x] ??= `${j.id}.${k + 1}`;
+}));
+const usedRows = Object.keys(holeUse).map(rowOf);
+
+// ---- independent connectivity check (strips joined by jumpers) ----
+function verify() {
+  const issues = [], parent = board.conductive_groups.map((_, i) => i);
+  const find = g => { while (parent[g] !== g) g = parent[g] = parent[parent[g]]; return g; };
+  const seen = new Map();
+  const occupy = (hole, who) => {
+    if (!(hole in holeGroup)) issues.push(`${who} is in ${hole}, which is not on the board`);
+    else if (seen.has(hole)) issues.push(`${hole} holds both ${seen.get(hole)} and ${who}`);
+    seen.set(hole, who);
+  };
+  for (const [pin, hole] of Object.entries(mapping.pin_to_hole)) occupy(hole, pin);
+  for (const j of jumpers) {
+    j.holes.forEach((x, k) => occupy(x, `${j.id}.${k + 1}`));
+    parent[find(holeGroup[j.holes[0]])] = find(holeGroup[j.holes[1]]);
+  }
+  const owner = new Map();
+  for (const n of nets) {
+    const missing = n.pins.filter(p => !(p in mapping.pin_to_hole));
+    if (missing.length) { issues.push(`${n.id}: ${missing.join(', ')} not placed`); continue; }
+    const roots = new Set(n.pins.map(p => find(holeGroup[mapping.pin_to_hole[p]])));
+    if (roots.size > 1) issues.push(`${n.id} is split into ${roots.size} unconnected pieces`);
+    for (const r of roots) {
+      if (owner.has(r) && owner.get(r) !== n.id) issues.push(`${owner.get(r)} and ${n.id} are shorted`);
+      owner.set(r, n.id);
+    }
+  }
+  return issues;
+}
+const issues = verify();
+
+// ---- drawing ----
+const svg = document.getElementById('board');
+const BAND = ['#1a1a1a', '#7b4a1e', '#d32f2f', '#f57c00', '#fbc02d', '#388e3c', '#1565c0', '#7b1fa2', '#808080', '#f2f2f2'];
+function bands(ohm) {
+  let e = Math.floor(Math.log10(ohm)) - 1, sig = Math.round(ohm / 10 ** e);
+  if (sig >= 100) { sig = Math.round(sig / 10); e += 1; }
+  return [BAND[Math.floor(sig / 10)], BAND[sig % 10], e >= 0 ? BAND[e] : '#c9a227', '#c9a227'];
+}
+const LED_COLOR = { red: '#e53935', green: '#43a047', blue: '#1e88e5', yellow: '#fdd835', white: '#f5f5f5' };
+const PIN_MARK = { positive: '+', negative: '−' };
+
+function fitRange() {
+  if (!usedRows.length) return [R.first, R.last];
+  const a = Math.min(...usedRows), b = Math.max(...usedRows), want = Math.max(32, b - a + 5);
+  const lo = Math.max(R.first, Math.min(Math.round((a + b - want) / 2), R.last - want + 1));
+  return [lo, Math.min(R.last, lo + want - 1)];
+}
+
+function draw(mode) {
+  [view.lo, view.hi] = mode === 'whole' ? [R.first, R.last] : fitRange();
+  svg.replaceChildren();
+  svg.classList.toggle('whole', mode === 'whole');
+  const W = 2 * MX + (rowPos(view.hi) - rowPos(view.lo)) * P, H = 2 * MY + (maxCol - minCol) * P;
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  el('rect', { x: 4, y: 4, width: W - 8, height: H - 8, rx: 10, fill: 'var(--board)', stroke: 'var(--board-edge)' }, svg);
+  const upper = Object.values(colPos).filter(c => c > 4);
+  if (upper.length) {
+    const gapTop = MY + (maxCol - Math.min(...upper)) * P;
+    el('rect', { x: MX - P / 2, y: gapTop + P * 0.75, width: W - 2 * MX + P, height: P * 1.5, rx: 3, fill: 'var(--channel)' }, svg);
+  }
+  for (const [letter, c] of Object.entries(colPos)) {
+    const y = MY + (maxCol - c) * P;
+    for (const x of [MX - 16, W - MX + 16]) {
+      el('text', { x, y, class: 'axis', 'text-anchor': 'middle', 'dominant-baseline': 'central' }, svg).textContent = letter;
+    }
+  }
+  const step = view.hi - view.lo < 40 ? 1 : 5;
+  for (let r = view.lo; r <= view.hi; r++) {
+    if (r !== view.lo && r % step) continue;
+    const x = MX + (rowPos(r) - rowPos(view.lo)) * P;
+    el('text', { x, y: MY - 16, class: 'axis', 'text-anchor': 'middle' }, svg).textContent = r;
+    el('text', { x, y: H - MY + 22, class: 'axis', 'text-anchor': 'middle' }, svg).textContent = r;
+  }
+
+  const layer = name => el('g', { id: name }, svg);
+  const stripsG = layer('strips'), holesG = layer('holes'), wiresG = layer('wires'), partsG = layer('parts'), labelsG = layer('labels');
+
+  board.conductive_groups.forEach((g, i) => {
+    const shown = g.holes.filter(inView);
+    if (!shown.length) return;
+    const pts = shown.map(xy), xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+    const net = groupNet[i], pad = P * 0.42;
+    el('rect', {
+      x: Math.min(...xs) - pad, y: Math.min(...ys) - pad,
+      width: Math.max(...xs) - Math.min(...xs) + 2 * pad, height: Math.max(...ys) - Math.min(...ys) + 2 * pad,
+      rx: 5, fill: net ? netColor[net] : 'var(--strip)', 'fill-opacity': net ? 0.22 : null,
+      stroke: net ? netColor[net] : null, 'stroke-opacity': net ? 0.7 : null,
+      'data-nets': net, 'data-focus': `strip:${i}`,
+    }, stripsG);
+  });
+  for (const hole of Object.keys(holeGroup).filter(inView)) {
+    const [x, y] = xy(hole);
+    el('rect', { x: x - 2.6, y: y - 2.6, width: 5.2, height: 5.2, rx: 1, fill: 'var(--hole)',
+      'data-nets': groupNet[holeGroup[hole]], 'data-focus': `hole:${hole}` }, holesG);
+  }
+
+  for (const j of jumpers) {
+    if (!j.holes.every(inView)) continue;
+    const [[x1, y1], [x2, y2]] = j.holes.map(xy);
+    const g = el('g', { class: 'jumper', 'data-nets': j.net, 'data-focus': `jumper:${j.id}` }, wiresG);
+    el('line', { x1, y1, x2, y2, stroke: 'rgba(0,0,0,0.45)', 'stroke-width': 7, 'stroke-linecap': 'round' }, g);
+    el('line', { x1, y1, x2, y2, class: 'wire', stroke: netColor[j.net], 'stroke-width': 4.5, 'stroke-linecap': 'round' }, g);
+    for (const [x, y] of [[x1, y1], [x2, y2]]) el('circle', { cx: x, cy: y, r: 2.2, fill: 'var(--pin)', stroke: 'var(--pin-edge)', 'stroke-width': 0.6 }, g);
+  }
+  for (const c of circuit.components) drawPart(c, partsG, labelsG);
+}
+
+function drawBody(g, part, L) {
+  const p = part.parameters || {}, half = L / 2;
+  const capsule = (fill, stroke, w = 10) => el('rect', { class: 'body', x: -half - 5, y: -w / 2, width: L + 10, height: w, rx: w / 2, fill, stroke }, g);
+  switch (part.type) {
+    case 'resistor': {
+      capsule('#d8c39a', '#a48b5a');
+      if (p.resistance_ohm) bands(p.resistance_ohm).forEach((c, i) => el('rect', {
+        x: -half + L * [0.08, 0.3, 0.52, 0.85][i] - 1.2, y: -5, width: 2.4, height: 10, fill: c }, g));
+      break;
+    }
+    case 'led': {
+      const r = Math.min(9, half + 4), a = r * 0.72, b = Math.sqrt(r * r - a * a);
+      const c = LED_COLOR[p.color] || '#e0e0e0';
+      el('path', { class: 'body', d: `M ${a} ${-b} A ${r} ${r} 0 1 0 ${a} ${b} Z`, fill: c, 'fill-opacity': 0.92, stroke: 'rgba(0,0,0,0.45)' }, g);
+      el('circle', { cx: -r * 0.35, cy: -r * 0.35, r: r * 0.28, fill: '#fff', 'fill-opacity': 0.45 }, g);
+      break;
+    }
+    case 'rgb_led':
+      el('circle', { class: 'body', r: half + 6, fill: '#f4f4f4', 'fill-opacity': 0.85, stroke: '#9a9a9a' }, g);
+      break;
+    case 'diode':
+      capsule('#2a2a2a', '#000');
+      el('rect', { x: half - 1, y: -5, width: 3, height: 10, fill: '#cfcfcf' }, g);
+      break;
+    case 'capacitor':
+      if (p.polarized) {
+        el('circle', { class: 'body', r: half + 4, fill: '#2a4d8f', stroke: '#16305e' }, g);
+        el('rect', { x: half * 0.55, y: -(half + 2), width: 3, height: 2 * half + 4, fill: '#cfd8e3' }, g);
+      } else {
+        el('circle', { class: 'body', r: half + 2, fill: '#e0a030', stroke: '#9c6c12' }, g);
+      }
+      break;
+    case 'bjt':
+      el('rect', { class: 'body', x: -half - 6, y: -7, width: L + 12, height: 12, rx: 3, fill: '#2b2b2b', stroke: '#000' }, g);
+      break;
+    case 'potentiometer':
+      el('rect', { class: 'body', x: -half - 6, y: -8, width: L + 12, height: 16, rx: 2, fill: '#3b6aa8', stroke: '#21406b' }, g);
+      el('circle', { r: 4.5, fill: '#e8e8e8', stroke: '#777' }, g);
+      break;
+    case 'switch':
+      el('rect', { class: 'body', x: -half - 6, y: -8, width: L + 12, height: 16, rx: 2, fill: '#5b5f66', stroke: '#2f3236' }, g);
+      el('circle', { r: 4, fill: '#1f2125' }, g);
+      break;
+    case 'connector':
+      el('rect', { class: 'body', x: -half - 7, y: -7, width: L + 14, height: 14, rx: 2, fill: '#24262a', stroke: '#000' }, g);
+      break;
+    default:
+      capsule('#9aa0a8', '#5f656d');
+  }
+}
+
+function drawPart(c, partsG, labelsG) {
+  const part = partById[c.part_id];
+  const holes = part.pins.map(pin => mapping.pin_to_hole[`${c.id}.${pin}`]);
+  if (holes.includes(undefined) || !holes.every(inView)) return;
+  const pts = holes.map(xy), [x0, y0] = pts[0], [x1, y1] = pts[pts.length - 1];
+  const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, L = Math.hypot(x1 - x0, y1 - y0);
+  const angle = Math.atan2(y1 - y0, x1 - x0) * 180 / Math.PI;
+  const compNets = [...new Set(part.pins.map(pin => pinNet[`${c.id}.${pin}`]))].join(' ');
+  const g = el('g', { class: 'comp', 'data-nets': compNets, 'data-focus': `comp:${c.id}` }, partsG);
+  el('polyline', { points: pts.map(p => p.join(',')).join(' '), fill: 'none', stroke: 'var(--lead)', 'stroke-width': 2.5, 'stroke-linecap': 'round' }, g);
+  drawBody(el('g', { transform: `translate(${cx} ${cy}) rotate(${angle})` }, g), part, L);
+  part.pins.forEach((pin, k) => {
+    const [x, y] = pts[k];
+    if (part.type === 'connector') {
+      el('text', { x, y, 'text-anchor': 'middle', 'dominant-baseline': 'central', fill: '#fff',
+        style: 'font: 700 12px var(--font); pointer-events: none' }, g).textContent = PIN_MARK[pin] || pin[0];
+    } else {
+      el('circle', { cx: x, cy: y, r: 2.4, fill: 'var(--pin)', stroke: 'var(--pin-edge)', 'stroke-width': 0.7 }, g);
+    }
+  });
+  const horizontal = Math.abs(x1 - x0) >= Math.abs(y1 - y0);
+  el('text', horizontal
+    ? { x: cx, y: cy - 13, 'text-anchor': 'middle', class: 'lbl', 'data-nets': compNets }
+    : { x: cx + 12, y: cy, 'text-anchor': 'start', 'dominant-baseline': 'central', class: 'lbl', 'data-nets': compNets },
+    labelsG).textContent = c.id;
+}
+
+// ---- focus: hover previews, click pins ----
+const info = document.getElementById('info');
+const split = f => { const i = f.indexOf(':'); return [f.slice(0, i), f.slice(i + 1)]; };
+const pinsOf = id => partById[circuit.components.find(c => c.id === id).part_id].pins;
+const netsOf = focus => {
+  const [kind, id] = split(focus);
+  if (kind === 'comp') return pinsOf(id).map(p => pinNet[`${id}.${p}`]);
+  if (kind === 'jumper') return [jumpers.find(j => j.id === id).net];
+  if (kind === 'net') return [id];
+  if (kind === 'hole') return [groupNet[holeGroup[id]]].filter(Boolean);
+  if (kind === 'strip') return [groupNet[+id]].filter(Boolean);
+  return [];
+};
+const netChip = id => h('span', { class: 'chip' }, swatch(id), id);
+const occupantsOf = i => board.conductive_groups[i].holes.filter(x => holeUse[x]).map(x => `${holeUse[x]} ${x}`);
+
+function describe(focus) {
+  if (!focus) return h('p', { class: 'hint' }, 'Hover or tap a part, jumper, strip or net to trace it. Click to keep it selected; click empty space to clear.');
+  const [kind, id] = split(focus);
+  if (kind === 'comp') {
+    const c = circuit.components.find(x => x.id === id), part = partById[c.part_id];
+    return h('div', {}, h('h3', {}, id, h('span', { class: 'muted' }, part.name || part.part_id), h('code', {}, part.part_id)),
+      h('div', {}, part.pins.map(pin => h('span', { class: 'chip' }, swatch(pinNet[`${id}.${pin}`]),
+        `${pin} → ${mapping.pin_to_hole[`${id}.${pin}`]} (${pinNet[`${id}.${pin}`]})`))));
+  }
+  if (kind === 'jumper') {
+    const j = jumpers.find(x => x.id === id);
+    return h('div', {}, h('h3', {}, `Jumper ${id}`, h('code', {}, j.part_id)),
+      h('div', {}, h('span', { class: 'chip' }, `${j.holes[0]} ↔ ${j.holes[1]}`), netChip(j.net)));
+  }
+  if (kind === 'net') {
+    const n = netById[id], js = jumpers.filter(j => j.net === id);
+    return h('div', {}, h('h3', {}, swatch(id), `Net ${id}`, h('span', { class: 'muted' }, `${n.pins.length} pins, ${js.length} jumpers`)),
+      h('div', {}, n.pins.map(p => h('span', { class: 'chip' }, `${p} ${mapping.pin_to_hole[p]}`)),
+        js.map(j => h('span', { class: 'chip' }, `${j.id} ${j.holes.join('↔')}`))));
+  }
+  const i = kind === 'hole' ? holeGroup[id] : +id, g = board.conductive_groups[i], net = groupNet[i];
+  return h('div', {}, h('h3', {}, kind === 'hole' ? `Hole ${id}` : `Strip ${g.id}`,
+      h('span', { class: 'muted' }, kind === 'hole' ? `strip ${g.id}` : g.holes.join(' ')), net ? netChip(net) : h('span', { class: 'muted' }, 'unused')),
+    h('div', {}, occupantsOf(i).map(o => h('span', { class: 'chip' }, o))));
+}
+
+let hovered = null, pinned = null;
+function render() {
+  const focus = hovered || pinned, active = new Set(focus ? netsOf(focus) : []);
+  const dimming = active.size > 0;
+  for (const e of document.querySelectorAll('#board [data-nets]')) {
+    const ns = (e.getAttribute('data-nets') || '').split(' ').filter(Boolean);
+    e.classList.toggle('dim', dimming && !ns.some(n => active.has(n)));
+  }
+  for (const e of document.querySelectorAll('[data-focus]')) e.classList.toggle('active', e.dataset.focus === focus);
+  info.replaceChildren(describe(focus));
+}
+document.addEventListener('pointerover', e => {
+  const t = e.target.closest && e.target.closest('[data-focus]'), f = t ? t.dataset.focus : null;
+  if (f !== hovered) { hovered = f; render(); }
+});
+document.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('button[data-view]');
+  if (b) {
+    for (const x of document.querySelectorAll('button[data-view]')) x.setAttribute('aria-pressed', String(x === b));
+    draw(b.dataset.view);
+    render();
+    return;
+  }
+  const t = e.target.closest && e.target.closest('[data-focus]'), f = t ? t.dataset.focus : null;
+  pinned = f && f !== pinned ? f : null;
+  hovered = null;
+  render();
+});
+
+// ---- page text and tables ----
+document.title = `${circuit.circuit_id} · Breadboard Layout`;
+document.getElementById('title').textContent = circuit.circuit_id.replace(/_/g, ' ');
+document.getElementById('desc').textContent = circuit.description || '';
+const statusClass = { OPTIMAL: 'ok', FEASIBLE: 'warn' }[mapping.status] || 'bad';
+const stat = (value, label) => h('div', { class: 'stat' }, h('b', {}, value), h('span', {}, label));
+document.getElementById('stats').append(
+  stat(h('span', { class: `badge ${statusClass}` }, mapping.status), `solver status on ${mapping.board_id}`),
+  stat(String(circuit.components.length), 'parts'),
+  stat(String(circuit.nets.length), 'nets'),
+  stat(String(jumpers.length), 'jumpers'),
+  stat(String(Object.keys(holeUse).length), usedRows.length ? `holes used, rows ${Math.min(...usedRows)}–${Math.max(...usedRows)}` : 'holes used'),
+  stat(h('span', { class: `badge ${issues.length ? 'bad' : 'ok'}` }, issues.length ? `${issues.length} issue${issues.length > 1 ? 's' : ''}` : 'connected'),
+    issues.length ? issues.join('; ') : 'every net joined, no shorts'),
+);
+
+document.getElementById('nets').append(
+  h('thead', {}, h('tr', {}, h('th', {}, 'Net'), h('th', {}, 'Pins → holes'), h('th', {}, 'Jumpers'))),
+  h('tbody', {}, nets.map(n => h('tr', { 'data-focus': `net:${n.id}` },
+    h('td', { class: 'mono' }, swatch(n.id), n.id),
+    h('td', {}, n.pins.map(p => h('span', { class: 'chip' }, `${p} ${mapping.pin_to_hole[p] || '?'}`))),
+    h('td', { class: 'mono' }, String(jumpers.filter(j => j.net === n.id).length))))));
+
+document.getElementById('placements').append(
+  h('thead', {}, h('tr', {}, h('th', {}, 'Item'), h('th', {}, 'Part'), h('th', {}, 'Holes'))),
+  h('tbody', {},
+    circuit.components.map(c => h('tr', { 'data-focus': `comp:${c.id}` },
+      h('td', { class: 'mono' }, c.id), h('td', { class: 'mono muted' }, c.part_id),
+      h('td', {}, partById[c.part_id].pins.map(pin => h('span', { class: 'chip' }, `${pin} ${mapping.pin_to_hole[`${c.id}.${pin}`]}`))))),
+    jumpers.map(j => h('tr', { 'data-focus': `jumper:${j.id}` },
+      h('td', { class: 'mono' }, swatch(j.net), j.id), h('td', { class: 'mono muted' }, j.part_id),
+      h('td', {}, h('span', { class: 'chip' }, `${j.holes[0]} ↔ ${j.holes[1]}`))))));
+
+const notes = document.querySelector('#notes ul');
+for (const a of circuit.assumptions || []) notes.append(h('li', {}, a));
+if (!notes.children.length) document.getElementById('notes').parentElement.remove();
+document.getElementById('foot').textContent =
+  `Generated by src/circuit_mapper/visualize.py from circuit.json and mapping.json (${mapping.board_id}). ` +
+  'Strips are shaded with the net they carry; jumpers are drawn in their net colour.';
+draw('fit');
+render();
+</script>
+</body>
+</html>

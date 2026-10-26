@@ -72,6 +72,7 @@ from . import mirror as mirror_mod
 from . import objects
 from .cameras import Camera, OrbbecCamera, RealSenseCamera, UVCCamera, VisionaryCamera, remove_outliers
 from .ur_bridge import URBridge
+from simulation import dashboard as sim_dashboard
 
 cv2.setNumThreads(2)     # the detection, camera and robot threads share the CPU
 
@@ -817,6 +818,7 @@ def main():
         'results': (ROOT / cfg.get('results_dir', 'results'), ROOT / cfg.get('experiments_cache', 'data/cache/experiments'))}
     w.router.add_routes(experiments.routes(sources))
     w.router.add_routes(objects.routes(w['app'].objects))
+    w.router.add_routes(sim_dashboard.routes(cfg.get('simulation', {}).get('url')))   # Simulation tab
     w.router.add_static('/', WEB)
     port = a.port or cfg.get('port', 8090)
     print(f'calibration dashboard: http://localhost:{port}' + (f' (mirror of {a.mirror})' if a.mirror else ''))

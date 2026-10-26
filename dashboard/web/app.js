@@ -619,6 +619,13 @@ function showTab(name) {
 }
 $('#tabs').onclick = (e) => { const b = e.target.closest('button'); if (b) showTab(b.dataset.tab); };
 
+// the simulated arm (python -m simulation): simulation/web/sim_tab.js, loaded on first open
+let simMod = null;
+function simTab(on) {
+  if (on && !simMod) simMod = import('/simweb/sim_tab.js').then((m) => { m.mount($('#tab-sim')); return m; });
+  simMod?.then((m) => (on ? m.show() : m.hide()));
+}
+
 // ── port QA ─────────────────────────────────────────────────────────────────
 let qaSel = 1;
 let qaLast = null;
@@ -725,6 +732,7 @@ function renderObjects(o, s) {
   setHTML('#obj-sel', o.specs.map((p) => `<option value="${esc(p.name)}" ${p.name === objSel ? 'selected' : ''}>${esc(p.label)}</option>`).join(''));
   const spec = o.specs.find((p) => p.name === objSel);
   const r = o.results[objSel] || null;
+  objView.setMesh(spec?.mesh ?? null);
   objView.setResult(r);
   if (r && objFocused !== r.t) { objFocused = r.t; if (!$('#tab-obj').classList.contains('hidden')) objView.focus(); }
 
@@ -775,6 +783,7 @@ function renderObjects(o, s) {
 $('#obj-sel').onchange = (e) => { objSel = e.target.value; objFocused = null; if (lastState) renderObjects(lastState.objects, lastState); };
 $('#obj-locate').onclick = () => send({ type: 'locate_object', name: objSel, images: $('#obj-img').value });
 $('#obj-focus').onclick = () => objView.focus();
+toggle('#obj-cad', (on) => objView.showCad(on));
 $('#obj-view').onclick = () => objView.resetView();
 $('#obj-colour').onclick = (e) => {
   const b = e.target.closest('button');

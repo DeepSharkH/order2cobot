@@ -78,6 +78,7 @@ class ObjectSpec:
     check_tol_deg: float = 1.5
     fit: Literal["icp", "edges"] = "icp"  # cloud fit: 3-DoF ICP against the CAD, or the edge fit
     model: str | None = None  # CAD file (STEP): the ICP's footprint; else the size's rectangle
+    mesh: str | None = None  # dashboard/web/models/cad/<mesh>.glb, drawn at the located pose
 
 
 def load_objects(path: str | Path) -> dict[str, ObjectSpec]:

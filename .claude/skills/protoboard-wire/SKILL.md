@@ -1,6 +1,6 @@
 ---
 name: protoboard-wire
-description: Move a wire (a jumper or part in its printed casing) on the protoboard/breadboard from the holes it sits in to target holes given as pins, with the UR3e + Hand-E (AI Agent Bridge). Pin positions come straight from the camera images and point clouds (no touch references); then grasp in place, pull out, compliant spiral insert, seat flush, re-image to verify. Logs every step for a session trace. Use when asked to change/move/re-plug a wire or casing on the protoboard, or to retry that move.
+description: Move a wire (a jumper or part in its printed casing) on the protoboard/breadboard from the holes it sits in to target holes given as pins, with the UR3e + Hand-E (AI Agent Bridge). Pin positions come straight from the camera images and point clouds (no touch references); then grasp in place, pull out, spiral search, insert straight down in z, re-image to verify. Logs every step for a session trace. Use when asked to change/move/re-plug a wire or casing on the protoboard, or to retry that move.
 ---
 
 # Protoboard wire — skill
@@ -31,6 +31,14 @@ size per casing; frame: x along the leads, exits at z = 0).
   (After the 2026-10-26 14:24 recalibration: 2.7 mm / 0.7° between the cameras; still more
   than one pitch.)
 
+**The board and what stands on it change between runs: re-detect, never reuse.** On
+2026-10-26 18:20 (run `20261026-174057`) the board had been swapped for a **one-piece 65-number
+board** (MB-102 layout: rows a–j, channel 7.62 mm, no 9.35 mm joint, labels H1:<row><1–65>),
+untaped, long axis along base x at base (-443, -42) mm. A second casing (20 mm LED, yellow
+dome) and red/black wires appeared during the run, and the checkerboard (world origin) was
+moved, which made every fixed-cam → base conversion wrong by ~110 mm (dashboard "FK vs board
+check 109.7 mm"). Tell the board type from the detections (S3.3), not from this file.
+
 ## The hole grid (from the CAD; `agents/vision/board_grid.py`)
 
 The board's holes are **not** a generic lattice: they come from the half-breadboard STEP
@@ -56,6 +64,13 @@ these 800 points, so every position in this skill is one of them.
   [--occupied ...] [--flip-u] [--flip-v]` writes `holes.json`, `placements.json` and a small
   x per hole into every camera frame (`cam<i>_holes_zoom.png`: check that the x's sit on the
   holes before trusting a grid).
+- **One-piece boards:** `BoardGrid.from_holes_json("dashboard/web/models/cad/breadboard.json",
+  numbers=65)` re-lays the full-size CAD's rows a–j to N numbers (terminals only; rails left
+  out, their grouping differs per board). `fit(..., turns=(0.0,))` keeps the grid's labels
+  once the orientation is decided (otherwise the 0.67 mm turned twin is the runner-up).
+  How to tell: two half boards show a 9.35 mm gap between numbers 30 and 1 in a detected row;
+  a one-piece board has none. Count the columns between both board ends (`pin_map` reports
+  detections beyond the grid ends: if any, raise `--numbers`).
 
 ## Simulator (same commands, no robot)
 
@@ -90,6 +105,16 @@ that a run was simulated; a simulated pass is not a robot pass. See `simulation/
    the parameters and read the `textmsg` results.
 7. **Stop on surprises.** Protective stop, bent pin, casing left behind, two views that
    disagree on a label: stop, log it, re-measure. Do not retry blindly.
+8. **Pins go in straight along z.** Once the pins are over their holes, every insertion and
+   seating move is a position-controlled straight move along base −z with a force cap
+   (`seat_z`). Never let x/y float in force mode with the pins in the board: on 2026-10-26 an
+   x/y/z-compliant `seat_compliant` (8 N, no fresh F/T zero) dragged the arm into
+   `force_mode_singularity` → FAULT, POWER_OFF, elbow straight, pins pulled out. In-plane
+   motion is allowed only in the spiral search, before the pins drop.
+9. **Know where the pins are before going down.** After any change of the grip (operator
+   re-grip, slip, fault recovery) the measured tool is void: locate the pins again (gripper-cam
+   image against the grasp-time image, or a new grasp in place) before a descent towards the
+   board. A force guard alone is not a safeguard for where the pins land.
 
 ## Logging protocol (mandatory)
 
@@ -137,8 +162,17 @@ unchanged", "pin straight") and flip it to `verified`/`false` once you know. Num
   the preamble calls `set_tcp(tcp_pins)`, so `get_actual_tcp_pose()` and `movel` targets are
   **pins** poses. Never mix the two in one expression.
 - **`set_tcp` persists after the program ends**, so every step script ends with
-  `set_tcp(p[0, 0, 0, 0, 0, 0])`. Check that the loaded program is ours (`protoboard_wire`)
-  right before each play; others use the same robot.
+  `set_tcp(p[0, 0, 0, 0, 0, 0])`. A step that faults never reaches that line: after a fault
+  the controller still has the pins TCP active (`robot_get_pose` then reports pins poses;
+  `URExec._in_active_tcp` detects it). Check that the loaded program is ours right before each
+  play; others use the same robot. Motion app: `protoboard_wire2` (app 28; app 27
+  `protoboard_wire` holds a stray Robotiq node and is refused with HTTP 412).
+- `force_mode` selection vectors take only 0/1: pass `n = [0, 0, -1]` exactly (the board's
+  0.5° tilt in n gave 0.009 and `invalid_argument_value`), and flatten a/b into the xy plane.
+- Python on this checkout: run bridge scripts with `/home/lab/order2cobot/.venv/bin/python`
+  (`uv run` here lacks `requests`); vision scripts with `uv run`.
+- Write YAML numbers in fixed point (`0.00001`, not `1e-05`: YAML 1.1 reads that as a string
+  and `URExec` fails on `round`).
 - Units: metres / N / m/s in URScript; log in mm.
 
 ## Steps
@@ -182,10 +216,25 @@ the PID. Phases: 1 approach, 2 contact, 3 search, 4 engage, 5 wiggle, 6 seat, 7 
    base xyz + free/occupied/unseen, each casing found (type, footprint, height, pins →
    labels + snap residuals), plus an overlay image per camera with the grid and labels drawn
    in (as `scripts/board_grid.py` draws them).
-4. **Gripper helpers** in `urlib.LIB`: `hande_open()`, `hande_close(force, speed)`,
-   `hande_width()`. Find the Robotiq Hand-E URCap functions on this PolyScope X and add them to
-   the lint whitelist: `porttest.urscript_lint` only knows the 267 documented functions and
-   rejects URCap calls.
+4. **Gripper: through the bridge (MCP), not from URScript** (state 2026-10-26):
+   - What works: load the operator's app `close_gripper` (app 4: its application has the
+     Hand-E set up) and run its smart skills: `smartskill_run(type=
+     "robotiq-gripper-open-smart-skill")` / `"robotiq-gripper-close-smart-skill"`, then poll
+     `smartskill_status` until `active` is null and read `psx_logs` for warnings. Fixed at
+     100 % speed and force and full stroke (open = 50 mm); no parameters. The next URExec
+     step reloads the motion app by itself.
+   - What does not: the :63352 socket from URScript times out; the URCap's `rq_*` functions
+     exist only in the preamble of an app whose application has the gripper (none of ours);
+     a `robotiq-gripper-move-program` node in our own app fails "Gripper with ID 9 not found";
+     the bridge cannot edit URCap node parameters after creation ("not found among owned
+     nodes"); a `.urpx` copy of close_gripper is rejected by `program_import` (HTTP 400,
+     reported as program_exists); `artifact_put` fails on the host (no staging dir).
+     `porttest/hande_app.py` / `grip_app_import.py` are those attempts, kept for reference;
+     `urscript_lint` already whitelists the `rq_*` names (slave id 9).
+   - If the skills return `xmlrpc ... Invalid request` or "Gripper with ID 9 not found" and
+     the fingers do not move, the URCap has lost the Hand-E: ask the operator to reconnect /
+     scan / activate it on the pendant (one operator action), then retry.
+   - There is no width readout: check open/closed in the fixed-cam image.
 5. **`pull_out`** primitive (see "Reference URScript") and a `lim` argument for the force-mode
    limits of `spiral_search`, `engage`, `seat_compliant` and `release`. Today these limits are
    ordered x, y, z and tuned for n = +y (y = 0.004 is the compliant speed). For n = −z the z
@@ -231,6 +280,42 @@ the PID. Phases: 1 approach, 2 contact, 3 search, 4 engage, 5 wiggle, 6 seat, 7 
 6. Save `data/runs/current/pinmap.json` and the overlays; log the current pins as labels
    (`observed "pins H1:A20, H1:A22, residual 0.21 / 0.18 mm"`).
 
+**What worked on 2026-10-26 (use this before the generic text above):**
+- **Two gripper views, because the Gemini gives no depth closer than ~0.31 m** (and none on a
+  thin 40 mm casing below ~0.38 m): a **far view** (camera ≥ 0.34 m from the board: board top
+  plane, 9.5 mm above the plate it lies on; board outline; casing heights when they return
+  depth) and a **near view** (200 mm, flange down, camera 24° off vertical, fingertips ≥ 75 mm
+  above the board: holes at ~3 px/mm). Far view used: the hand-moved pose raised 80–120 mm.
+  `scripts/pin_map.py --far <scene> --near <scene> --centre=<x>,<y> --board
+  dashboard/web/models/cad/breadboard.json --numbers 65 --terminal-band 16 --shifts-u 12
+  --targets H1:C28,H1:C30 --out <run>/pinmap`. Poses for views: the planner pattern in the
+  run's scratchpad (`plan_view.py`: look point, distance, flange tilt/yaw, finger clearance and
+  keep-outs, bridge IK with the w3 / elbow checks).
+- **Board frame from gripper depth, no world frame:** `pins.board_from_top` (outline of the top
+  plane, ~1 mm / 1°) replaces the fixed-cam box when the checkerboard moved or the ends are
+  taped (the box was 19 mm off along the board with taped ends).
+- **Plane height from the pitch:** the far-view plane is ~1.6 mm off for the near view (stereo
+  bias + hand-eye): `--dz auto` shifts it along n until the detected pitch is 2.54 mm. Without
+  it the fit rms was 0.37–0.51 mm; with it **0.094 mm, 98 % matched, 0.008 mm over 5 frames**.
+- `fit_grid` starts each whole-pitch hypothesis also half a pitch over (otherwise nothing is
+  within the 0.9 mm match radius when the outline and the grid centre differ by ~1.3 mm).
+- **Runner-up gap on a one-piece board stays < 0.04 by construction** (a one-column shift
+  loses only an end column, ~1.6 %). Accept the index when both board ends are seen and all
+  columns are matched; say so in the log.
+- **Printed numbers are unreadable at 3–4 px/mm** (labels are blobs; their spacing is mirror
+  symmetric, so it does not give the orientation). Reading them needs ~5 px/mm (≤ 120 mm),
+  which the finger clearance did not allow. Ask the operator for the orientation, or log the
+  labels "as fitted, unverified" if the user skips it (they did on 2026-10-26).
+- **Casing footprint from hidden holes** (depth missed both casings): put the camera centre
+  (not the look point) ~45 mm along u on each side of the casing at the same height and list
+  the grid holes not detected in its rows (`scratchpad/footprint_view.py`). From the low-u side
+  the first hidden hole is the casing's low edge, from the high-u side the last hidden hole is
+  its high edge (the far side is parallax shadow, the wire loop hides more). Jumper 14 mm long
+  → 5 columns m−2…m+2, pins m±1. Row: the row whose neighbour on the camera side stays
+  visible. Result: jumper J49/J51 (centre 50), LED casing columns 49–52 rows B–D.
+- The casing type can come from an earlier depth measurement of the same object (39.6 mm top)
+  plus its look (wire loop) when depth fails now; log it as an assumption.
+
 ### S4 Grasp in place (measures the tool)
 - **Finger corridor:** the Hand-E fingers close across the casing's thickness (casing y). No
   cloud point of another object inside either finger volume (finger box from `grip_wire.yaml`
@@ -244,6 +329,23 @@ the PID. Phases: 1 approach, 2 contact, 3 search, 4 engage, 5 wiggle, 6 seat, 7 
   midpoint on the board top, x along pin 1 → 2, z = n). Store it in `grip_wire.yaml` with stamp
   and source. Sanity check against the finger geometry: within 3 mm, else stop.
 
+**Measured 2026-10-26:**
+- **Fingertips are ~222 mm below the flange** (not 198: an open finger touched a 20 mm casing
+  at flange z 260 mm). The jaw closes along **flange x**; the fingertips are 24 mm wide along
+  flange y.
+- **Fully open the fingers reach ±33 mm across the jaw axis**, and the only gripper commands
+  are full open / full close (S2.4). So check neighbours within 33 mm of the casing along the
+  jaw axis down to the grasp height. If one is there, either grasp from above its top, or
+  turn the jaw 90° to close along the casing's long axis (fingers over empty holes), or ask
+  the operator to clear it.
+- Grasp that worked: flange down, psi 270° (w3 −3.41, 0.37 from the cable reference), guarded
+  descent at 5 mm/s with a 3 N stop to fingertips ~35 mm (17 mm above the board top), "Gripper
+  Close" smart skill. Force after closing 0.15 N. `tcp_pins` = [0.00001, 0.00004, 0.23937,
+  2.21085, -2.22438, 0.01254] (pins midpoint 239.4 mm below the flange).
+- `move_checked` counts the held casing's collision points even when the gripper is empty:
+  pass `min_clear` explicitly for approach and view poses (0.02–0.07 m), and keep the
+  straight descents guarded.
+
 ### S5 Extract
 - `pull_out` along +n: speed 2 mm/s, force cap 15 N, until the force has dropped to the
   casing's weight and the pins are ≥ 3 mm clear of the board top (pin length unknown: allow
@@ -252,6 +354,10 @@ the PID. Phases: 1 approach, 2 contact, 3 search, 4 engage, 5 wiggle, 6 seat, 7 
 - Checks: `hande_width` = casing thickness (still held, not slipped); a gripper or fixed cam
   image of the pins shows both present and straight. Measure `pin_len` (below the casing
   bottom) and log it. A pin left in the board, missing or bent → stop (principle 7).
+- Measured 2026-10-26 (original jumper): **peak pull 12.2 N**, `pin_len` ≈ 7.8 mm (guarded
+  touch of the pin tips on the board, S7). After 12 mm the F/T still read ~6 N down / 3 N
+  sideways with the pins visibly free: drift and cable pull, not a tether. Every force step
+  must zero first. The fixed cam shows the pins (gripper cam: the casing hides them).
 
 ### S6 Target (defined by the pins to insert)
 - **Input:** one target hole per casing pin, as labels: `H1:A30, H1:A32` (pin order free for
@@ -282,26 +388,34 @@ the PID. Phases: 1 approach, 2 contact, 3 search, 4 engage, 5 wiggle, 6 seat, 7 
   reference (memory `ur3-cable-limits`).
 - Search radius 0.8 mm: inside the hole's 1.7 mm entry funnel (± 0.85 mm) and below half a
   pitch, so the search cannot end in a neighbouring hole (the gates in S3 give < 0.5 mm).
+  **In practice the error was ~1.0 mm** (0.8 mm search: no hit; 1.2 mm: hit 1.0 mm off). The
+  grasp and target positions come from the same image, so a common offset cancels, but the
+  grid's yaw/scale error from the hand-eye (~0.7°) times the grasp-to-target distance (60 mm)
+  does not. Use rmax 1.2 mm (still < half a pitch) and keep that distance short, or re-fit the
+  grid in a near view centred on the target.
 
 ### S7 Insert (one URScript program per stage, results via textmsg)
-Start values: **not tested yet**. Log every force and tune them from the data.
-1. `move_checked` to the target pose 5 mm above the board top (pins TCP), then `movel` down to
-   1.5 mm above it at 3 mm/s.
-2. **Search:** `spiral_search(n=−normal, fn=2 N, pitch 0.2 mm, rmax 0.8 mm, adv 0.6 mm,
-   v 1 mm/s)`. The pins are thin and only 3 mm of lead is held straight by the casing exit,
-   so keep fn ≤ 2 N. Candidate = the pins TCP drops > 0.6 mm below the surface contact.
-   It drops only when **both** pins are over holes, so a candidate already means both are.
-3. **Engage:** push 4–5 N along −n with a/b compliant until ≥ 2 mm past the surface or 3 s.
-4. **Prove:** `wiggle_test(a, b, amp 0.4 mm, fthr 1.5 N)`. In the holes = a wall on at least
-   one side of a **and** of b. Log all four forces every time. Free → false hit (pins
-   slipped beside the hole or bent): lift 2 mm, image the pins (S5 check), continue the search
-   only if they are straight.
-5. **Seat:** `seat_compliant`, a/b free, push 6–8 N (stop well below the extraction peak × 3;
-   leads bend) until the pins TCP is `pin_len − 0.3 mm` past the surface (casing bottom on the
-   board) or 4 s. Then `release` until |F| < 1 N. Never end a program while pressing.
-   Pass only if seat depth ≥ `pin_len − 0.7 mm`.
-6. `hande_open`, then `guarded_axial` up along +n for 5 mm with fmax 2 N. A pull means the
-   casing comes along with the fingers: stop. Then move up to 30 mm clearance.
+Values below are from the 2026-10-26 run (one success). Log every force and keep tuning.
+1. `move_checked` to the target pose with the **tool vertical** (flange z = −base z) and the
+   casing bottom ~25 mm above the board (pin tips ~17 mm). If the arm was moved by hand, first
+   check the elbow: from a straight elbow, IK may come back in the elbow-down branch (it did:
+   elbow −0.57 rad, elbow joint 239 mm up, still clear); it works, but do not flip back and
+   forth.
+2. **Touch:** `guarded_axial([0, 0, -1], ≤ 25 mm, 1.5 N, 2–3 mm/s)` until the pin tips meet the
+   board. The stop height gives `pin_len` (7.8 mm). Back off 0.3 mm.
+3. **Search** (the only in-plane motion): `contact_l([0, 0, -1], 2 N, lim=[0.005, 0.005,
+   0.004, 0.1, 0.1, 0.1])` then `spiral_from(ref, n, a, b, 0.2 mm, 1.2 mm, adv 0.6 mm,
+   1 mm/s)`. Candidate = a drop > 0.6 mm (both pins over holes). `end_force_mode()`
+   right after the hit.
+4. **Insert straight down:** `seat_z(0.0075 − drop, 15 N, 2 mm/s)`: zero the F/T, speedl along
+   −z only, stop at depth or at the force cap, then `release` until the push is < 1 N.
+   2026-10-26: drop 0.76 mm, then 4.7 mm more, stopped at 15.3 N (5.5 mm past the surface),
+   released to 0.45 N; the operator saw the casing in. Do **not** use `engage` /
+   `seat_compliant` (x/y compliant force mode, principle 8). The wiggle test (`wiggle_test_l`,
+   ±0.4 mm, 1.5 N) did not prove thin leads 2 mm in (forces 0.5–1.65 N) and drifted the pose
+   2.3 mm: treat it as information, not a gate, and verify by image (S8).
+5. "Gripper Open" (S2.4), then `guarded_axial([0, 0, 1], 5 mm, 2 N, 2 mm/s)`. A pull means
+   the casing comes along: stop. 2026-10-26: no pull. Then 30 mm up.
 
 ### S8 Verify
 Re-run S3 (gripper close-up + fixed overview). **PASS** = the pin map finds the casing at the
@@ -322,6 +436,13 @@ check wired up yet: say so in the report.
   understood.
 - After 3 failures: `done --status failure`, write what you would need (view, sensor, tool) as
   a `note interpretation`, and hand over to the human. "Cannot do" is a valid result.
+- **After a fault or a hand move:** the operator resets on the pendant (and often switches to
+  Local: ask for Remote again). Read the joints (a straight elbow is a singularity: leave it
+  with a joint move, never `movel`), note that the pins TCP may still be active, image the
+  scene, and treat the grip as changed (principle 9) if the casing was touched.
+- **Operator watching:** a user statement like "it went into the pins" / "it is inside" is
+  operator evidence; log it as `operator` and continue, but still run S8 when the cameras are
+  up.
 
 ### S10 Close
 Stop the telemetry recorder (`kill <PID>`) and log its CSV path and sample count as `observed`.
@@ -333,12 +454,30 @@ changed). Report the run dir path.
 
 ## Reference URScript
 
-Reuse `porttest/urlib.py` (`contact`, `spiral_search`, `spiral_from`, `wiggle_test`, `engage`,
-`seat_compliant`, `release`, `guarded_axial`, `tel`). They are already written for any
-direction `n`; only the force-mode limits need the `lim` argument (S2.5). Downward insertion:
-`n = [0, 0, -1]` (better: −normal from S3), `a`/`b` = board u/v.
+Reuse `porttest/urlib.py` (`contact_l`, `spiral_from`, `release`, `guarded_axial`, `pull_out`,
+`seat_z`, `tel`). Downward insertion: `n = [0, 0, -1]` exactly (selection vectors are 0/1),
+`a`/`b` = board u/v flattened to xy. `engage`, `seat_compliant` and `wiggle_test` exist but
+float x/y in force mode: not for pins in the board (principle 8).
 
-New, add to `urlib.LIB` and validate in free air first:
+`seat_z` (in `urlib.LIB`, linted):
+
+```
+def seat_z(depth, fmax, v):
+  # straight down along base -z only (x/y and rotation position-controlled); stop after depth
+  # or when the push exceeds fmax, then back off until the push is < 1 N
+  tel(fmax, 6)
+  zero_ftsensor()
+  sleep(0.3)
+  q0 = get_actual_tcp_pose()
+  s = [0, 0, -1]
+  ...speedl([0, 0, -v, 0, 0, 0], 0.2, 0.008), f = get_tcp_force()[2], break if f > fmax...
+  textmsg("seated_z <d> peak <f> last <f>")
+  release(s, 1.0, 0.001)
+  return d
+end
+```
+
+`pull_out` (in `urlib.LIB`, used on 2026-10-26: 12 mm at 2 mm/s, peak 12.2 N):
 
 ```
 def pull_out(n, fmax, maxd, v):
@@ -377,9 +516,8 @@ Notes (check on the robot, tune, log what you change):
 - `zero_ftsensor()` in `pull_out` is called with the casing held and still seated, so the
   casing's weight is inside the zero. "Force back to weight" after the pins clear means the
   reading goes back to ~0.
-- `seat_compliant` lets a/b float at zero force. A wrong payload makes the pins drift
-  sideways, so `set_target_payload` must include the casing (a few grams: negligible, but the
-  Hand-E + camera must be right).
+- `seat_compliant` lets a/b float at zero force: with a stale F/T zero (~6 N after the pull)
+  it drove the arm into a singularity. Pins use `seat_z` instead (principle 8).
 - URScript has no `abs`, `min`, `max`, `len`, `round`, `range`, `for`, `**`; see the
   `rj45-insert` skill notes. **Run `python -m porttest.urscript_lint` after every change to
   `urlib.LIB`.**

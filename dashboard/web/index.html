@@ -21,6 +21,7 @@
       <button data-tab="obj">Objects</button>
       <button data-tab="circuit">Circuit Assembly</button>
       <button data-tab="exp">Experiments</button>
+      <button data-tab="sim">Simulation</button>
     </nav>
     <div class="status" id="status"></div>
   </header>
@@ -134,6 +135,7 @@
             <button data-c="height" title="Height above the plate the object rests on">Height</button>
             <button data-c="off" title="Hide the clouds">Off</button>
           </div>
+          <button id="obj-cad" class="toggle" title="Overlay the object's CAD model (objects.yaml mesh) at the located pose on the clouds">CAD</button>
           <button id="obj-focus" title="Look at the located object">Focus</button>
           <button id="obj-view" title="Reset the view">Reset</button>
         </div>
@@ -243,6 +245,9 @@
       <datalist id="exp-tag-list"></datalist>
     </section>
   </main>
+
+  <!-- filled by simulation/web/sim_tab.js on first open -->
+  <main class="layout hidden" id="tab-sim"></main>
 
   <footer class="foot">
     <span>Fixed D435 · Gripper Gemini 335Lg · UR3e via AI Agent Bridge</span>

@@ -525,6 +525,38 @@ end
 
 # --- protoboard-wire skill. Poses are pins-TCP poses (set_tcp(tcp_pins)); n = -board normal. ---
 
+def seat_z(depth, fmax, v):
+  # protoboard pins: straight down along base -z only (x/y and rotation stay position-controlled,
+  # no compliant axes: a x/y-compliant force mode drove the arm into a singularity on 10-26).
+  # Stops after `depth` or when the push exceeds fmax, then backs off until the push is < 1 N.
+  tel(fmax, 6)
+  zero_ftsensor()
+  sleep(0.3)
+  q0 = get_actual_tcp_pose()
+  s = [0, 0, -1]
+  peak = 0
+  t = 0
+  f = 0
+  while along(q0, s) < depth and t < depth / v * 3 + 1.0:
+    speedl([0, 0, -v, 0, 0, 0], 0.2, 0.008)
+    t = t + 0.008
+    F = get_tcp_force()
+    f = F[2]
+    if f > peak:
+      peak = f
+    end
+    if f > fmax:
+      break
+    end
+  end
+  stopl(0.5)
+  d = along(q0, s)
+  textmsg(str_cat(str_cat("seated_z ", d), str_cat(str_cat(" peak ", peak), str_cat(" last ", f))))
+  textmsg("seatpose ", get_actual_tcp_pose())
+  release(s, 1.0, 0.001)
+  return d
+end
+
 def pull_out(n, fmax, maxd, v):
   # move along -n (out of the board) at v until maxd; stop if the pull exceeds fmax.
   # Reports the peak pull force (the pins' holding force) and the travel.

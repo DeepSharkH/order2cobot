@@ -1,23 +1,26 @@
 # Tool model while a protoboard casing is held (skill protoboard-wire), flange frame, metres.
 # configs/grip.yaml stays the RJ45 plug model. Re-measure after every grasp (S4): tcp_pins is
 # inv(T_base_flange) . T_base_pins with the pins at the holes measured just before the grasp.
-stamp: '2026-10-26T15:30'
+stamp: '2026-10-26T19:50'
 source: >-
-  PROVISIONAL, not measured: fingertips ~0.198 m below the flange (bottom of the RJ45 shell held
-  in the same fingers, configs/grip.yaml), casing assumed centred between the fingers and grasped
-  grasp_z above its bottom. Replaced by the S4 measurement.
+  S4 grasp in place, run 20261026-174057: jumper_orig_5mm seated in H1:J49/J51 (65-number board,
+  near1 grid fit rms 0.094 mm, labels as fitted, orientation unverified), Hand-E closed via the
+  bridge smart skill at flange (-399.7,-26.8,257.0) mm, tool down, jaw along base y; force after
+  close 0.15 N. Pins TCP: x along J49 -> J51, z = board normal (up).
 casing: jumper_orig_5mm          # "Jumper casing - 5 mm pitch": 14 x 5 x 40 mm, wire loop on top
 casing_size: [0.014, 0.005, 0.040]
 exit_x: [-0.0025, 0.0025]
-grasp_z: 0.025                   # finger pad centre above the casing bottom
-fingertip_z: 0.198               # fingertips below the flange (unverified)
-finger:                          # one finger, for corridor checks (unverified)
-  width: 0.020                   # along the casing's long axis
+fingertip_z: 0.222               # fingertips below the flange (finger touched a 20 mm casing at flange z 260 mm)
+grasp_z: 0.027                   # finger pad centre above the casing bottom (tips 17 mm above it)
+finger:                          # one finger, for corridor checks; the jaw closes along flange x
+  width: 0.024                   # along the casing's long axis (flange y)
   thickness: 0.008               # along the closing direction
-  length: 0.040                  # below the gripper palm
-tcp_pins: [0.0, 0.0, 0.213, 0.0, 0.0, 0.0]   # fingertip_z + (grasp_z - pad half length 0.010)
+  length: 0.040
+tcp_pins: [0.00001, 0.00004, 0.23937, 2.21085, -2.22438, 0.01254]
 collision_points:
-  fingertip_a: [0.0, 0.01, 0.198]
-  fingertip_b: [0.0, -0.01, 0.198]
-  casing_bottom_a: [-0.007, 0.0, 0.213]
-  casing_bottom_b: [0.007, 0.0, 0.213]
+  fingertip_a: [0.0065, 0.0, 0.222]
+  fingertip_b: [-0.0065, 0.0, 0.222]
+  casing_bottom_a: [0.0026, 0.007, 0.2393]
+  casing_bottom_b: [-0.0025, -0.0069, 0.2394]
+  pin_tip: [-0.0, 0.0001, 0.2474]
+  loop_top: [0.0001, -0.0006, 0.1744]

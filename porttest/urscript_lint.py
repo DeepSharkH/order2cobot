@@ -14,6 +14,11 @@ import sys
 from pathlib import Path
 
 BUILTINS = set((Path(__file__).with_name("urscript_builtins.txt")).read_text().split())
+# Robotiq URCap 4.2.1 functions, defined in the preamble of an app whose application has the Hand-E
+# configured (seen in close_gripper's generated script; the slave id there is 9)
+BUILTINS |= {"rq_wait_for_gripper_reconnection", "rq_is_gripper_connected", "rq_is_gripper_activated",
+             "rq_set_speed_norm_multi_grippers", "rq_set_force_norm_multi_grippers",
+             "rq_move_and_wait_norm_multi_grippers", "rq_move_norm_multi_grippers", "write_error_popup"}
 KEYWORDS = {"if", "elif", "while", "return", "and", "or", "not", "def", "thread", "run", "join", "kill"}
 # Python habits that are not URScript (with the URScript way)
 PYTHONISMS = [

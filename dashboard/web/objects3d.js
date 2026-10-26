@@ -2,13 +2,16 @@
 // both cameras' depth clouds, with the bounding box of a located object (dashboard/objects.py,
 // agents/vision/locate.py): the box, its model instances, the cloud-only fit when the image
 // fit moved it, and a label with its size. Clouds are placed with the camera pose they
-// arrive with and can be coloured by height above the plate the object rests on.
+// arrive with and can be coloured by height above the plate the object rests on. The "CAD"
+// toggle draws the object's mesh (objects.yaml `mesh`, models/cad/<mesh>.glb) at the located
+// pose, translucent over the cloud: base on the plate, long axis along the box's.
 
 import * as THREE from 'three';
 import { OrbitControls } from './vendor/OrbitControls.js';
 import { CSS2DRenderer, CSS2DObject } from './vendor/CSS2DRenderer.js';
+import { GLTFLoader } from './vendor/GLTFLoader.js';
 
-const COL = { bg: 0x111111, cream: 0xfef5da, brass: 0xc9a15d, grey: 0x8c8577 };
+const COL = { bg: 0x111111, cream: 0xfef5da, brass: 0xc9a15d, grey: 0x8c8577, cad: 0x8fb4e3 };
 const EDGES = [[0, 1], [1, 2], [2, 3], [3, 0], [4, 5], [5, 6], [6, 7], [7, 4], [0, 4], [1, 5], [2, 6], [3, 7]];
 const HOME = { pos: new THREE.Vector3(0.45, -0.75, 0.6), target: new THREE.Vector3(0, 0, 0) };
 
@@ -52,6 +55,9 @@ export class ObjectsView {
     this.resetView();
 
     this.scene.add(new THREE.HemisphereLight(0xffffff, 0x2a2622, 1.6));
+    const sun = new THREE.DirectionalLight(0xffffff, 1.4);     // shades the CAD mesh
+    sun.position.set(1, -1.5, 3);
+    this.scene.add(sun);
     const grid = new THREE.GridHelper(1, 20, 0x2f2f2f, 0x1d1d1d);   // 5 cm cells
     grid.rotation.x = Math.PI / 2;
     this.scene.add(grid);
@@ -71,6 +77,15 @@ export class ObjectsView {
     this.boxG = new THREE.Group();
     this.scene.add(this.boxG);
     this.key = null;
+
+    // CAD mesh at the located pose; meshes load once per name
+    this.cadG = new THREE.Group();
+    this.cadG.visible = false;
+    this.scene.add(this.cadG);
+    this.cadOn = false;
+    this.meshes = {};
+    this.mesh = null;
+    this.loader = new GLTFLoader();
 
     new ResizeObserver(() => this.resize()).observe(container);
     const loop = () => {
@@ -144,6 +159,47 @@ export class ObjectsView {
 
   showCloud(on) { this.clouds.forEach((c) => { c.pts.visible = on; }); }
 
+  showCad(on) {
+    this.cadOn = on;
+    this.placeCad();
+  }
+
+  // the selected object's mesh name (objects.yaml `mesh`), or null
+  setMesh(name) {
+    if (name === this.mesh) return;
+    this.mesh = name;
+    if (name && !this.meshes[name]) {
+      this.meshes[name] = this.loader.loadAsync(`./models/cad/${name}.glb`).then((gltf) => {
+        gltf.scene.traverse((o) => {
+          if (!o.isMesh) return;
+          o.material = o.material.clone();
+          // the white body would vanish into the white board's points: tint it
+          if (o.name === 'body') o.material.color.set(COL.cad);
+          Object.assign(o.material, { transparent: true, opacity: 0.55, depthWrite: false });
+        });
+        // board frame: origin at the top-face centre, z up -> lift by the depth below it
+        const below = -new THREE.Box3().setFromObject(gltf.scene).min.z;
+        return { root: gltf.scene, below };
+      }).catch((e) => { console.error(`CAD mesh ${name}`, e); return null; });
+    }
+    this.placeCad();
+  }
+
+  // board frame (x across, y along) -> world: y onto the box's long axis, base on the plate
+  async placeCad() {
+    const r = this.result, name = this.mesh;
+    const m = name && this.cadOn && r?.box ? await this.meshes[name] : null;
+    if (r !== this.result || name !== this.mesh) return;     // changed while loading
+    this.cadG.clear();
+    this.cadG.visible = !!m;
+    if (this.body) this.body.visible = !m;      // the brass fill would veil the mesh; edges stay
+    if (!m) return;
+    const p = r.box.pose;
+    this.cadG.add(m.root);
+    this.cadG.position.set(p.x, p.y, r.box.z_range[0] + m.below);
+    this.cadG.rotation.set(0, 0, (p.yaw_deg * Math.PI) / 180 - Math.PI / 2);
+  }
+
   // the located object (a result from /api/objects), or null to clear
   setResult(r) {
     const key = r ? `${r.object}:${r.t}` : null;
@@ -154,6 +210,7 @@ export class ObjectsView {
       if (o.element) o.element.remove();
       this.boxG.remove(o);
     }
+    this.placeCad();
     if (!r) return;
     const b = r.box;
     this.plate = { z: b.z_range[0], top: b.z_range[1] - b.z_range[0] };
@@ -165,6 +222,8 @@ export class ObjectsView {
       new THREE.MeshBasicMaterial({ color: COL.brass, transparent: true, opacity: 0.18, depthWrite: false }));
     body.position.set(...b.centre);
     body.rotation.z = (b.pose.yaw_deg * Math.PI) / 180;
+    body.visible = !this.cadG.visible;
+    this.body = body;
     this.boxG.add(body);
     this.boxG.add(boxLines(b.corners, COL.brass, false));
     for (const inst of (b.instance_corners || []).length > 1 ? b.instance_corners : []) this.boxG.add(boxLines(inst, COL.grey, true));
