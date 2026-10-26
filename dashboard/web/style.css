@@ -533,6 +533,7 @@ svg .ghost { opacity: .13; }
 svg .lbl.ghost { opacity: .25; }
 svg .cas { fill: none; stroke: #111; stroke-opacity: .38; stroke-width: 1; stroke-dasharray: 3 2; }
 svg .cas.ghost { opacity: 0; }
+svg .cas.over { stroke: var(--red); stroke-opacity: .95; stroke-width: 1.6; stroke-dasharray: none; fill: var(--red); fill-opacity: .1; }
 svg .cas.failed, svg .item.failed .body { stroke: var(--red); stroke-width: 2; }
 svg .finger { fill: var(--brass); fill-opacity: .55; stroke: #111; stroke-width: 1; }
 svg .cas-now { fill: none; stroke: #111; stroke-width: 2; }
@@ -552,6 +553,7 @@ svg .badge.now rect { fill: var(--red); }
 .ca-film button span { font-size: 9.5px; font-weight: 700; letter-spacing: .1em; color: var(--grey); }
 .ca-film button b { font-size: 12px; font-weight: 900; }
 .ca-film button.past { color: var(--grey); }
+.ca-film button.bad { border-bottom-color: var(--red); }
 .ca-film button.on { background: var(--cream); color: var(--ink); border-color: var(--cream); }
 .ca-film button.on span { color: var(--ink); }
 .ca-note { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; min-height: 22px; margin-top: 10px; font-size: 13px; color: var(--beige); }
@@ -564,6 +566,7 @@ svg .badge.now rect { fill: var(--red); }
 .ca-figs div { background: var(--cream); color: var(--ink); padding: 9px 11px 10px; display: flex; flex-direction: column; gap: 4px; }
 .ca-figs b { font-size: 30px; font-weight: 900; line-height: .95; }
 .ca-figs span { font-size: 9.5px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+.ca-figs .bad { background: var(--red); color: var(--white); }
 .ca-check p { margin: 10px 0 0; font-size: 12.5px; line-height: 1.5; color: var(--beige); }
 .ca-actions { display: flex; gap: 8px; margin-top: 16px; }
 .ca-actions #ca-start { flex: 1; padding: 14px 22px; font-size: 12px; }

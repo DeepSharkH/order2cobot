@@ -421,10 +421,12 @@ class CircuitDesigner:
                 why.append(f"before {', '.join(st['before'])}: its fingertips would touch {'that casing' if len(st['before']) == 1 else 'those casings'}")
             st['why'] = '; '.join(why) or 'no ordering constraint'
         manual = sorted({p.split('.')[0] for p in mapping.get('manual_connections') or {}})
-        d.emit('assembly', sequence=steps, gripper=mapping['gripper'], manual=manual)
-        d.emit('note', text=f"Insertion order from the solver: {len(steps)} steps, verified against the casings and fingertips."
+        nc = sum(len(st['collisions']) for st in steps)
+        d.emit('assembly', sequence=steps, gripper=mapping['gripper'], manual=manual, collisions=nc)
+        d.emit('note', text=f"Insertion order from the solver: {len(steps)} steps, "
+               + ('no bounding-box collisions.' if not nc else f"{nc} bounding-box collision{'s' * (nc != 1)}.")
                + (f" {', '.join(manual)} wired by hand afterwards." if manual else ''))
-        d.stage('assembly', 'done', f'{len(steps)} steps · verified')
+        d.stage('assembly', 'done', f"{len(steps)} steps · " + ('no collisions' if not nc else f"{nc} collision{'s' * (nc != 1)}"))
         d.stage('review', 'wait', 'start assembly or restart')
         return None
 

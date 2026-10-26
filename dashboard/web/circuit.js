@@ -486,7 +486,7 @@ function drawBoard(svg, opt) {
   if (opt.casings) {
     for (const it of steps) {
       if (it.holes.some((x) => !inView(x))) continue;
-      rect(it.body, { class: `cas${cls(it.item)}`, 'data-focus': it.item }, casG);
+      rect(it.body, { class: `cas${cls(it.item)}${st.over?.has(it.item) && !st.ghost?.has(it.item) ? ' over' : ''}`, 'data-focus': it.item }, casG);
     }
   }
 
@@ -609,8 +609,10 @@ function planState(k) {
   if (!a) return {};
   const seq = a.sequence.map((s) => s.item);
   const n = seq.length;
-  if (k >= n) return { placed: new Set(seq) };
-  return { placed: new Set(seq.slice(0, k)), current: seq[k], ghost: new Set(seq.slice(k + 1)) };
+  // casings in a bounding-box collision are outlined red: all of them, or the current step's
+  if (k >= n) return { placed: new Set(seq), over: new Set(a.sequence.flatMap((s) => (s.collisions.length ? [s.item, ...s.collisions] : []))) };
+  const c = a.sequence[k].collisions;
+  return { placed: new Set(seq.slice(0, k)), current: seq[k], ghost: new Set(seq.slice(k + 1)), over: new Set(c.length ? [seq[k], ...c] : []) };
 }
 
 function renderWork() {
@@ -708,7 +710,7 @@ function renderFilm() {
   if (!D.assembly) { note.replaceChildren(h('span', { class: 'muted' }, 'Planning the insertion order…')); return; }
   const a = D.assembly, n = a.sequence.length;
   film.replaceChildren(...a.sequence.map((s, k) => {
-    const b = h('button', { type: 'button', class: `${k === D.step ? 'on' : ''}${k < D.step ? ' past' : ''}` },
+    const b = h('button', { type: 'button', class: `${k === D.step ? 'on' : ''}${k < D.step ? ' past' : ''}${s.collisions.length ? ' bad' : ''}` },
       h('span', {}, pad2(k + 1)), h('b', {}, label(s.item)));
     b.onclick = () => { stopPlay(); D.step = D.step === k ? n : k; renderWork(); };
     return b;
@@ -721,7 +723,8 @@ function renderFilm() {
   }
   const s = a.sequence[D.step];
   const why = s.why.replace(/jumper:\d+/g, label);
-  note.replaceChildren(h('b', {}, `Step ${D.step + 1} · ${label(s.item)}`), h('span', {}, `${describeItem(s.item)}, ${s.holes.join('–')}. ${why}`));
+  note.replaceChildren(h('b', {}, `Step ${D.step + 1} · ${label(s.item)}`), h('span', {}, `${describeItem(s.item)}, ${s.holes.join('–')}. ${why}`),
+    s.collisions.length ? h('span', { class: 'bad' }, `Collides with ${s.collisions.map(label).join(', ')}`) : null);
 }
 
 function renderCheck() {
@@ -729,11 +732,14 @@ function renderCheck() {
   box.classList.toggle('hidden', !D.assembly);
   if (!D.assembly) return;
   const a = D.assembly, nj = D.mapping.jumpers.length;
-  const fig = (v, text) => h('div', {}, h('b', {}, String(v)), h('span', {}, text));
+  const pairs = a.sequence.flatMap((s) => s.collisions.map((o) => `${label(s.item)}/${label(o)}`));
+  const fig = (v, text, cls = '') => h('div', { class: cls }, h('b', {}, String(v)), h('span', {}, text));
   box.replaceChildren(
     h('div', { class: 'ca-figs' },
-      fig(a.sequence.length, 'robot steps'), fig(nj, nj === 1 ? 'jumper' : 'jumpers'), fig(a.manual.length, 'by hand')),
-    h('p', {}, `Fingertips ${a.gripper.finger_width_mm} × ${a.gripper.finger_thickness_mm} mm. The solver checked every step against the casings already on the board.`));
+      fig(a.sequence.length, 'robot steps'), fig(nj, nj === 1 ? 'jumper' : 'jumpers'),
+      fig(pairs.length, pairs.length === 1 ? 'collision' : 'collisions', pairs.length ? 'bad' : '')),
+    h('p', {}, pairs.length ? `Bounding boxes collide: ${pairs.join(', ')}.`
+      : `No bounding-box collisions: casings and ${a.gripper.finger_width_mm} × ${a.gripper.finger_thickness_mm} mm fingertips stay clear at every step.`));
 }
 
 function stopPlay() { if (playTimer) { clearInterval(playTimer); playTimer = null; } }

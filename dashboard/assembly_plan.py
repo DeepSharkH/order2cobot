@@ -79,10 +79,12 @@ def steps(circuit, mapping, parts, board, casings):
         rel = lambda other: geo.relation(s, shapes[other], margin)      # noqa: E731
         after = [o for o in order[:k] if rel(o) == 'b_first']
         before = [o for o in order[k + 1:] if rel(o) == 'a_first']
+        # geometry.verify_assembly's test: bounding boxes overlap, or this step's fingertips land on an earlier casing
+        collisions = [o for o in order[:k] if geo.relation(shapes[o], s, margin) in ('forbidden', 'b_first')]
         out.append({
             'item': iid, 'part_id': placed[iid]['part_id'], 'holes': holes[iid],
             'casing': s['casing_id'], 'center_mm': s['center_mm'], 'orientation_deg': s['orientation_deg'],
             'body': _uv(s['body']), 'fingers': [_uv(f) for f in s['fingers']],
-            'after': after, 'before': before,
+            'after': after, 'before': before, 'collisions': collisions,
         })
     return out
