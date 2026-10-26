@@ -165,7 +165,8 @@ function frustumImage(f, img) {
 }
 const fcam = frustum(C.grey, 'Fixed D435', 0.07);
 const gcam = frustum(C.brass, 'Gripper cam', 0.04);
-const cams = [fcam, gcam];
+const tcam = frustum(C.cream, 'SICK ToF', 0.05);     // shown once it has a pose (T_world_tcam)
+const cams = [fcam, gcam, tcam];
 
 // point clouds, each in its camera's optical frame
 const clouds = cams.map((f, i) => {
@@ -383,10 +384,12 @@ function applyState(s) {
 
   s.cams.forEach((c, i) => {
     const f = cams[i];
-    f.g.visible = !!c.T_world_cam;
-    if (c.T_world_cam) f.g.matrix.copy(mat4(c.T_world_cam));
-    showGlyph(f, view.cam !== f);
-    setFrustum(f, c.K, c.size);
+    if (f) {
+      f.g.visible = !!c.T_world_cam;
+      if (c.T_world_cam) f.g.matrix.copy(mat4(c.T_world_cam));
+      showGlyph(f, view.cam !== f);
+      setFrustum(f, c.K, c.size);
+    }
     const fd = feeds[i];
     if (fd) {
       fd.cap.textContent = c.ok ? `${c.size?.[0]}×${c.size?.[1]} · ${c.fps} fps` : (c.error || 'offline');
@@ -399,6 +402,7 @@ function applyState(s) {
     ['Robot', s.robot.connected ? 'ok' : 'bad'],
     ['Fixed cam', s.cams[0].ok ? 'ok' : 'bad'],
     ['Gripper cam', s.cams[1].ok ? 'ok' : 'bad'],
+    ...(s.cams[2] ? [['ToF cam', s.cams[2].ok ? 'ok' : 'bad']] : []),
     ['Switch link', s.qa?.live?.up ? 'ok' : 'bad'],
   ];
   $('#status').innerHTML = st.map(([n, c]) => `<span class="st ${c}"><i></i>${n}</span>`).join('');

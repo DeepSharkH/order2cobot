@@ -14,8 +14,8 @@ Saved in configs/calibration/scene.yaml.
 
 Serves web/ and streams to each browser over one websocket (/ws):
   text   JSON {"type": "state", ...}            robot, cameras, scene
-  binary [u8 1][u8 cam_index] + JPEG            camera frame (0 fixed, 1 gripper)
-  binary [u8 2][u8 cam_index][2 pad][u32 n] + n*3 f32 xyz + n*3 u8 rgb   cloud in that camera's optical frame
+  binary [u8 1][u8 cam_index] + JPEG            camera frame (0 fixed, 1 gripper, 2 SICK ToF if configured)
+  binary [u8 2][u8 cam_index][2 pad][u32 n] + n*3 f32 xyz + n*3 u8 rgb   cloud in that camera's frame
 The browser sends {"type": ...}: locate_fixed, mount_from_view, set_base {x, y, yaw}, set_overlays {on},
 qa_test {port, phase}, qa_reset {port?}.
 
@@ -24,8 +24,8 @@ POST /api/claude {"prompt", "session"?, "mode"?}   Claude Code CLI on the subscr
 GET /api/experiments[/{run}[/trace|/videos|/video/{file}]]   agent runs saved under results/
     (experiments.py): videos and transcripts; config results_dir, experiments_cache
 
-GET /api/frame/0|1   latest full-resolution colour frame (PNG) of the fixed / gripper cam
-GET /api/depth/0|1   its aligned depth (.npy float32, metres, 0 = no reading)
+GET /api/frame/0|1|2   latest full-resolution colour frame (PNG) of the fixed / gripper / ToF cam (ToF: IR intensity)
+GET /api/depth/0|1|2   its aligned depth (.npy float32, metres, 0 = no reading; ToF: height in Nova's frame)
 
 Port QA for robot scripts (blocks until the link check finishes):
   GET  /api/qa                         all 8 ports + live link
@@ -54,7 +54,7 @@ from . import check_link
 from . import claude_chat
 from . import experiments
 from . import kinematics as kin
-from .cameras import OrbbecCamera, RealSenseCamera, UVCCamera, depth_to_cloud, remove_outliers
+from .cameras import Camera, OrbbecCamera, RealSenseCamera, UVCCamera, VisionaryCamera, remove_outliers
 from .ur_bridge import URBridge
 
 cv2.setNumThreads(2)     # the detection, camera and robot threads share the CPU
@@ -234,8 +234,10 @@ class App:
                       else kin.vec_to_T(np.array(cfg['gripper_camera']['mount'], float)))
         self.robot = Robot(cfg['robot'])
         self.qa = PortQA(cfg.get('qa', {}))
-        self.cams = [RealSenseCamera(cfg['fixed_camera']).start(),
-                     _gripper_cam_class()(cfg['gripper_camera']).start()]
+        self.cams = [_camera(RealSenseCamera, cfg['fixed_camera']),
+                     _camera(_gripper_cam_class(), cfg['gripper_camera'])]
+        if cfg.get('tof_camera'):            # optional; unplugged it just shows offline
+            self.cams.append(_camera(VisionaryCamera, cfg['tof_camera']))
         self.det = [{} for _ in self.cams]           # latest detection per camera
         self.frames = [(0, None) for _ in self.cams]
         self.cloud_msgs = [(0, None) for _ in self.cams]
@@ -259,8 +261,8 @@ class App:
 
     def cam_pose(self, idx, q=None):
         """T_world_cam, or None if the camera can't be placed."""
-        if idx == 0:
-            T = self.scene.get('T_world_fcam')
+        if idx != 1:
+            T = self.scene.get({0: 'T_world_fcam', 2: 'T_world_tcam'}[idx])
             return None if T is None else np.array(T)
         if q is None:
             q, _ = self.robot.joints()
@@ -322,7 +324,7 @@ class App:
         last, t_stream = 0, 0.0
         threading.Thread(target=self._detect_loop, args=(idx,), daemon=True).start()
         while True:
-            seq, img, _ = cam.latest()
+            seq, img, depth = cam.latest()
             now = time.time()
             if img is None or seq == last or now < t_stream:
                 time.sleep(0.003)
@@ -331,7 +333,7 @@ class App:
             d = self.det[idx]
             if now - d.get('stamp', 0) > 2.5 * detect_dt + 0.5:   # drop corners that are out of date
                 d = {**d, 'corners': None, 'pnp': None}
-            out = self._draw(idx, img.copy(), d) if self.overlays else img
+            out = cam.preview(self._draw(idx, img.copy(), d) if self.overlays else img, depth)
             scale = self.cfg.get('stream_width', 960) / out.shape[1]
             if scale < 1:
                 out = cv2.resize(out, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
@@ -383,12 +385,15 @@ class App:
         while True:
             time.sleep(1.0 / self.cfg.get('cloud_hz', 2))
             seq, color, depth = cam.latest()
-            if depth is None or seq == last or cam.K is None:
+            if depth is None or seq == last:
                 continue
             last = seq
             q, _ = self.robot.joints()
-            xyz, rgb = depth_to_cloud(color, depth, cam.K, self.cfg.get('cloud_stride', 4))
-            xyz, rgb = remove_outliers(xyz, rgb, self.cfg.get('cloud_outlier_k', 8), self.cfg.get('cloud_outlier_std', 2.0))
+            c = cam.cloud(color, depth, getattr(cam, 'cfg', {}).get('cloud_stride', self.cfg.get('cloud_stride', 4)))
+            if c is None:
+                continue
+            xyz, rgb = remove_outliers(*c, self.cfg.get('cloud_outlier_k', 8), self.cfg.get('cloud_outlier_std', 2.0),
+                                       by_depth=not cam.orthographic)
             self.plane[idx] = self._board_plane(xyz, self.cam_pose(idx, q))
             self.cloud_msgs[idx] = (seq, struct.pack('<BBxxI', 2, idx, len(xyz)) + xyz.tobytes() + rgb.tobytes())
 
@@ -508,6 +513,16 @@ class App:
                 'T_world_base': self.T_world_base().tolist(),
                 'busy': self.busy, 'message': self.message, 'overlays': self.overlays,
                 'qa': self.qa.state()}
+
+
+def _camera(cls, cfg):
+    """Started camera reader, or an idle placeholder when the config says enabled: false
+    (keeps the camera indices; e.g. a second dashboard that must not grab the USB cameras)."""
+    if cfg.get('enabled', True):
+        return cls(cfg).start()
+    cam = Camera()
+    cam.name, cam.error = cfg.get('label', cls.__name__), 'disabled in config'
+    return cam
 
 
 def _gripper_cam_class():
@@ -631,9 +646,16 @@ async def qa_vlm(request):
         return web.json_response({'ok': False, 'reason': f'expected {{"port": 1-{qa.n}}}: {e}'}, status=400)
 
 
+def _cam(request):
+    cams, i = request.app['app'].cams, int(request.match_info['cam'])
+    return cams[i] if i < len(cams) else None
+
+
 async def frame_get(request):
-    """Latest full-resolution colour frame of camera 0 (fixed) or 1 (gripper) as PNG."""
-    cam = request.app['app'].cams[int(request.match_info['cam'])]
+    """Latest full-resolution colour frame of camera 0 (fixed), 1 (gripper) or 2 (ToF) as PNG."""
+    cam = _cam(request)
+    if cam is None:
+        return web.json_response({'ok': False, 'reason': 'no such camera'}, status=404)
     _, img, _ = cam.latest()
     if img is None:
         return web.json_response({'ok': False, 'reason': cam.error or 'no frame'}, status=503)
@@ -642,9 +664,11 @@ async def frame_get(request):
 
 
 async def depth_get(request):
-    """Latest depth of camera 0 / 1, aligned to its colour frame: .npy float32 metres (0 = none)."""
+    """Latest depth of camera 0 / 1 / 2, aligned to its colour frame: .npy float32 metres (0 = none)."""
     import io
-    cam = request.app['app'].cams[int(request.match_info['cam'])]
+    cam = _cam(request)
+    if cam is None:
+        return web.json_response({'ok': False, 'reason': 'no such camera'}, status=404)
     _, _, depth = cam.latest()
     if depth is None:
         return web.json_response({'ok': False, 'reason': cam.error or 'no depth'}, status=503)
@@ -679,8 +703,8 @@ def main():
     w.router.add_get('/', index)
     w.router.add_get('/ws', ws_handler)
     w.router.add_get('/api/qa', qa_get)
-    w.router.add_get('/api/frame/{cam:[01]}', frame_get)
-    w.router.add_get('/api/depth/{cam:[01]}', depth_get)
+    w.router.add_get('/api/frame/{cam:[0-9]}', frame_get)
+    w.router.add_get('/api/depth/{cam:[0-9]}', depth_get)
     w.router.add_post('/api/qa/vlm', qa_vlm)
     w.router.add_post('/api/qa/{port}/{phase}', qa_post)
     w.router.add_routes(claude_chat.routes(ROOT))

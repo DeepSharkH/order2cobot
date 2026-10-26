@@ -37,6 +37,14 @@ gripper_camera:            # Orbbec Gemini 335Lg on the gripper, color over UVC
   # pose = base · FK · mount. From the 0.42 px hand-eye of 2026-10-24.
   mount: [-0.0394, 0.0074, 0.0134, -0.0401, 0.1149, 0.0997]
 
+tof_camera:                # SICK Visionary-T Mini AP (ToF, no colour) on enP7p1s0f2, Nova app over HTTP
+  label: SICK T Mini
+  ip: 192.168.136.1        # its own address (not the documented 192.168.1.10); Jetson side 192.168.136.100/24
+  hz: 10                   # Nova heightmap polls; a frame is ~0.9 MB of JSON, ~65 ms
+  timeout_s: 2.0
+  cloud_stride: 1          # 512x424 grid, mostly empty outside Nova's working range
+  # pose: T_world_tcam in scene_file once calibrated (not yet: test position)
+
 scene_file: configs/calibration/scene.yaml   # base x/y/yaw + fixed cam pose, written by the dashboard
 
 # Switch port QA (dashboard Port QA tab, dashboard/check_link.py). The robot

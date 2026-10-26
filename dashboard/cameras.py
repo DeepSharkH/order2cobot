@@ -1,10 +1,16 @@
-"""Camera readers: RealSense D435 (fixed scene camera, color + aligned depth)
-and the Orbbec gripper camera (Orbbec SDK with depth, else plain UVC color). Each runs in its own
-thread and keeps only the latest frame."""
+"""Camera readers: RealSense D435 (fixed scene camera, color + aligned depth),
+the Orbbec gripper camera (Orbbec SDK with depth, else plain UVC color) and the
+SICK Visionary-T Mini ToF camera (Ethernet, Nova app). Each runs in its own
+thread, keeps only the latest frame and reconnects on its own."""
 
+import base64
+import io
+import json
 import math
 import threading
 import time
+import urllib.request
+import zipfile
 from pathlib import Path
 
 import cv2
@@ -13,6 +19,7 @@ import numpy as np
 
 class Camera:
     name = ''
+    orthographic = False      # True: an orthographic grid (VisionaryCamera), not a pinhole image
 
     def __init__(self):
         self.lock = threading.Lock()
@@ -52,6 +59,16 @@ class Camera:
             except Exception as e:     # unplugged, busy, ... retry
                 self.error = str(e)
                 time.sleep(2.0)
+
+    def cloud(self, color, depth, stride=4):
+        """Subsampled colored cloud (xyz m, rgb u8) in this camera's frame, None without intrinsics."""
+        if self.K is None:
+            return None
+        return depth_to_cloud(color, depth, self.K, stride)
+
+    def preview(self, color, depth):
+        """Image streamed to the browser (overlays are drawn on its left part)."""
+        return color
 
     def info(self):
         return {'name': self.name, 'ok': self.error is None and self.color is not None,
@@ -275,6 +292,97 @@ class OrbbecCamera(UVCCamera):
             pipe.stop()
 
 
+class VisionaryCamera(Camera):
+    """SICK Visionary-T Mini AP (ToF: depth + IR intensity, no colour) over Ethernet.
+    The AP firmware runs SICK's Nova app and has no raw blob stream; Nova's HTTP API
+    (POST /api/crown/<fn>) serves the latest frame as a heightmap: an orthographic
+    grid in Nova's own frame, x = Ox + col * px, y = Oy + row * py, z = Oz + v * pz (mm),
+    v = 0 means no reading. color = the intensity image, depth = that z in metres
+    (0 = none, so it is a height, not a range), cloud() = the grid points."""
+
+    orthographic = True       # grid spacing does not grow with distance (outlier filter)
+
+    def __init__(self, cfg):
+        super().__init__()
+        self.cfg = cfg
+        self.name = cfg.get('label', 'SICK T Mini')
+        self.grid = None          # (origin xyz, pixel size xyz) of the latest frame, metres
+
+    def _call(self, fn, data=None):
+        req = urllib.request.Request(f"http://{self.cfg.get('ip', '192.168.136.1')}/api/crown/{fn}",
+                                     json.dumps({'data': data or {}}).encode(),
+                                     {'Content-Type': 'application/json'})
+        with urllib.request.urlopen(req, timeout=self.cfg.get('timeout_s', 2.0)) as r:
+            j = json.load(r)
+        if j['header']['status'] != 0:
+            raise RuntimeError(f"T Mini {fn}: {j['header']['message']}")
+        return j['data']
+
+    @staticmethod
+    def _decode(blob):
+        """Nova MachineVisionZip (base64 zip of msgpack) -> height u16, intensity u8, grid."""
+        import msgpack
+        z = zipfile.ZipFile(io.BytesIO(base64.b64decode(blob)))
+        f = msgpack.unpackb(z.read('frames/frame_0.msgpack'), raw=False, strict_map_key=False)['data']
+
+        def image(key):
+            d = f[key]['data']
+            px = d['Data']
+            a = np.frombuffer(px['Pixels']['data'], {'uint16': '<u2', 'uint8': 'u1'}[px['ImageType']])
+            return a.reshape(px['Height'], px['Width']), d
+
+        height, hd = image('HeightImage')
+        intensity, _ = image('IntensityImage')
+        o, s = hd['Origin'], hd['PixelSize']
+        grid = (np.array([o['x'], o['y'], o['z']], float) / 1000, np.array([s['x'], s['y'], s['z']], float) / 1000)
+        return height, intensity, grid
+
+    def _run(self):
+        mode = self._call('NovaExecution/getAcquisitionMode')['mode']
+        if mode != 'FreeRunning':         # Nova starts Stopped: no new frames until it runs
+            self._call('NovaExecution/setAcquisitionMode', {'mode': 'FreeRunning'})
+        dt = 1.0 / self.cfg.get('hz', 10)
+        self.error = None
+        last, t_new = None, time.time()
+        t0, n = time.time(), 0
+        while not self._stop:
+            t = time.time()
+            blob = self._call('Presentation/getCurrentOriginalImage3D')['binaryData']['data']
+            if blob == last:                  # Nova has no newer frame yet
+                if time.time() - t_new > 5:
+                    raise RuntimeError('T Mini: no new frames for 5 s')
+            else:
+                last, t_new = blob, time.time()
+                height, intensity, grid = self._decode(blob)
+                depth = np.where(height > 0, grid[0][2] + height * grid[1][2], 0).astype(np.float32)
+                self.grid = grid
+                self.size = [height.shape[1], height.shape[0]]
+                self._put(cv2.cvtColor(intensity, cv2.COLOR_GRAY2BGR), depth)
+                n += 1
+                if time.time() - t0 > 2:
+                    self.fps, t0, n = n / (time.time() - t0), time.time(), 0
+            time.sleep(max(0.0, dt - (time.time() - t)))
+
+    def cloud(self, color, depth, stride=1):
+        o, s = self.grid
+        d = depth[::stride, ::stride]
+        v, u = np.mgrid[0:depth.shape[0]:stride, 0:depth.shape[1]:stride]
+        m = d != 0
+        xyz = np.c_[o[0] + u[m] * s[0], o[1] + v[m] * s[1], d[m]]
+        rgb = color[::stride, ::stride][m][:, ::-1]
+        return xyz.astype(np.float32), np.ascontiguousarray(rgb, dtype=np.uint8)
+
+    def preview(self, color, depth):
+        """Intensity | depth map (turbo over the valid range, black = no reading)."""
+        m = depth != 0
+        dm = np.zeros(depth.shape[:2] + (3,), np.uint8)
+        if m.any():
+            lo, hi = np.percentile(depth[m], [1, 99])
+            g = np.clip((depth - lo) / max(hi - lo, 1e-6) * 255, 0, 255).astype(np.uint8)
+            dm[m] = cv2.applyColorMap(g, cv2.COLORMAP_TURBO)[m]
+        return np.hstack([color, dm])
+
+
 def depth_to_cloud(color, depth, K, stride=4, max_range=2.0):
     """Subsampled colored point cloud in the camera optical frame."""
     d = depth[::stride, ::stride]
@@ -287,14 +395,15 @@ def depth_to_cloud(color, depth, K, stride=4, max_range=2.0):
     return np.c_[x, y, z].astype(np.float32), np.ascontiguousarray(rgb, dtype=np.uint8)
 
 
-def remove_outliers(xyz, rgb, k=8, std=2.0):
+def remove_outliers(xyz, rgb, k=8, std=2.0, by_depth=True):
     """Statistical outlier removal: drop points whose mean distance to their k
-    nearest neighbours (divided by depth, since the spacing grows with it) is
-    more than std sigmas above the average. Removes flying pixels at edges."""
+    nearest neighbours (divided by depth, since the spacing grows with it; not
+    for orthographic grids) is more than std sigmas above the average. Removes
+    flying pixels at edges."""
     if std <= 0 or len(xyz) <= k:
         return xyz, rgb
     from scipy.spatial import cKDTree
     d, _ = cKDTree(xyz).query(xyz, k + 1, workers=-1)
-    score = d[:, 1:].mean(1) / xyz[:, 2]
+    score = d[:, 1:].mean(1) / (xyz[:, 2] if by_depth else 1.0)
     keep = score < score.mean() + std * score.std()
     return xyz[keep], rgb[keep]
