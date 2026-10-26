@@ -20,13 +20,14 @@ import numpy as np
 
 from cadguide import fit as F
 from cadguide import state
-from cadguide.model import ROOT, CadModel, apply, yaw_of
+from cadguide.model import ROOT, CadModel, yaw_of
 
 # a new anchor this far from its prediction means the object moved (taped, ~1 mm creep)
 MOVE_TOL = {'switch': 1.0e-3, 'breadboard': 0.6e-3}
 # prior sigmas by registration method
 SIGMA = {'cloud': dict(sigma_t=2.0e-3, sigma_yaw=np.radians(1.0), sigma_scale=[0.015, 0.015]),
-         'survey': dict(sigma_t=1.0e-3, sigma_yaw=np.radians(0.3), sigma_scale=[0.04, 0.04])}
+         'survey': dict(sigma_t=1.0e-3, sigma_yaw=np.radians(0.3), sigma_scale=[0.04, 0.04]),
+         'touch': dict(sigma_t=0.7e-3, sigma_yaw=np.radians(1.0), sigma_scale=[0.04, 0.04])}
 
 
 def used(s):
@@ -60,8 +61,8 @@ def predict(model, s, fid, fit=None):
     lat, along = fit.sigma(fid)
     n = len(used(s))
     return {'object': model.name, 'feature': fid,
-            'entry': apply(fit.T, fit.scale, f.p).round(6).tolist(),
-            'seat': apply(fit.T, fit.scale, seat.p).round(6).tolist(),
+            'entry': model.place(fit.T, fit.scale, f.p).round(6).tolist(),
+            'seat': model.place(fit.T, fit.scale, seat.p).round(6).tolist(),
             'axis': (fit.T[:3, :3] @ f.axis).round(6).tolist(),
             'yaw_deg': round(np.degrees(yaw_of(fit.T)), 3),
             'sigma_mm': {'lateral': round(lat * 1000, 3), 'along': round(along * 1000, 3)},
@@ -93,7 +94,11 @@ def cmd_register(args):
     from cadguide import register as R
     model = CadModel(args.obj)
     out = ROOT / 'results' / f"{time.strftime('%Y%m%d-%H%M%S')}_cad_register"
-    if args.survey:
+    if args.touch:
+        prev = state.current(state.load(args.obj))
+        T, scale, info = R.from_touch(model, *args.touch, yaw=yaw_of(prev[0]) if prev else None)
+        kind = 'touch'
+    elif args.survey:
         T, scale, info = R.from_survey(model, args.survey)
         kind = 'survey'
     else:
@@ -128,6 +133,9 @@ def cmd_register(args):
 
 def gate(model, kind, info):
     """Print PASS/WARN lines the skill reads."""
+    if kind == 'touch':
+        print('GATE PASS: touch registration (contact-measured face / top / left end)')
+        return True
     if kind == 'survey':
         ok = info['rms_mm'] < 1.0
         print(f"GATE {'PASS' if ok else 'WARN'}: survey fit rms {info['rms_mm']} mm (< 1.0)")
@@ -208,14 +216,14 @@ def brief(model, s, max_age_min):
         for k in range(1, 9):
             f = f'port:{k}'
             lat = fit.sigma(f)[0]
-            out['ports'][k] = {'entry': mm(apply(fit.T, fit.scale, model.feature(f).p)),
+            out['ports'][k] = {'entry': mm(model.place(fit.T, fit.scale, model.feature(f).p)),
                                'sigma': round(lat * 1000, 2), 'budget': round(max(0.3, 3 * lat * 1000), 2)}
     else:
         sp = model.spec
         a1 = model.feature('hole:a1').p
         out['pitch_mm'] = [round(2.54 * fit.scale[0], 4), round(2.54 * fit.scale[1], 4)]
         out['axis'] = (R @ [0, 0, -1]).round(5).tolist()
-        out['grid'] = {'a1': mm(apply(fit.T, fit.scale, a1)),
+        out['grid'] = {'a1': mm(model.place(fit.T, fit.scale, a1)),
                        'col_step': mm(R @ [0.00254 * fit.scale[0], 0, 0]),
                        'row_step': mm(R @ [0, -0.00254 * fit.scale[1], 0]),
                        'channel_extra': mm(R @ [0.00508 * fit.scale[0], 0, 0]),
@@ -293,6 +301,8 @@ def main(argv=None):
     p.add_argument('obj', choices=state.OBJECTS)
     p.add_argument('--survey', help='port survey yaml (switch): precise registration')
     p.add_argument('--force', action='store_true', help='save even if the gate fails')
+    p.add_argument('--touch', nargs=3, type=float, metavar=('FACE_Y', 'TOP_Z', 'LEFT_X'),
+                   help='switch: plug-tip touch references [m] (porttest.rj45_b touch_refs)')
     p.set_defaults(fn=cmd_register)
     p = sub.add_parser('predict')
     p.add_argument('obj', choices=state.OBJECTS)

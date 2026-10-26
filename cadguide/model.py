@@ -32,6 +32,19 @@ class CadModel:
         self.kind = 'switch' if 'ports' in self.spec else 'breadboard'
 
     @property
+    def scale_origin(self):
+        """Point the pitch scale stretches about: the switch's port 1 (the end a touch or the first
+        insertion measures), the breadboard's centre."""
+        if self.kind == 'switch':
+            return np.array([self.spec['ports']['1']['centre'][0] / 1000, 0.0, 0.0])
+        return np.zeros(3)
+
+    def place(self, T, scale, p):
+        """Object-frame point(s) -> base with the pitch scales about scale_origin."""
+        o = self.scale_origin
+        return apply(T, scale, np.asarray(p, float) - o) + T[:3, :3] @ o
+
+    @property
     def size(self):
         return np.array(self.spec['size']) / 1000
 

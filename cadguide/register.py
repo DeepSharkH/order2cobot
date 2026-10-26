@@ -242,11 +242,11 @@ def refine_on_image(model, T, color, Tc, K, search_mm=6.0):
 
 def overlay(model, T, scale, color, Tc, K, path):
     img = color.copy()
-    E = project(apply(T, scale, edge_points(model)), Tc, K)
+    E = project(model.place(T, scale, edge_points(model)), Tc, K)
     for u, v in E.astype(int):
         cv2.circle(img, (u, v), 1, (0, 255, 255), -1)
     for fid in model.features():
-        u, v = project(apply(T, scale, model.feature(fid).p)[None], Tc, K)[0].astype(int)
+        u, v = project(model.place(T, scale, model.feature(fid).p)[None], Tc, K)[0].astype(int)
         cv2.circle(img, (u, v), 2, (255, 0, 255), -1)
     cv2.imwrite(str(path), img)
 
@@ -307,17 +307,36 @@ def from_survey(model, path):
 
     def res(x):
         T = T_of(x)
-        pred = np.array([apply(T, [1 + x[6], 1], p) for p in feats])
+        pred = model.place(T, [1 + x[6], 1], feats)
         return np.r_[(pred - meas).ravel() / 1e-4, x[4:6] / np.radians(2)]
 
     # translation must be solved with the rotation about the CAD origin, not the row centre
     x0[:3] = meas.mean(0) - pose(0, 0, 0, x0[3])[:3, :3] @ feats.mean(0)
     sol = least_squares(res, np.array(x0 + [0.0]))
     T, scale = T_of(sol.x), np.array([1 + sol.x[6], 1.0])
-    pred = np.array([apply(T, scale, p) for p in feats])
+    pred = model.place(T, scale, feats)
     r = np.linalg.norm(pred - meas, axis=1) * 1000
     info = {'method': f'gripper-cam port survey ({path})', 'views': sv.get('views'),
             'measured': time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime(Path(path).stat().st_mtime)),
             'residual_mm': [round(float(v), 2) for v in r], 'rms_mm': round(float(np.sqrt(np.mean(r ** 2))), 3),
             'pitch_mm': round(model.spec['pitch'] * scale[0], 3), 'yaw_deg': round(np.degrees(yaw_of(T)), 2)}
     return T, scale, info
+
+
+def from_touch(model, face_y, top_z, left_x, yaw=None):
+    """Switch pose from the plug-tip touch references (rj45_b touch_refs: face, top-edge pass,
+    left-end pass; tip coordinates, metres). The pass points sit a tip half-width past the
+    edges; the port-1 offsets measured once (configs/products/ls108g.yaml, run
+    20261025-184457) carry that, so port 1 lands exactly where the touch formula puts it and
+    the CAD gives the rest. The yaw comes from the previous registration (touches give none)."""
+    if model.kind != 'switch':
+        raise RegistrationFailed('touch registration exists for the switch only')
+    prod = yaml.safe_load((ROOT / 'configs' / 'products' / 'ls108g.yaml').read_text())
+    p1 = np.array([left_x + prod['port1_from_left_pass_x'], face_y, top_z - prod['port1_below_top_pass_z']])
+    yaw = 0.0 if yaw is None else yaw
+    T = pose(0, 0, 0, yaw)
+    T[:3, 3] = p1 - T[:3, :3] @ model.feature('port:1').p
+    info = {'method': 'plug-tip touches (face, top-edge pass, left-end pass) + port-1 offsets of 10-25',
+            'touch_mm': [round(v * 1000, 2) for v in (face_y, top_z, left_x)],
+            'yaw_deg': round(np.degrees(yaw), 3)}
+    return T, np.array([1.0, 1.0]), info

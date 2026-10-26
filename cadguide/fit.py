@@ -22,7 +22,6 @@ model error is absorbed as long as the grip is unchanged.
 import numpy as np
 from scipy.optimize import least_squares
 
-from cadguide.model import apply
 
 SIGMA_MEAS = 0.3e-3       # a constrained-tip position across the axis (compliant engage)
 SIGMA_YAW = np.radians(1.0)
@@ -74,7 +73,7 @@ class Fit:
                     r += [(d - dp) / SIGMA_CREEP_T, [(yaw - yp) / SIGMA_CREEP_YAW]]
             for f, m, e in zip(feats, meas, eps):
                 T = _T(self.T0, x[2 + 4 * e:5 + 4 * e], x[5 + 4 * e])
-                r.append(_lateral(T, f, apply(T, s, f.p) - m) / SIGMA_MEAS)
+                r.append(_lateral(T, f, model.place(T, s, f.p) - m) / SIGMA_MEAS)
             return np.concatenate(r)
 
         sol = least_squares(res, np.zeros(2 + 4 * self.n_ep), method='lm')
@@ -82,7 +81,7 @@ class Fit:
         self.cov = np.linalg.pinv(sol.jac.T @ sol.jac)
         self.scale = self.s0 * (1 + self.x[:2])
         self.T = self.pose(self.n_ep - 1)
-        self.resid = [float(np.linalg.norm(_lateral(self.pose(e), f, apply(self.pose(e), self.scale, f.p) - m)))
+        self.resid = [float(np.linalg.norm(_lateral(self.pose(e), f, model.place(self.pose(e), self.scale, f.p) - m)))
                       for f, m, e in zip(feats, meas, eps)]
 
     def pose(self, e):
@@ -94,7 +93,7 @@ class Fit:
         e = self.n_ep - 1
 
         def pos(xx):
-            return apply(_T(self.T0, xx[2 + 4 * e:5 + 4 * e], xx[5 + 4 * e]), self.s0 * (1 + xx[:2]), f.p)
+            return self.model.place(_T(self.T0, xx[2 + 4 * e:5 + 4 * e], xx[5 + 4 * e]), self.s0 * (1 + xx[:2]), f.p)
 
         J = np.zeros((3, len(self.x)))
         for k in range(len(self.x)):
