@@ -10,7 +10,9 @@ with **no alignment hints** and **as few operator actions as possible**. Count e
 action; the target is 0 per run (one-time setup does not count).
 
 Read first: `porttest/LEARNINGS.md` ("Current state" + "Where the port work stopped") and your
-memories `rj45-port-qa-status`, `ur3-cable-limits`, `ur-bridge-motion`.
+memories `rj45-port-qa-status`, `ur3-cable-limits`, `ur-bridge-motion`. Targets come from the
+**`cad-guidance`** skill (`python -m cadguide ensure ls108g --compact`): first port = strong
+guess + full search, then anchor it; the other ports are offsets of the anchored CAD model.
 
 ## Principles (why this skill looks like this)
 
@@ -119,11 +121,15 @@ first (phases: 1 approach, 2 contact, 3 search, 4 engage, 5 wiggle, 6 seat, 7 ba
 - Note: the tag normal sits ~6–7° off flange +y (glue or grip tilt) — use the transform,
   not the axis assumption.
 
-### S4 Scene check (markerless switch)
-- Re-run the port survey (`survey2` flow, full-res frames) only if the switch may have moved
-  or `data/ports.yaml` is older than the last physical change; else load it.
-- Gates: 8 evenly spaced boxes, ray rms < 0.5 mm, pitch 14.5 ± 0.2 mm, yaw sane.
-- Treat the absolute survey as **±2 mm**; it is used for coarse placement only.
+### S4 Scene check — CAD guidance (skill `cad-guidance`)
+- `python -m cadguide ensure ls108g --compact` (no motion). It returns every port's entry
+  point in base mm, σ, a search `budget` and `next_anchor`; log the line as `observed`.
+- `status` unregistered / stale with **no anchor in the current epoch** → re-run the port
+  survey (`python -m porttest.port_survey`, full-res frames), then
+  `python -m cadguide register ls108g --survey data/ports.yaml` (gate: fit rms < 1 mm).
+  The fixed camera cannot register the switch (black tape on top gives no depth).
+- **Fast path** (≥ 1 anchor in the current epoch, same grip, σ of port N ≤ 0.5 mm): skip the
+  top-edge and left-end touches of S5; keep the local face touch above port N.
 
 ### S5 Touch references with the plug tip (one URScript program per reference)
 Use `slide_until_advance` (press the face lightly, slide, detect the tip falling over an edge).
@@ -142,11 +148,12 @@ two is wrong — find out which before continuing). Repeat the **left-end** touc
   the face can be yawed after a push (0.77 mm over 27 mm between port 1 and 2 on 10-25).
 
 ### S6 Target
-With `configs/products/ls108g.yaml` (written after port 1, run 20261025-184457):
+**CAD first:** port N x / z = `ports.N.entry` from the S4 brief (tip coordinates once anchored),
+face y = the local face touch, search radius = `ports.N.budget` (clamp 0.5–3 mm).
+Before the first anchor, cross-check with the touch formula below: |CAD − touch| > 3 mm → stop
+and find out which is wrong. Touch formula (`configs/products/ls108g.yaml`, after port 1):
 **port N x = left_end_pass_x + port1_from_left_pass_x + (N−1)·pitch** (ports go **+x**),
-**port z = top_pass_z − port1_below_top_pass_z**, face y = the local face touch. Search radius
-1.5 mm. Without the file: survey-relative offsets, radius 3 mm, and write the file after the
-first success (explore → routine).
+**port z = top_pass_z − port1_below_top_pass_z**. Search radius 1.5 mm.
 
 ### S7 Insert (one URScript program per stage, results via textmsg)
 1. `move_checked` to 15 mm in front of the target (flange pose from `grip.yaml`).
@@ -171,6 +178,14 @@ Pass to S8 only if seat depth ≥ 10 mm.
 `POST /api/qa/<N>/insert` → link up 1000/full = **PASS**. Then extract straight back (the
 cable is glued into the shell) and confirm the link drops (`/api/qa/<N>/extract`). If the user
 says to leave the plug in (e.g. demo), skip the extraction and say so in the report.
+
+### S8b Anchor (after every PASS)
+The tip position at the **end of the engage** (plug constrained, before the seat push):
+`python -m cadguide anchor ls108g port:N X Y Z --run <run dir> --note "engage end, link up"`
+(metres, base, tip TCP). Log the GATE lines: `PASS` = model holds; `part moved` = new epoch
+(fine, the next search uses the new pose); `fit residual` = stop and check the seat / grip.
+Next port: take `next_anchor` (the far end) second — after two anchors the other ports need
+only the local face touch and a ~0.5 mm search. After any regrip: `cadguide reset ls108g --anchors`.
 
 ### S9 Retry / escalate
 - Max **3** insert attempts per port. Between attempts, re-run S7 from the last good

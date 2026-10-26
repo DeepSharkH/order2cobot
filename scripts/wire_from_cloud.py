@@ -73,7 +73,7 @@ def capture(cfg: dict[str, Any]) -> tuple[np.ndarray, np.ndarray]:
 
 def camera_in_base(cfg: dict[str, Any]) -> tuple[np.ndarray, np.ndarray]:
     """(T_base_cam, K) from the dashboard's scene calibration."""
-    sc = yaml.safe_load(Path(cfg["scene_file"]).read_text())
+    sc = yaml.safe_load((ROOT / cfg["scene_file"]).read_text())
     b = sc["base"]
     c, s = np.cos(np.radians(b["yaw_deg"])), np.sin(np.radians(b["yaw_deg"]))
     T_world_base = np.eye(4)

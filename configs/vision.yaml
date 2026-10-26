@@ -4,7 +4,7 @@ dashboard_url: http://127.0.0.1:8090
 camera: 0                      # 0 = fixed D435 (calibrated extrinsics), 1 = gripper cam
 depth_frames: 5                # depth frames averaged (median) per capture
 # Base pose in the world + fixed-camera pose, written by the dashboard's calibration
-scene_file: /home/lab/order2cobot/.claude/worktrees/rj45-port-qa/configs/calibration/scene.yaml
+scene_file: configs/calibration/scene.yaml   # relative to the repo root
 
 # Base-frame search window for the table and the breadboard [m]
 work_area: {x: [-0.48, -0.18], y: [-0.10, 0.10]}
