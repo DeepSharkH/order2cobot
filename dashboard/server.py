@@ -17,12 +17,17 @@ Serves web/ and streams to each browser over one websocket (/ws):
   binary [u8 1][u8 cam_index] + JPEG            camera frame (0 fixed, 1 gripper)
   binary [u8 2][u8 cam_index][2 pad][u32 n] + n*3 f32 xyz + n*3 u8 rgb   cloud in that camera's optical frame
 The browser sends {"type": ...}: locate_fixed, mount_from_view, set_base {x, y, yaw}, set_overlays {on},
-qa_test {port, phase}, qa_reset {port?}.
+qa_test {port, phase}, qa_reset {port?}, locate_object {name, images?}.
 
 POST /api/claude {"prompt", "session"?, "mode"?}   Claude Code CLI on the subscription (claude_chat.py)
 
 GET /api/experiments[/{run}[/trace|/videos|/video/{file}]]   agent runs saved under results/
     (experiments.py): videos and transcripts; config results_dir, experiments_cache
+PUT /api/experiments/{run}/tags, POST|DELETE /api/experiments/{run}/comments[/{id}]
+    tags and comments on a run, kept in <run>/notes.json
+
+GET /api/objects[/{name}], POST /api/objects/{name}/locate   bounding box of a configured
+    object (configs/objects.yaml, e.g. the protoboard) in the live clouds (objects.py)
 
 GET /api/frame/0|1   latest full-resolution colour frame (PNG) of the fixed / gripper cam
 GET /api/depth/0|1   its aligned depth (.npy float32, metres, 0 = no reading)
@@ -34,6 +39,8 @@ Port QA for robot scripts (blocks until the link check finishes):
   POST /api/qa/vlm  {"port", "confidence"?, "source"?}   port seen by the gripper-camera VLM
 
 Usage:  scripts/run_calib_dashboard.sh   ->  http://localhost:8090
+        python -m dashboard.server --port 8091 --mirror http://127.0.0.1:8090
+                                         a second, read-only dashboard on the same cameras (mirror.py)
 """
 
 import argparse
@@ -49,11 +56,15 @@ import numpy as np
 import yaml
 from aiohttp import WSMsgType, web
 
+from agents.vision.locate import EDGES
+
 from . import calibration as cal
 from . import check_link
 from . import claude_chat
 from . import experiments
 from . import kinematics as kin
+from . import mirror as mirror_mod
+from . import objects
 from .cameras import OrbbecCamera, RealSenseCamera, UVCCamera, depth_to_cloud, remove_outliers
 from .ur_bridge import URBridge
 
@@ -222,8 +233,9 @@ def tilt_deg(R):
 
 
 class App:
-    def __init__(self, cfg):
+    def __init__(self, cfg, mirror=None):
         self.cfg = cfg
+        self.mirror = mirror                         # source dashboard URL: read-only mirror (mirror.py)
         b = cfg['board']
         self.board = cal.Board(b['cols'], b['rows'], b['square'])
         self.T_world_board = kin.inv(self.board.T_board_world)
@@ -232,13 +244,27 @@ class App:
         self.scene.setdefault('base', {'x': 0.0, 'y': 0.0, 'yaw_deg': 0.0})
         self.mount = (np.array(self.scene['T_flange_gcam']) if self.scene.get('T_flange_gcam') is not None
                       else kin.vec_to_T(np.array(cfg['gripper_camera']['mount'], float)))
-        self.robot = Robot(cfg['robot'])
+        if mirror:
+            source = mirror_mod.Source(mirror)
+            source.wait()
+            self.robot = mirror_mod.MirrorRobot(source)
+        else:
+            self.robot = Robot(cfg['robot'])
         self.qa = PortQA(cfg.get('qa', {}))
-        self.cams = [RealSenseCamera(cfg['fixed_camera']).start(),
-                     _gripper_cam_class()(cfg['gripper_camera']).start()]
+        self.objects = objects.ObjectFinder(self, ROOT / cfg.get('objects_file', 'configs/objects.yaml'),
+                                            ROOT / cfg.get('objects_dir', 'data/objects'))
+        if mirror:
+            hz = cfg.get('mirror_hz', 2.0)
+            self.cams = [mirror_mod.MirrorCamera(source, 0, cfg['fixed_camera'].get('label', 'Fixed cam'), hz).start(),
+                         mirror_mod.MirrorCamera(source, 1, cfg['gripper_camera'].get('label', 'Gripper cam'), hz).start()]
+            mirror_mod.follow_calibration(self, source)
+        else:
+            self.cams = [RealSenseCamera(cfg['fixed_camera']).start(),
+                         _gripper_cam_class()(cfg['gripper_camera']).start()]
         self.det = [{} for _ in self.cams]           # latest detection per camera
         self.frames = [(0, None) for _ in self.cams]
         self.cloud_msgs = [(0, None) for _ in self.cams]
+        self.clouds = [None for _ in self.cams]      # latest cloud per camera + its world pose, for objects
         self.plane = [None for _ in self.cams]       # depth on the board vs z = 0, per camera
         self.overlays = True
         self.busy = None
@@ -375,6 +401,20 @@ class App:
         if uv is not None:
             for p in uv:
                 cv2.circle(img, tuple(p), 4, (255, 220, 0), 1, cv2.LINE_AA)
+        # located objects: model instances (grey) and the bounding box (brass), edges sampled
+        # in 3D so they bend with the lens distortion like the real ones
+        t = np.linspace(0, 1, 24)[:, None]
+        for name, box, inst in self.objects.boxes():
+            parts = [*((b, (119, 133, 140), 1) for b in inst if len(inst) > 1), (box, (93, 161, 201), 2)]
+            for corners, colour, width in parts:
+                for a, b in EDGES:
+                    uv = project(corners[a] + t * (corners[b] - corners[a]))
+                    if uv is not None:
+                        cv2.polylines(img, [uv.reshape(-1, 1, 2).astype(np.int32)], False, colour, width, cv2.LINE_AA)
+            uv = project(box[4:5])
+            if uv is not None:
+                cv2.putText(img, name, (int(uv[0, 0]) + 6, int(uv[0, 1]) - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.7,
+                            (93, 161, 201), 2, cv2.LINE_AA)
         return img
 
     def _cloud_loop(self, idx):
@@ -389,7 +429,9 @@ class App:
             q, _ = self.robot.joints()
             xyz, rgb = depth_to_cloud(color, depth, cam.K, self.cfg.get('cloud_stride', 4))
             xyz, rgb = remove_outliers(xyz, rgb, self.cfg.get('cloud_outlier_k', 8), self.cfg.get('cloud_outlier_std', 2.0))
-            self.plane[idx] = self._board_plane(xyz, self.cam_pose(idx, q))
+            Tw = self.cam_pose(idx, q)
+            self.plane[idx] = self._board_plane(xyz, Tw)
+            self.clouds[idx] = {'xyz': xyz, 'rgb': rgb, 'T': Tw, 't': time.time()}
             self.cloud_msgs[idx] = (seq, struct.pack('<BBxxI', 2, idx, len(xyz)) + xyz.tobytes() + rgb.tobytes())
 
     def _board_plane(self, xyz, Tw):
@@ -409,6 +451,10 @@ class App:
                 'rms_mm': float(np.std(P[:, 2] - A @ [a, b, c]) * 1000), 'n': int(len(P))}
 
     # ── actions ───────────────────────────────────────────────────────────
+    def _read_only(self):
+        if self.mirror:
+            raise RuntimeError(f'read-only mirror of {self.mirror}: calibrate on that dashboard')
+
     def _save_scene(self):
         self.scene_file.parent.mkdir(parents=True, exist_ok=True)
         self.scene_file.write_text(yaml.safe_dump(self.scene, sort_keys=False))
@@ -440,6 +486,7 @@ class App:
 
     def locate_fixed(self):
         """Fixed cam pose from its view of the board, averaged over several frames."""
+        self._read_only()
         views = self._board_views(0)
         T, spread = self._average([v[0] for v in views])
         rms = float(np.mean([v[1] for v in views]))
@@ -453,6 +500,7 @@ class App:
     def mount_from_view(self):
         """Gripper cam mount from a still view of the board, given the base:
         mount = (base · FK)^-1 · board view. Redo it after moving the base."""
+        self._read_only()
         views = self._board_views(1)
         qs = np.array([v[2] for v in views])
         if np.ptp(qs, axis=0).max() > 2e-4:
@@ -468,6 +516,8 @@ class App:
         return f'gripper cam mount set: {len(views)} frames, {rms:.2f} px, spread {spread:.1f} mm — saved'
 
     def set_base(self, x, y, yaw_deg):
+        if self.mirror:
+            return f'read-only mirror of {self.mirror}: set the base on that dashboard'
         self.scene['base'] = {**self.scene['base'], 'x': float(x), 'y': float(y), 'yaw_deg': float(yaw_deg)}
         self._save_scene()
         return f'base at {x * 1000:.0f}, {y * 1000:.0f} mm, yaw {yaw_deg:.1f}° — saved'
@@ -507,7 +557,7 @@ class App:
                 'board': self.board.describe(), 'base': self.scene['base'],
                 'T_world_base': self.T_world_base().tolist(),
                 'busy': self.busy, 'message': self.message, 'overlays': self.overlays,
-                'qa': self.qa.state()}
+                'qa': self.qa.state(), 'objects': self.objects.state(), 'mirror': self.mirror}
 
 
 def _gripper_cam_class():
@@ -567,6 +617,18 @@ async def _run_action(app, name, fn, *args):
         app.busy = None
 
 
+async def _locate_object(app, name, images=None):
+    def run():
+        r = app.objects.locate(name, images if images in ('auto', 'always', 'never') else None)
+        p, (L, W, H) = r['box']['pose'], r['box']['size_mm']
+        return (f"{r['label']}: x {p['x'] * 1000:.1f} mm, y {p['y'] * 1000:.1f} mm, yaw {p['yaw_deg']:.2f}°, "
+                f"{L:.0f} x {W:.0f} x {H:.1f} mm ({r['method']}, {r['duration_s']:.0f} s)")
+    if name not in app.objects.specs:
+        app.message = f'unknown object {name}'
+        return
+    await _run_action(app, f'locating {name}', run)
+
+
 async def ws_handler(request):
     ws = web.WebSocketResponse(heartbeat=10.0, max_msg_size=0)
     await ws.prepare(request)
@@ -591,6 +653,8 @@ async def ws_handler(request):
                 app.overlays = bool(req.get('on'))
             elif t == 'qa_test':
                 asyncio.create_task(_qa_test(app.qa, int(req.get('port', 0)), req.get('phase')))
+            elif t == 'locate_object':
+                asyncio.create_task(_locate_object(app, str(req.get('name')), req.get('images')))
             elif t == 'qa_reset':
                 app.qa.reset(req.get('port'))
     finally:
@@ -671,10 +735,12 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--config', default=str(ROOT / 'configs' / 'calib_dashboard.yaml'))
     ap.add_argument('--port', type=int)
+    ap.add_argument('--mirror', metavar='URL',
+                    help='mirror the dashboard at URL (it owns the cameras and robot): read-only, see mirror.py')
     a = ap.parse_args()
     cfg = yaml.safe_load(Path(a.config).read_text())
     w = web.Application(middlewares=[no_cache])
-    w['app'] = App(cfg)
+    w['app'] = App(cfg, mirror=a.mirror)
     w['dt'] = 1.0 / cfg.get('state_hz', 10)
     w.router.add_get('/', index)
     w.router.add_get('/ws', ws_handler)
@@ -686,9 +752,10 @@ def main():
     w.router.add_routes(claude_chat.routes(ROOT))
     w.router.add_routes(experiments.routes(ROOT / cfg.get('results_dir', 'results'),
                                            ROOT / cfg.get('experiments_cache', 'data/cache/experiments')))
+    w.router.add_routes(objects.routes(w['app'].objects))
     w.router.add_static('/', WEB)
     port = a.port or cfg.get('port', 8090)
-    print(f'calibration dashboard: http://localhost:{port}')
+    print(f'calibration dashboard: http://localhost:{port}' + (f' (mirror of {a.mirror})' if a.mirror else ''))
     web.run_app(w, port=port, print=None)
 
 

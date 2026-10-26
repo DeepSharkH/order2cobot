@@ -9,6 +9,12 @@ GET /api/experiments/{run}/trace        the whole step timeline (text, tool call
 GET /api/experiments/{run}/videos       per camera: ready / converting (progress) / recording / error;
                                         asking starts the conversion of videos not converted yet
 GET /api/experiments/{run}/video/{file} the browser-playable copy (supports range requests)
+PUT /api/experiments/{run}/tags         {"tags": [...]} replaces the run's tags
+POST /api/experiments/{run}/comments    {"text": ...} adds a comment
+DELETE /api/experiments/{run}/comments/{id}
+
+Tags and comments are kept next to the run, in <run>/notes.json, and returned with the run
+(the list carries the tags and the comment count).
 
 The recorder writes MPEG-4 Part 2 (mp4v), which browsers do not play, so each video is
 converted once to H.264 with PyAV and cached in cache_dir/<run>/; one conversion runs at a
@@ -19,7 +25,9 @@ import json
 import re
 import threading
 import time
+import uuid
 from collections import deque
+from datetime import datetime
 from fractions import Fraction
 from pathlib import Path
 
@@ -29,6 +37,8 @@ RUN_RE = re.compile(r'^[\w.-]+$')
 VIDEO_RE = re.compile(r'^camera\d+\.mp4$')
 RECORDING_S = 20.0          # a video written to this recently is still being recorded
 LIST_FIELDS = ('name', 'status', 'prompt', 'model', 'started_at', 'finished_at', 'error')
+NOTES = 'notes.json'
+TAG_MAX, COMMENT_MAX = 40, 5000
 
 
 class Videos:
@@ -122,6 +132,19 @@ class Experiments:
         except (OSError, ValueError):
             return None
 
+    def notes(self, d):
+        try:
+            n = json.loads((d / NOTES).read_text())
+        except (OSError, ValueError):
+            n = {}
+        return {'tags': list(n.get('tags') or []), 'comments': list(n.get('comments') or [])}
+
+    def save_notes(self, d, n):
+        tmp = d / f'.{NOTES}.part'
+        tmp.write_text(json.dumps(n, indent=2, ensure_ascii=False))
+        tmp.replace(d / NOTES)
+        return n
+
     def summary(self, d):
         """Short form of a run for the grid; transcripts are re-read only when they change."""
         path = d / 'transcript.json'
@@ -141,8 +164,9 @@ class Experiments:
             self._meta[path] = (mtime, s)
         s = dict(self._meta[path][1]) if mtime is not None else {}
         recording = any(time.time() - v.stat().st_mtime < RECORDING_S for v in videos)
+        n = self.notes(d)
         s.update(run=d.name, transcript=mtime is not None, videos=[v.name for v in videos],
-                 recording=recording)
+                 recording=recording, tags=n['tags'], comments=len(n['comments']))
         if not s.get('started_at'):
             s['started_at'] = _stamp_from_name(d.name)
         return s
@@ -157,6 +181,27 @@ def _stamp_from_name(name):
     return f'{m[1]}-{m[2]}-{m[3]}T{m[4]}:{m[5]}:{m[6]}' if m else None
 
 
+def _clean_tags(tags):
+    """Trimmed, single-spaced, at most TAG_MAX long, without repeats (ignoring case)."""
+    out, seen = [], set()
+    for t in tags:
+        t = ' '.join(str(t).split())[:TAG_MAX]
+        if t and t.lower() not in seen:
+            seen.add(t.lower())
+            out.append(t)
+    return out
+
+
+async def _body(request):
+    try:
+        b = await request.json()
+    except ValueError:
+        b = None
+    if not isinstance(b, dict):
+        raise web.HTTPBadRequest(reason='expected a JSON object')
+    return b
+
+
 def routes(results_dir, cache_dir):
     ex = Experiments(results_dir, cache_dir)
 
@@ -167,7 +212,9 @@ def routes(results_dir, cache_dir):
         d = ex.run_dir(request.match_info['run'])
         s = ex.summary(d) or {'run': d.name, 'videos': []}
         t = ex.transcript(d) or {}
-        s.update(final_output=t.get('final_output'), steps=len(t.get('steps') or []),
+        n = ex.notes(d)
+        s.update(tags=n['tags'], comments=n['comments'],
+                 final_output=t.get('final_output'), steps=len(t.get('steps') or []),
                  recording_info=t.get('recording'), cwd=(t.get('agent_config') or {}).get('cwd'))
         return web.json_response(s)
 
@@ -195,10 +242,41 @@ def routes(results_dir, cache_dir):
             raise web.HTTPNotFound(reason='video not converted yet')
         return web.FileResponse(dst, headers={'Cache-Control': 'no-cache'})
 
+    async def set_tags(request):
+        d = ex.run_dir(request.match_info['run'])
+        tags = (await _body(request)).get('tags')
+        if not isinstance(tags, list):
+            raise web.HTTPBadRequest(reason='expected {"tags": [...]}')
+        n = ex.notes(d)
+        n['tags'] = _clean_tags(tags)
+        return web.json_response(ex.save_notes(d, n))
+
+    async def add_comment(request):
+        d = ex.run_dir(request.match_info['run'])
+        text = str((await _body(request)).get('text') or '').strip()
+        if not text:
+            raise web.HTTPBadRequest(reason='empty comment')
+        n = ex.notes(d)
+        n['comments'].append({'id': uuid.uuid4().hex[:8], 'text': text[:COMMENT_MAX],
+                              'at': datetime.now().astimezone().isoformat(timespec='seconds')})
+        return web.json_response(ex.save_notes(d, n))
+
+    async def delete_comment(request):
+        d = ex.run_dir(request.match_info['run'])
+        n = ex.notes(d)
+        cid = request.match_info['id']
+        if not any(c.get('id') == cid for c in n['comments']):
+            raise web.HTTPNotFound(reason=f'no comment {cid}')
+        n['comments'] = [c for c in n['comments'] if c.get('id') != cid]
+        return web.json_response(ex.save_notes(d, n))
+
     return [
         web.get('/api/experiments', index),
         web.get('/api/experiments/{run}', detail),
         web.get('/api/experiments/{run}/trace', trace),
         web.get('/api/experiments/{run}/videos', videos),
         web.get('/api/experiments/{run}/video/{file}', video),
+        web.put('/api/experiments/{run}/tags', set_tags),
+        web.post('/api/experiments/{run}/comments', add_comment),
+        web.delete('/api/experiments/{run}/comments/{id}', delete_comment),
     ]
