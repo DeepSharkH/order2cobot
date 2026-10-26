@@ -14,6 +14,15 @@ memories `rj45-port-qa-status`, `ur3-cable-limits`, `ur-bridge-motion`. Targets 
 **`cad-guidance`** skill (`python -m cadguide ensure ls108g --compact`): first port = strong
 guess + full search, then anchor it; the other ports are offsets of the anchored CAD model.
 
+## Simulator (same commands, no robot)
+
+To rehearse or debug without the arm: `python -m simulation` (simulated UR3e + AI Agent Bridge on
+:8095), then `export UR_BRIDGE_URL=http://127.0.0.1:8095/universal-robots/ai-agent-bridge/mcp/v1/`
+in the shell that runs this skill's Python. URExec, SkillB and move_checked then drive the
+simulator unchanged; watch it in the dashboard's **Simulation** tab. Not simulated: the cameras
+(frames still come from the real dashboard), RTDE telemetry, the link check. Say in the run log
+that a run was simulated; a simulated pass is not a robot pass. See `simulation/README.md`.
+
 ## Principles (why this skill looks like this)
 
 1. **Vision gets close, touch gets in.** Cameras bring the plug tip within ~2 mm. The last

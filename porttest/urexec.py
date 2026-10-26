@@ -25,9 +25,15 @@ CLIENT = 'rj45-skill'      # own name: the dashboard's session (order2cobot-cali
 GRIP = yaml.safe_load((ROOT / 'configs' / 'grip.yaml').read_text())
 
 # Hand-E (~1 kg) + UR camera mount with the Gemini (480 g) + plug shell; CoG ~6 cm out.
-# set_tcp: inside a step, get_actual_tcp_pose() and movel targets are plug-tip poses.
-PREAMBLE = ('set_target_payload(1.5, [0.0, 0.0, 0.06])\n'
-            f'set_tcp(p{[round(v, 5) for v in GRIP["tcp_tip"]]})\n' + LIB)
+# set_tcp: inside a step, get_actual_tcp_pose() and movel targets are tool (e.g. plug-tip) poses.
+PAYLOAD = 'set_target_payload(1.5, [0.0, 0.0, 0.06])\n'
+
+
+def preamble(tcp):
+    return PAYLOAD + f'set_tcp(p{[round(v, 5) for v in tcp]})\n' + LIB
+
+
+PREAMBLE = preamble(GRIP['tcp_tip'])
 
 
 def call(b, tool, **args):
@@ -54,9 +60,15 @@ def _guid(line):
 
 
 class URExec:
-    def __init__(self):
+    """One bridge client and one app per skill: defaults are the rj45-insert ones. `grip` is the
+    tool model (its `tcp_key` entry is the step TCP, `collision_points` the clearance points)."""
+
+    def __init__(self, app=APP, client=CLIENT, grip=None, tcp_key='tcp_tip'):
+        self.app_name, self.grip = app, grip or GRIP
+        self.tcp = self.grip[tcp_key]
+        self.preamble = preamble(self.tcp)
         t = time.monotonic()
-        self.b = URBridge(client_name=CLIENT)
+        self.b = URBridge(client_name=client)
         self.init_timing = {'initialize': round(time.monotonic() - t, 3)}
         self.app = self.guid = None
         t = time.monotonic()
@@ -65,9 +77,9 @@ class URExec:
 
     def _ensure_app(self):
         apps = call(self.b, 'program_list')['data']['programs']
-        app = next((a for a in apps if a['name'] == APP), None)
+        app = next((a for a in apps if a['name'] == self.app_name), None)
         if app is None:
-            r = call(self.b, 'program_create', name=APP, robotType='UR3', confirm=True)
+            r = call(self.b, 'program_create', name=self.app_name, robotType='UR3', confirm=True)
             print('created', json.dumps(r.get('data'))[:400])
             self.app = str(r['data'].get('appId') or r['data'].get('id'))
         else:
@@ -77,7 +89,7 @@ class URExec:
         if script is None:
             code = next(l for l in tree['tree'] if 'ur-code' in l)
             r = call(self.b, 'program_add_node', appId=self.app, programId=self.app, parentGuid=_guid(code),
-                            type='ur-script', parameters={'expression': 'textmsg("rj45_qa ready")'}, confirm=True)
+                            type='ur-script', parameters={'expression': f'textmsg("{self.app_name} ready")'}, confirm=True)
             print('added', json.dumps(r.get('data'))[:400])
             tree = call(self.b, 'program_get', appId=self.app)['data']
             script = next(l for l in tree['tree'] if 'ur-script' in l)
@@ -85,8 +97,9 @@ class URExec:
         loaded = call(self.b, 'program_get_loaded')['data']
         if str(loaded.get('appId')) != str(self.app):
             call(self.b, 'program_load', appId=self.app, confirm=True)
-        STATE.parent.mkdir(parents=True, exist_ok=True)
-        STATE.write_text(json.dumps({'appId': self.app, 'scriptGuid': self.guid}))
+        state = STATE if self.app_name == APP else STATE.with_name(f'urexec_{self.app_name}.json')
+        state.parent.mkdir(parents=True, exist_ok=True)
+        state.write_text(json.dumps({'appId': self.app, 'scriptGuid': self.guid}))
 
     def _log_list(self):
         d = call(self.b, 'psx_logs')['data']
@@ -98,7 +111,7 @@ class URExec:
         Returns (msgs, pose): msgs are the step's textmsg() texts, read back from the
         controller log, which is also how the step reports results."""
         # restore the flange TCP at the end: set_tcp persists and the controller is shared
-        expr = (PREAMBLE if preamble else '') + script + ('\ntel(0, 0)\nset_tcp(p[0, 0, 0, 0, 0, 0])\n' if preamble else '')
+        expr = (self.preamble if preamble else '') + script + ('\ntel(0, 0)\nset_tcp(p[0, 0, 0, 0, 0, 0])\n' if preamble else '')
         tm = {'t0': time.monotonic(), 'marks': [], 'play': [], 'chars': len(expr), 'lines': expr.count('\n') + 1}
         mark = lambda name: tm['marks'].append((name, round(time.monotonic() - tm['t0'], 3)))  # noqa: E731
         problems = lint(expr)
@@ -142,7 +155,7 @@ class URExec:
             base = max([base] + [int(l['ts']) for l in new])
             for l in new:
                 m = l['message']
-                if ('PROGRAM_XXX_STARTED' in m or 'PROGRAM_XXX_STOPPED' in m) and APP not in m:
+                if ('PROGRAM_XXX_STARTED' in m or 'PROGRAM_XXX_STOPPED' in m) and self.app_name not in m:
                     continue        # another client's program
                 if 'PROGRAM_XXX_STARTED' in m:
                     started = True
@@ -181,12 +194,12 @@ class URExec:
         except OSError:
             pass
 
-    def move_checked(self, pose, w3_ref=None, w3_tol=0.8, min_elbow=0.5, min_clear=0.10, v=0.25):
+    def move_checked(self, pose, w3_ref=None, w3_tol=0.8, min_elbow=0.5, min_clear=0.10, v=0.25, floor=0.0):
         """Joint move to `pose` (flange, base frame) after IK and safety checks; raises if any fails.
 
         Checks: bent elbow (|q2| >= min_elbow, a straight elbow faulted the shoulder), wrist 3
-        within w3_tol of w3_ref (the camera cable winds up), plug tip and shell rear at least
-        min_clear above the plate (the cable droops behind the shell); points from configs/grip.yaml."""
+        within w3_tol of w3_ref (the camera cable winds up), every collision point of the grip
+        model at least min_clear above `floor` (base z of the surface below: plate, board top)."""
         import numpy as np
         from scipy.spatial.transform import Rotation as R
         J = ('base', 'shoulder', 'elbow', 'wrist1', 'wrist2', 'wrist3')
@@ -197,14 +210,14 @@ class URExec:
                  qNear=q0)['data']
         q = [float(r[k]) for k in J]
         Rm = R.from_rotvec(pose[3:]).as_matrix()
-        low = min((np.array(pose[:3]) + Rm @ np.array(o))[2] for o in GRIP['collision_points'].values()) - 0.005
+        low = min((np.array(pose[:3]) + Rm @ np.array(o))[2] for o in self.grip['collision_points'].values()) - 0.005 - floor
         problems = []
         if abs(q[2]) < min_elbow:
             problems.append(f'elbow {q[2]:.2f} rad too straight')
         if abs(q[5] - w3_ref) > w3_tol:
             problems.append(f'wrist3 {q[5]:.2f} vs ref {w3_ref:.2f}')
         if low < min_clear:
-            problems.append(f'plug/cable only {low * 100:.1f} cm above the plate')
+            problems.append(f'tool only {low * 100:.1f} cm above the floor ({floor * 1000:.1f} mm)')
         if problems:
             raise BridgeError('move rejected: ' + '; '.join(problems))
         self.run(f'movej({[round(v_, 5) for v_ in q]}, a=0.4, v={v})', timeout=150)
@@ -212,19 +225,20 @@ class URExec:
 
     def _in_active_tcp(self, pose, q0):
         """The bridge IK (and robot_get_pose) work in the controller's active TCP, which is the
-        plug tip after any step (the preamble's set_tcp persists). Detect which TCP is active by
+        step TCP after any step (the preamble's set_tcp persists). Detect which TCP is active by
         comparing the reported pose with nominal FK, and convert the flange `pose` to it."""
         import numpy as np
         from scipy.spatial.transform import Rotation as R
         from dashboard import kinematics as kin
         F0 = kin.fk(q0, kin.UR3E_NOMINAL_DH)
         rep = np.array(call(self.b, 'robot_get_pose')['data']['pose']['position'])
-        t = np.array(GRIP['tcp_tip'][:3])
+        t = np.array(self.tcp[:3])
         if np.linalg.norm(rep - F0[:3, 3]) < 0.02:
             return list(pose)
         if np.linalg.norm(rep - (F0[:3, :3] @ t + F0[:3, 3])) < 0.02:
-            Rm = R.from_rotvec(pose[3:]).as_matrix()
-            return list(np.array(pose[:3]) + Rm @ t) + list(pose[3:])
+            Rf = R.from_rotvec(pose[3:])
+            Rt = Rf * R.from_rotvec(self.tcp[3:6])
+            return list(np.array(pose[:3]) + Rf.as_matrix() @ t) + list(Rt.as_rotvec())
         raise BridgeError(f'active TCP unknown: reported {np.round(rep, 4)} vs flange FK {np.round(F0[:3, 3], 4)}')
 
     def stop(self):

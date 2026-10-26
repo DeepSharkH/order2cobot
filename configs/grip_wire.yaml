@@ -1,0 +1,23 @@
+# Tool model while a protoboard casing is held (skill protoboard-wire), flange frame, metres.
+# configs/grip.yaml stays the RJ45 plug model. Re-measure after every grasp (S4): tcp_pins is
+# inv(T_base_flange) . T_base_pins with the pins at the holes measured just before the grasp.
+stamp: '2026-10-26T15:30'
+source: >-
+  PROVISIONAL, not measured: fingertips ~0.198 m below the flange (bottom of the RJ45 shell held
+  in the same fingers, configs/grip.yaml), casing assumed centred between the fingers and grasped
+  grasp_z above its bottom. Replaced by the S4 measurement.
+casing: jumper_orig_5mm          # "Jumper casing - 5 mm pitch": 14 x 5 x 40 mm, wire loop on top
+casing_size: [0.014, 0.005, 0.040]
+exit_x: [-0.0025, 0.0025]
+grasp_z: 0.025                   # finger pad centre above the casing bottom
+fingertip_z: 0.198               # fingertips below the flange (unverified)
+finger:                          # one finger, for corridor checks (unverified)
+  width: 0.020                   # along the casing's long axis
+  thickness: 0.008               # along the closing direction
+  length: 0.040                  # below the gripper palm
+tcp_pins: [0.0, 0.0, 0.213, 0.0, 0.0, 0.0]   # fingertip_z + (grasp_z - pad half length 0.010)
+collision_points:
+  fingertip_a: [0.0, 0.01, 0.198]
+  fingertip_b: [0.0, -0.01, 0.198]
+  casing_bottom_a: [-0.007, 0.0, 0.213]
+  casing_bottom_b: [0.007, 0.0, 0.213]
