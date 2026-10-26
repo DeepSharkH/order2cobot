@@ -99,6 +99,142 @@ def solve_pnp(board, corners, K, dist):
     return T, rms
 
 
+# ── board on an orthographic heightmap (SICK T Mini through Nova) ────────────
+#
+# Nova's grid: x = ox + col * px, y = oy + row * py, z = height above its fitted
+# floor (the table), z up. The ToF intensity blurs the square edges and the
+# black squares drop out, so corner detectors miss the board. The pixel scale is
+# known, though: match the board pattern over yaw, then fit the 36 black-square
+# centres (local darkness centroids) with a rigid x, y, yaw in Nova's floor.
+# Tilt comes from Nova's floor (the board lies on the table), height from the
+# table around the board + the board's thickness (its ToF height reads ~2 mm
+# high). Fitting in the world frame (z up, like Nova) keeps the fit from
+# mirroring: the pattern alone is symmetric under a flip along the columns.
+
+def _board_world_pattern(board, xw, yw, margin=0.6):
+    """1 on white, 0 on black, nan off the board, at world (board-centre) coords."""
+    Tbw = board.T_board_world
+    xo = Tbw[0, 0] * xw + Tbw[0, 1] * yw + Tbw[0, 3]
+    yo = Tbw[1, 0] * xw + Tbw[1, 1] * yw + Tbw[1, 3]
+    s = board.square
+    i, j = np.floor(xo / s + 1).astype(int), np.floor(yo / s + 1).astype(int)
+    inside = (i >= 0) & (i <= board.cols) & (j >= 0) & (j <= board.rows)
+    plate = ((xo > -(1 + margin) * s) & (xo < (board.cols + margin) * s)
+             & (yo > -(1 + margin) * s) & (yo < (board.rows + margin) * s))
+    p = np.full(np.shape(xw), np.nan, np.float32)
+    p[plate] = 1.0
+    p[inside] = ((i[inside] + j[inside]) % 2 == 0)        # square (i, j) black when i + j is odd
+    return p
+
+
+def _board_world_points(board):
+    """Black-square centres and inner corners, world xy."""
+    s, Twb = board.square, kin.inv(board.T_board_world)
+    ii, jj = np.meshgrid(np.arange(board.cols + 1), np.arange(board.rows + 1))
+    k = (ii + jj) % 2 == 1
+    black = np.c_[(ii[k] - 0.5) * s, (jj[k] - 0.5) * s, np.zeros(k.sum())]
+    to_w = lambda P: (Twb[:3, :3] @ P.T).T[:, :2] + Twb[:2, 3]
+    return to_w(black), to_w(board.obj)
+
+
+def _rot2(a):
+    c, s = np.cos(a), np.sin(a)
+    return np.array([[c, -s], [s, c]])
+
+
+def _ortho_coarse(board, g, px, py, step_deg=5.0):
+    """(score, yaw, centre pixel) by normalized template matching over yaw."""
+    r = int(np.ceil((board.cols + 2) * board.square * 0.8 / min(abs(px), abs(py))))
+    vv, uu = np.mgrid[-r:r + 1, -r:r + 1]
+    best = (-2.0, 0.0, 0.0, 0.0)
+    for yaw in np.radians(np.arange(0, 360, step_deg)):
+        c, s = np.cos(yaw), np.sin(yaw)
+        X, Y = uu * px, vv * py
+        p = _board_world_pattern(board, c * X + s * Y, -s * X + c * Y)       # world = R(-yaw) · offset
+        m = ~np.isnan(p)
+        ys, xs = np.where(m)
+        y0, y1, x0, x1 = ys.min(), ys.max() + 1, xs.min(), xs.max() + 1
+        t = cv2.GaussianBlur(np.nan_to_num(p, nan=0.5), (0, 0), 1.5)[y0:y1, x0:x1].astype(np.float32)
+        if t.shape[0] > g.shape[0] or t.shape[1] > g.shape[1]:
+            return best
+        res = cv2.matchTemplate(g, t, cv2.TM_CCOEFF_NORMED, mask=m[y0:y1, x0:x1].astype(np.float32))
+        res[~np.isfinite(res)] = -2
+        _, mx, _, loc = cv2.minMaxLoc(res)
+        if mx > best[0]:
+            best = (mx, yaw, loc[0] + r - x0, loc[1] + r - y0)
+    return best
+
+
+def ortho_board(board, gray, height, grid, prev=None, thickness=0.0):
+    """Board on an orthographic heightmap. gray: intensity, height: z in metres
+    (0 = no reading), grid: ((ox, oy, oz), (px, py, pz)) in metres; prev: the
+    last result's 'track' to refine from. Returns None or a dict:
+      T        T_cam_board (cam = Nova's grid frame), as solve_pnp gives it
+      rms_px   black-square centre residual in pixels; rms_mm the same in mm
+      corners  inner corners (N, 2) in pixels, row-major like Board.detect
+      n        black squares found (of 36); track: (yaw, x, y) for the next call"""
+    (ox, oy, _), (px, py, _) = (np.asarray(v, float) for v in grid)
+    valid = height != 0
+    if valid.sum() < 1000:
+        return None
+    g = gray.astype(np.float32)
+    g[~valid] = 0.0                                   # black squares drop out: dark
+    g[cv2.dilate(valid.astype(np.uint8), np.ones((15, 15), np.uint8)) == 0] = np.median(g[valid])
+    black, inner = _board_world_points(board)
+    dark = np.clip(np.median(g[valid]) - g, 0, None)
+    w = int(round(0.45 * board.square / abs(px)))
+    vy, ux = np.mgrid[-w:w + 1, -w:w + 1]
+
+    def centres(yaw, xc, yc):
+        meas, keep = [], []
+        for k, (x, y) in enumerate(black @ _rot2(yaw).T + [xc, yc]):
+            u0, v0 = int(round((x - ox) / px)), int(round((y - oy) / py))
+            if not (w <= u0 < g.shape[1] - w and w <= v0 < g.shape[0] - w):
+                continue
+            patch = dark[v0 - w:v0 + w + 1, u0 - w:u0 + w + 1]
+            if patch.sum() > 0:
+                meas.append([ox + (u0 + (patch * ux).sum() / patch.sum()) * px,
+                             oy + (v0 + (patch * vy).sum() / patch.sum()) * py])
+                keep.append(k)
+        return np.array(meas), np.array(keep, int)
+
+    def refine(yaw, xc, yc):
+        for _ in range(5):
+            meas, keep = centres(yaw, xc, yc)
+            if len(keep) < 8:
+                return None
+            f = lambda q: (black[keep] @ _rot2(q[0]).T + q[1:] - meas).ravel()
+            yaw, xc, yc = least_squares(f, [yaw, xc, yc], loss='soft_l1', f_scale=0.002).x
+        r = f([yaw, xc, yc]).reshape(-1, 2)
+        return yaw, xc, yc, float(np.sqrt(np.mean(np.sum(r ** 2, 1)))), len(keep)
+
+    good = lambda f: f is not None and f[4] >= 0.8 * len(black) and f[3] < 0.002
+    fit = refine(*prev) if prev is not None else None
+    if not good(fit):
+        gs = cv2.resize(g, None, fx=0.5, fy=0.5, interpolation=cv2.INTER_AREA)
+        score, yaw, u, v = _ortho_coarse(board, gs, 2 * px, 2 * py)
+        fit = refine(yaw, ox + 2 * u * px, oy + 2 * v * py) if score > 0.3 else None
+        if not good(fit):
+            return None
+    yaw, xc, yc, rms, n = fit
+    # board top = the table around the plate (Nova floor, ~0) + the plate's thickness
+    vv, uu = np.mgrid[0:g.shape[0], 0:g.shape[1]]
+    X, Y = ox + uu * px - xc, oy + vv * py - yc
+    c, s = np.cos(yaw), np.sin(yaw)
+    xw, yw = c * X + s * Y, -s * X + c * Y
+    hx, hy = (board.cols + 1) * board.square / 2, (board.rows + 1) * board.square / 2
+    ring = valid & (np.abs(xw) < hx + 0.08) & (np.abs(yw) < hy + 0.08) & ~((np.abs(xw) < hx + 0.04) & (np.abs(yw) < hy + 0.04))
+    ring &= np.abs(height) < 0.02
+    z_table = float(np.median(height[ring])) if ring.sum() > 200 else 0.0
+    T_cam_world = np.eye(4)
+    T_cam_world[:2, :2] = _rot2(yaw)
+    T_cam_world[:3, 3] = xc, yc, z_table + thickness
+    uv = inner @ _rot2(yaw).T + [xc, yc]
+    corners = np.c_[(uv[:, 0] - ox) / px, (uv[:, 1] - oy) / py]
+    return {'T': T_cam_world @ kin.inv(board.T_board_world), 'rms_px': rms / abs(px), 'rms_mm': rms * 1000,
+            'corners': corners, 'n': n, 'track': (yaw, xc, yc)}
+
+
 # ── solver ──────────────────────────────────────────────────────────────────
 
 # DH entries that cannot be told apart from the free transforms: theta1 and d1

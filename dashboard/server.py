@@ -4,6 +4,8 @@ Camera + UR3e calibration dashboard — web server.
 World frame = the checkerboard: origin at the board centre, x along its
 columns, z up out of the table. Everything is placed in it:
   fixed cam     T_world_fcam from the D435's view of the board (Locate button)
+  T Mini        T_world_tcam (Nova's heightmap frame) from its heightmap view of the board
+                (locate_tof; calibration.ortho_board)
   robot base    upright, parallel to the board plane: x, y, yaw (base editor) and
                 a fixed height z (9 mm below the board, from scene_solve --free-z)
   gripper cam   base · forward kinematics · mount. The mount starts from
@@ -16,10 +18,12 @@ Serves web/ and streams to each browser over one websocket (/ws):
   text   JSON {"type": "state", ...}            robot, cameras, scene
   binary [u8 1][u8 cam_index] + JPEG            camera frame (0 fixed, 1 gripper, 2 SICK ToF if configured)
   binary [u8 2][u8 cam_index][2 pad][u32 n] + n*3 f32 xyz + n*3 u8 rgb   cloud in that camera's frame
-The browser sends {"type": ...}: locate_fixed, mount_from_view, set_base {x, y, yaw}, set_overlays {on},
+The browser sends {"type": ...}: locate_fixed, locate_tof, mount_from_view, set_base {x, y, yaw}, set_overlays {on},
 qa_test {port, phase}, qa_reset {port?}, locate_object {name, images?}.
 
 POST /api/claude {"prompt", "session"?, "mode"?}   Claude Code CLI on the subscription (claude_chat.py)
+/api/circuit...   Circuit Assembly tab: request -> questions -> circuit JSON -> CSP layout -> assembly
+    order -> hand-off to the assembly pipeline and its progress (circuit_design.py; config `circuit`)
 
 GET /api/experiments[/{run}[/trace|/videos|/video/{file}]][?src=<folder>]   agent runs (experiments.py):
     videos and transcripts; config `experiments` names the results folders to choose from
@@ -60,6 +64,7 @@ from agents.vision.locate import EDGES
 
 from . import calibration as cal
 from . import check_link
+from . import circuit_design
 from . import claude_chat
 from . import experiments
 from . import kinematics as kin
@@ -323,11 +328,16 @@ class App:
         last, t_partial = 0, 0.0
         while True:
             t0 = time.time()
-            seq, img, _ = cam.latest()
+            seq, img, depth = cam.latest()
             if img is not None and seq != last:
                 last = seq
                 q, _ = self.robot.joints()
                 gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+                if cam.orthographic:
+                    self.det[idx] = {'seq': seq, 'stamp': time.time(), 'q': q, 'partial': None,
+                                     **self._ortho_view(idx, gray, depth, self.det[idx].get('track'))}
+                    time.sleep(max(0.01, detect_dt - (time.time() - t0)))
+                    continue
                 corners = self.board.detect(gray, fast=True)
                 d = {'seq': seq, 'stamp': time.time(), 'q': q, 'corners': corners, 'pnp': None,
                      'partial': self.det[idx].get('partial')}
@@ -340,6 +350,14 @@ class App:
                     d['partial'] = self.board.detect_partial(gray)
                 self.det[idx] = d
             time.sleep(max(0.01, detect_dt - (time.time() - t0)))
+
+    def _ortho_view(self, idx, gray, depth, track=None):
+        """Board on an orthographic heightmap camera: corners, pnp (T_cam_board, rms px), track."""
+        cam = self.cams[idx]
+        f = None if depth is None or cam.grid is None else cal.ortho_board(
+            self.board, gray, depth, cam.grid, prev=track, thickness=self.cfg['board'].get('thickness', 0.0))
+        return ({'corners': None, 'pnp': None, 'track': None} if f is None else
+                {'corners': f['corners'], 'pnp': (f['T'], f['rms_px']), 'track': f['track']})
 
     def _vision_loop(self, idx):
         """Overlay + JPEG for every new frame, up to stream_hz. Overlays reuse
@@ -375,7 +393,7 @@ class App:
         if d['corners'] is not None:
             cv2.drawChessboardCorners(img, (self.board.cols, self.board.rows),
                                       d['corners'].astype(np.float32).reshape(-1, 1, 2), True)
-            if d['pnp'] is not None:
+            if d['pnp'] is not None and cam.K is not None:
                 T, _ = d['pnp']
                 rv, _ = cv2.Rodrigues(T[:3, :3])
                 cv2.drawFrameAxes(img, cam.K, cam.dist, rv, T[:3, 3], self.board.square * 3, 3)
@@ -467,16 +485,21 @@ class App:
     def _board_views(self, idx, n=8, timeout=6):
         """Full-accuracy board views of a camera: [(T_world_cam, rms_px, q)]."""
         cam = self.cams[idx]
-        if cam.K is None or cam.error:
+        if (cam.K is None and not cam.orthographic) or cam.error:
             raise RuntimeError(f'{cam.name} not ready ({cam.error})')
-        out, last, t0 = [], 0, time.time()
+        out, last, t0, track = [], 0, time.time(), self.det[idx].get('track')
         while len(out) < n and time.time() - t0 < timeout:
-            seq, img, _ = cam.latest()
+            seq, img, depth = cam.latest()
             q, _ = self.robot.joints()
             if img is not None and seq != last:
                 last = seq
-                c = self.board.detect(cv2.cvtColor(img, cv2.COLOR_BGR2GRAY))
-                p = c is not None and cal.solve_pnp(self.board, c, cam.K, cam.dist)
+                gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+                if cam.orthographic:
+                    v = self._ortho_view(idx, gray, depth, track)
+                    p, track = v['pnp'], v['track'] or track
+                else:
+                    c = self.board.detect(gray)
+                    p = c is not None and cal.solve_pnp(self.board, c, cam.K, cam.dist)
                 if p:
                     out.append((self.T_world_board @ kin.inv(p[0]), p[1], q))
             time.sleep(0.05)
@@ -491,16 +514,26 @@ class App:
 
     def locate_fixed(self):
         """Fixed cam pose from its view of the board, averaged over several frames."""
+        return self._locate(0, 'fcam', 'fixed cam')
+
+    def locate_tof(self):
+        """SICK T Mini pose (Nova's grid frame) from its heightmap view of the board."""
+        if len(self.cams) < 3:
+            raise RuntimeError('no tof_camera in the config')
+        return self._locate(2, 'tcam', 'T Mini', timeout=15)
+
+    def _locate(self, idx, key, label, timeout=6):
         self._read_only()
-        views = self._board_views(0)
+        views = self._board_views(idx, timeout=timeout)
         T, spread = self._average([v[0] for v in views])
         rms = float(np.mean([v[1] for v in views]))
-        cam = self.cams[0]
-        self.scene['T_world_fcam'] = T.tolist()
-        self.scene['fcam'] = {'stamp': time.strftime('%Y-%m-%dT%H:%M:%S'), 'frames': len(views),
-                              'rms_px': rms, 'spread_mm': float(spread), 'K': cam.K.tolist(), 'size': cam.size}
+        cam = self.cams[idx]
+        self.scene[f'T_world_{key}'] = T.tolist()
+        self.scene[key] = {'stamp': time.strftime('%Y-%m-%dT%H:%M:%S'), 'frames': len(views), 'rms_px': rms,
+                           'spread_mm': float(spread), 'size': cam.size,
+                           **({'K': cam.K.tolist()} if cam.K is not None else {'grid': np.asarray(cam.grid).tolist()})}
         self._save_scene()
-        return f'fixed cam located: {len(views)} frames, {rms:.2f} px, spread {spread:.1f} mm — saved'
+        return f'{label} located: {len(views)} frames, {rms:.2f} px, spread {spread:.1f} mm — saved'
 
     def mount_from_view(self):
         """Gripper cam mount from a still view of the board, given the base:
@@ -555,6 +588,8 @@ class App:
         cams[0]['live_vs_saved'] = None if Tv is None or self.scene.get('T_world_fcam') is None else dict(zip(
             ('dpos_mm', 'drot_deg'), np.multiply(kin.pose_error(np.array(self.scene['T_world_fcam']), Tv), (1000, 57.2958))))
         cams[0]['located'] = self.scene.get('fcam')
+        if len(cams) > 2:
+            cams[2]['located'] = self.scene.get('tcam')
         cams[1]['check'] = self.gripper_check()
         cams[1]['mount'] = kin.T_to_vec(self.mount).tolist()
         cams[1]['mount_set'] = self.scene.get('gcam')
@@ -661,6 +696,8 @@ async def ws_handler(request):
             t = req.get('type')
             if t == 'locate_fixed':
                 asyncio.create_task(_run_action(app, 'locate fixed cam', app.locate_fixed))
+            elif t == 'locate_tof':
+                asyncio.create_task(_run_action(app, 'locate T Mini', app.locate_tof))
             elif t == 'mount_from_view':
                 asyncio.create_task(_run_action(app, 'gripper cam mount', app.mount_from_view))
             elif t == 'set_base':
@@ -775,6 +812,7 @@ def main():
     w.router.add_post('/api/qa/vlm', qa_vlm)
     w.router.add_post('/api/qa/{port}/{phase}', qa_post)
     w.router.add_routes(claude_chat.routes(ROOT))
+    w.router.add_routes(circuit_design.routes(cfg.get('circuit')))
     sources = {n: (ROOT / e['dir'], ROOT / e['cache']) for n, e in (cfg.get('experiments') or {}).items()} or {
         'results': (ROOT / cfg.get('results_dir', 'results'), ROOT / cfg.get('experiments_cache', 'data/cache/experiments'))}
     w.router.add_routes(experiments.routes(sources))

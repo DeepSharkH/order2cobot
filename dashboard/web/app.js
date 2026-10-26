@@ -134,12 +134,19 @@ function frustum(color, name, depth) {
   tex.colorSpace = THREE.SRGBColorSpace;
   return { g, glyph, lines, face, canvas, tex, l, depth, K: null, size: null, key: '' };
 }
-function setFrustum(f, K, size) {
-  const key = JSON.stringify([K, size]);
-  if (!K || !size || key === f.key) return;
+function setFrustum(f, K, size, ortho) {
+  const key = JSON.stringify([K, size, ortho]);
+  if ((!K && !ortho) || !size || key === f.key) return;
   f.key = key;
   f.K = K;
   f.size = size;
+  f.ortho = ortho || null;
+  if (ortho) {
+    // no mipmaps: they would blend the feed's black edge (see frustumImage) back into a smear
+    f.tex.generateMipmaps = false;
+    f.tex.minFilter = THREE.LinearFilter;
+    return setOrthoGlyph(f);
+  }
   const d = f.depth;
   const [w, h] = size;
   const c = (u, v) => new THREE.Vector3(((u - K[0][2]) / K[0][0]) * d, ((v - K[1][2]) / K[1][1]) * d, d);
@@ -155,13 +162,37 @@ function setFrustum(f, K, size) {
   f.face.geometry.computeBoundingSphere();
   f.l.obj.position.copy(up).add(new THREE.Vector3(0, -0.2 * d, 0));
 }
+// orthographic heightmap (SICK T Mini through Nova), drawn in its grid frame (z up): the
+// square is the image's footprint on the table, the apex sits above its centre at the top
+// of Nova's working range — a stand-in, Nova does not report where the sensor is
+function setOrthoGlyph(f) {
+  const { origin: [ox, oy], pixel: [px, py], top } = f.ortho;
+  const [w, h] = f.size;
+  const P = (u, v, z = 0) => new THREE.Vector3(ox + u * px, oy + v * py, z);
+  const tl = P(0, 0), tr = P(w, 0), br = P(w, h), bl = P(0, h);
+  const o = P(w / 2, h / 2, top ?? 0.45);
+  const up = P(w / 2, -0.12 * h);        // beyond the image's top edge (row 0)
+  f.lines.geometry.setFromPoints([o, tl, o, tr, o, br, o, bl, tl, tr, tr, br, br, bl, bl, tl,
+    tl.clone().lerp(tr, 0.4), up, up, tl.clone().lerp(tr, 0.6)]);
+  f.face.geometry.setFromPoints([tl, tr, br, tl, br, bl]);
+  f.lines.geometry.computeBoundingSphere();
+  f.face.geometry.computeBoundingSphere();
+  f.l.obj.position.copy(o).add(new THREE.Vector3(0, 0, 0.03));
+}
 function frustumImage(f, img) {
-  if (f.canvas.width !== img.naturalWidth || f.canvas.height !== img.naturalHeight) {
-    f.canvas.width = img.naturalWidth;
+  // a feed wider than the image (T Mini: intensity | depth side by side) keeps its left part
+  const w = f.size ? Math.min(img.naturalWidth, Math.round((img.naturalHeight * f.size[0]) / f.size[1])) : img.naturalWidth;
+  if (f.canvas.width !== w || f.canvas.height !== img.naturalHeight) {
+    f.canvas.width = w;
     f.canvas.height = img.naturalHeight;
     f.tex.dispose();          // new size: re-upload
   }
-  f.canvas.getContext('2d').drawImage(img, 0, 0);
+  const g = f.canvas.getContext('2d');
+  g.drawImage(img, 0, 0);
+  if (f.ortho) {             // black edge: the letterboxed view clamps to it instead of smearing the image
+    g.strokeStyle = '#000';
+    g.strokeRect(0.5, 0.5, f.canvas.width - 1, f.canvas.height - 1);
+  }
   f.tex.needsUpdate = true;
 }
 const fcam = frustum(C.grey, 'Fixed D435', 0.07);
@@ -213,8 +244,35 @@ function setView(which) {       // camera index, or null for the free view
   }
   document.querySelectorAll('#view-seg button').forEach((b) => b.classList.toggle('on', b.dataset.view === String(which ?? 'free')));
 }
+// looking through the heightmap: straight down from far above with a long lens (near
+// orthographic). Its rows run along +y, so seen from above the feed is flipped top-bottom;
+// the background is its intensity image (frustumImage keeps the left part of the feed).
+const ORTHO_D = 10;
+function followOrtho(f) {
+  const { origin: [ox, oy], pixel: [px, py] } = f.ortho;
+  const [w, h] = f.size;
+  const look = new THREE.Matrix4().makeBasis(new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, -1, 0),
+    new THREE.Vector3(0, 0, -1)).setPosition(ox + (w * px) / 2, oy + (h * py) / 2, ORTHO_D);
+  f.g.updateWorldMatrix(true, false);
+  f.g.matrixWorld.clone().multiply(look).multiply(OPT_TO_GL).decompose(camera.position, camera.quaternion, new THREE.Vector3());
+  const vw = viewport.clientWidth, vh = Math.max(viewport.clientHeight, 1);
+  const scale = Math.min(vw / w, vh / h);             // screen px per image px
+  const tall = (vh / scale) * py;                    // metres seen top to bottom
+  camera.fov = (2 * Math.atan(tall / 2 / ORTHO_D) * 180) / Math.PI;
+  camera.aspect = vw / vh;
+  camera.clearViewOffset();
+  camera.updateProjectionMatrix();
+  showGlyph(f, false);
+  if (f.canvas.width) {
+    scene.background = f.tex;
+    const sx = (tall * vw) / vh / px / w, sy = (vh / scale) / h;
+    f.tex.repeat.set(sx, -sy);
+    f.tex.offset.set((1 - sx) / 2, (1 + sy) / 2);
+  }
+}
 function followCamera() {
   const f = view.cam;
+  if (f && f.ortho && f.g.visible) return followOrtho(f);
   if (!f || !f.K || !f.g.visible) return;
   f.g.updateWorldMatrix(true, false);
   const m = f.g.matrixWorld.clone().multiply(OPT_TO_GL);
@@ -263,7 +321,7 @@ function ensureViews(list) {
       l.innerHTML = `<i class="sw ${CAM_SW[i] || 'sw-cam'}"></i>${esc(c.model)}`;
       $('#scene-legend').appendChild(l);
     }
-    const why = !c.T_world_cam ? 'not placed in the scene yet' : !c.K ? 'no pinhole intrinsics' : '';
+    const why = !c.T_world_cam ? 'not placed in the scene yet' : !c.K && !c.ortho ? 'no pinhole intrinsics' : '';
     b.disabled = !!why || !cams[i];
     b.classList.toggle('na', b.disabled);
     b.title = why ? `${c.name}: ${why}` : `Look through the ${c.name} (${i + 1})`;
@@ -284,7 +342,7 @@ function toggle(id, fn) {
   const b = $(id);
   b.onclick = () => { b.classList.toggle('on'); fn(b.classList.contains('on')); };
 }
-toggle('#btn-cloud', (on) => { clouds.forEach((c) => { c.visible = on; }); });
+toggle('#btn-cloud', (on) => { fuse.cloudOn = on; showClouds(); });
 toggle('#btn-cad', (on) => { cadOn = on; for (const m of Object.values(cad)) m.key = ''; pollCadPoses(); });
 toggle('#btn-ovl', (on) => send({ type: 'set_overlays', on }));
 
@@ -325,8 +383,22 @@ function buildCards() {
       <div class="actions"><button id="b-edit">Edit base</button></div>
       <div class="rows" id="base-rows"></div>
       <div class="msg" id="msg"></div>
+    </div>
+    <div class="card" id="c-fuse">
+      <div class="card-head"><div><h3>Fused cloud</h3><p>1 cm voxels within 1 m of the board</p></div></div>
+      <div class="actions"><button id="b-tint" class="toggle" title="Paint each camera's points in its colour">Colour by camera</button></div>
+      <table class="fuse" id="fuse-rows"></table>
+      <p class="note" id="fuse-sum"></p>
     </div>`;
   $('#b-edit').onclick = () => (editor.active ? editor.close() : editor.open());
+  $('#b-tint').onclick = (e) => { fuse.tint = !fuse.tint; e.target.classList.toggle('on', fuse.tint); clouds.forEach((_, i) => paintCloud(i)); };
+  $('#fuse-rows').onchange = (e) => {
+    const i = Number(e.target.dataset.cam);
+    if (Number.isNaN(i)) return;
+    fuse.on[i] = e.target.checked;
+    showClouds();
+    renderFuse(true);
+  };
 }
 buildCards();
 
@@ -368,7 +440,7 @@ function applyState(s) {
       f.g.visible = !!c.T_world_cam;
       if (c.T_world_cam) f.g.matrix.copy(mat4(c.T_world_cam));
       showGlyph(f, view.cam !== f);
-      setFrustum(f, c.K, c.size);
+      setFrustum(f, c.K, c.size, c.ortho);
     }
     const fd = feeds[i];
     if (fd) {
@@ -404,8 +476,70 @@ function applyCloud(buf) {
   const rgb = new Uint8Array(buf, 8 + n * 12, n * 3);
   const col = new Float32Array(n * 3);
   for (let i = 0; i < n * 3; i++) col[i] = rgb[i] / 255;
+  cloud.userData.rgb = col;
   cloud.geometry.setAttribute('position', new THREE.BufferAttribute(xyz.slice(), 3));
-  cloud.geometry.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  cloud.geometry.setAttribute('color', new THREE.BufferAttribute(col.slice(), 3));
+  paintCloud(idx);
+  fuse.vox[idx] = voxels(xyz, lastState?.cams[idx]?.T_world_cam);
+  renderFuse();
+}
+
+// ── fused cloud: which cameras go in, and what each one adds ────────────────
+// Each camera's cloud is placed by its own pose; together they are the fused cloud.
+// Coverage is counted in 1 cm world voxels near the board, so the point density of a
+// stream (stride, resolution) does not count, only the space it fills.
+const CAM_RGB = [C.grey, C.brass, C.teal].map((h) => new THREE.Color(h));
+const fuse = { on: [true, true, true], tint: false, cloudOn: true, vox: [], t: 0 };
+const VOX = 0.01, REACH = 1.0;
+function showClouds() {
+  clouds.forEach((c, i) => { c.visible = fuse.cloudOn && fuse.on[i] !== false; });
+}
+function paintCloud(i) {
+  const c = clouds[i], a = c.geometry.getAttribute('color');
+  if (!a || !c.userData.rgb) return;
+  if (fuse.tint) {
+    const k = CAM_RGB[i] || CAM_RGB[0];
+    for (let j = 0; j < a.array.length; j += 3) { a.array[j] = k.r; a.array[j + 1] = k.g; a.array[j + 2] = k.b; }
+  } else a.array.set(c.userData.rgb);
+  a.needsUpdate = true;
+}
+function voxels(xyz, T) {
+  if (!T) return null;
+  const s = new Set();
+  for (let k = 0; k < xyz.length; k += 3) {
+    const x = T[0][0] * xyz[k] + T[0][1] * xyz[k + 1] + T[0][2] * xyz[k + 2] + T[0][3];
+    const y = T[1][0] * xyz[k] + T[1][1] * xyz[k + 1] + T[1][2] * xyz[k + 2] + T[1][3];
+    const z = T[2][0] * xyz[k] + T[2][1] * xyz[k + 1] + T[2][2] * xyz[k + 2] + T[2][3];
+    if (Math.abs(x) > REACH || Math.abs(y) > REACH || z < -0.05 || z > REACH) continue;
+    s.add((Math.round(x / VOX) + 2048) * 16777216 + (Math.round(y / VOX) + 2048) * 4096 + (Math.round(z / VOX) + 2048));
+  }
+  return s;
+}
+function renderFuse(now = false) {
+  if (!lastState || (!now && performance.now() - fuse.t < 1000)) return;
+  fuse.t = performance.now();
+  const sel = lastState.cams.map((c, i) => fuse.on[i] !== false && fuse.vox[i] && c.T_world_cam ? i : -1).filter((i) => i >= 0);
+  const union = new Set();
+  sel.forEach((i) => fuse.vox[i].forEach((k) => union.add(k)));
+  const only = (i) => {
+    let n = 0;
+    fuse.vox[i].forEach((k) => { if (!sel.some((j) => j !== i && fuse.vox[j].has(k))) n++; });
+    return n;
+  };
+  $('#fuse-rows').innerHTML = '<tr><th></th><th>voxels</th><th>only it</th></tr>' + lastState.cams.map((c, i) => {
+    const v = fuse.vox[i], on = fuse.on[i] !== false;
+    const why = !c.T_world_cam ? 'not placed' : !v ? 'no cloud' : '';
+    const share = on && v && union.size ? v.size / union.size : 0;
+    const col = '#' + (CAM_RGB[i] || CAM_RGB[0]).getHexString();
+    return `<tr class="${on && !why ? '' : 'off'}">
+      <td><label><input type="checkbox" data-cam="${i}" ${on ? 'checked' : ''}><i class="sw" style="background:${col}"></i>${esc(c.model)}</label>
+        <span class="bar"><i style="width:${(share * 100).toFixed(1)}%;background:${col}"></i></span></td>
+      <td class="n">${why || v.size.toLocaleString('en-GB')}</td>
+      <td class="n">${why || !on ? '—' : `${only(i).toLocaleString('en-GB')}`}</td></tr>`;
+  }).join('');
+  $('#fuse-sum').textContent = sel.length
+    ? `${union.size.toLocaleString('en-GB')} voxels from ${sel.length} camera${sel.length > 1 ? 's' : ''}; the bar is each camera's share of them.`
+    : 'No camera selected.';
 }
 
 // ── base editor: x, y and yaw only (the base sits on the board plane) ───────
@@ -474,12 +608,14 @@ document.addEventListener('keydown', (e) => {
 // ── tabs ────────────────────────────────────────────────────────────────────
 // one set of camera feeds, moved into whichever tab is showing
 function showTab(name) {
-  for (const t of ['calib', 'qa', 'cams', 'obj', 'claude', 'exp']) $(`#tab-${t}`).classList.toggle('hidden', t !== name);
+  for (const t of ['calib', 'qa', 'cams', 'obj', 'circuit', 'exp']) $(`#tab-${t}`).classList.toggle('hidden', t !== name);
   document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === name));
-  const home = { calib: '#calib-cams', qa: '#qa-cams', cams: '#cams-only', obj: '#obj-cams' }[name];
+  const home = { calib: '#calib-cams', qa: '#qa-cams', cams: '#cams-only', obj: '#obj-cams', circuit: '#ca-feeds' }[name];
   if (home) $(home).appendChild($('#feeds'));
   if (name === 'exp') expShow(expOpen, expWithTrace);
-  else history.replaceState(null, '', name === 'calib' ? location.pathname : `#${name}`);
+  else if (!(name === 'circuit' && location.hash.startsWith('#circuit'))) {   // keeps #circuit:<design>
+    history.replaceState(null, '', name === 'calib' ? location.pathname : `#${name}`);
+  }
 }
 $('#tabs').onclick = (e) => { const b = e.target.closest('button'); if (b) showTab(b.dataset.tab); };
 
@@ -669,86 +805,6 @@ function connect() {
 }
 connect();
 setInterval(() => { $('#clock').textContent = new Date().toLocaleTimeString('en-GB'); }, 1000);
-
-// ── claude ──────────────────────────────────────────────────────────────────
-// frontend to the local Claude Code CLI (server runs `claude -p` on the subscription)
-let ccSession = null;
-let ccAbort = null;
-const ccLog = $('#cc-log');
-
-function ccAdd(cls, text) {
-  const d = document.createElement('div');
-  d.className = `msg ${cls}`;
-  d.textContent = text;
-  ccLog.appendChild(d);
-  ccLog.scrollTop = ccLog.scrollHeight;
-  return d;
-}
-
-function ccEvent(ev) {
-  if (ev.type === 'system' && ev.subtype === 'init') ccSession = ev.session_id;
-  else if (ev.type === 'assistant') {
-    for (const c of ev.message.content || []) {
-      if (c.type === 'text' && c.text.trim()) ccAdd('bot', c.text);
-      else if (c.type === 'tool_use') ccAdd('tool', `▸ ${c.name} ${JSON.stringify(c.input).slice(0, 400)}`);
-    }
-  } else if (ev.type === 'user') {
-    for (const c of ev.message.content || []) {
-      if (c.type !== 'tool_result') continue;
-      const t = Array.isArray(c.content) ? c.content.map((x) => x.text || '').join('') : String(c.content ?? '');
-      ccAdd(c.is_error ? 'tool err' : 'tool', t.slice(0, 1200));
-    }
-  } else if (ev.type === 'result') {
-    if (ev.session_id) ccSession = ev.session_id;
-    const denied = (ev.permission_denials || []).map((p) => p.tool_name).join(', ');
-    ccAdd(ev.is_error ? 'meta err' : 'meta',
-      `${ev.subtype} · ${fmt((ev.duration_ms || 0) / 1000, 1)} s · ${ev.num_turns} turns${denied ? ` · denied: ${denied}` : ''}`);
-  }
-}
-
-async function ccSend(prompt) {
-  ccAdd('me', prompt);
-  ccAbort = new AbortController();
-  $('#cc-send').textContent = 'Stop';
-  try {
-    const r = await fetch('/api/claude', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: ccAbort.signal,
-      body: JSON.stringify({ prompt, session: ccSession, mode: $('#cc-mode').value }),
-    });
-    const rd = r.body.getReader(), dec = new TextDecoder();
-    let buf = '';
-    for (;;) {
-      const { value, done } = await rd.read();
-      if (done) break;
-      buf += dec.decode(value, { stream: true });
-      let i;
-      while ((i = buf.indexOf('\n')) >= 0) {
-        const line = buf.slice(0, i).trim();
-        buf = buf.slice(i + 1);
-        if (!line) continue;
-        try { ccEvent(JSON.parse(line)); } catch { ccAdd('meta err', line); }
-      }
-    }
-    if (buf.trim() || !r.ok) ccAdd('meta err', `HTTP ${r.status} ${buf.trim()}`);
-  } catch (e) {
-    ccAdd('meta err', e.name === 'AbortError' ? 'stopped' : String(e));
-  }
-  ccAbort = null;
-  $('#cc-send').textContent = 'Send';
-}
-
-$('#cc-form').onsubmit = (e) => {
-  e.preventDefault();
-  if (ccAbort) { ccAbort.abort(); return; }
-  const p = $('#cc-prompt').value.trim();
-  if (!p) return;
-  $('#cc-prompt').value = '';
-  ccSend(p);
-};
-$('#cc-prompt').onkeydown = (e) => {
-  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('#cc-form').requestSubmit(); }
-};
-$('#cc-new').onclick = () => { ccSession = null; ccLog.textContent = ''; };
 
 // ── experiments ─────────────────────────────────────────────────────────────
 // agent runs under results/: a grid of runs; a run shows its camera videos, its tags and
@@ -1124,11 +1180,12 @@ async function expTrace(run) {
   $('#exp-text').onclick = (e) => { const b = e.target.closest('button.exp-t'); if (b) expSeek(b.dataset.at); };
 }
 
-// open the tab named in the address: #qa, #cams, #obj, #claude, #exp[:<folder>][/<run>[/trace]]
+// open the tab named in the address: #qa, #cams, #obj, #circuit[:<design>], #exp[:<folder>][/<run>[/trace]]
 {
   const h = decodeURIComponent(location.hash.slice(1));
   const m = h.match(/^exp(?::([^/]+))?(?:\/([^/]+)(\/trace)?)?$/);
-  if (['qa', 'cams', 'obj', 'claude'].includes(h)) showTab(h);
+  if (['qa', 'cams', 'obj'].includes(h)) showTab(h);
+  else if (h === 'claude' || h.startsWith('circuit')) showTab('circuit');
   else if (m) {
     if (m[1]) expSrc = m[1];
     expOpen = m[2] || null;
@@ -1136,3 +1193,4 @@ async function expTrace(run) {
     showTab('exp');
   }
 }
+

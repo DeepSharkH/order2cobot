@@ -322,6 +322,7 @@ class VisionaryCamera(Camera):
         self.cfg = cfg
         self.name = cfg.get('label', 'SICK T Mini')
         self.grid = None          # (origin xyz, pixel size xyz) of the latest frame, metres
+        self.z_top = None         # top of Nova's working range (m): the 3D glyph's apex height
 
     def _call(self, fn, data=None):
         req = urllib.request.Request(f"http://{self.cfg.get('ip', '192.168.136.1')}/api/crown/{fn}",
@@ -335,7 +336,8 @@ class VisionaryCamera(Camera):
 
     @staticmethod
     def _decode(blob):
-        """Nova MachineVisionZip (base64 zip of msgpack) -> height u16, intensity u8, grid."""
+        """Nova MachineVisionZip (base64 zip of msgpack) -> height u16, intensity u8, grid,
+        working-range top (m, or None)."""
         import msgpack
         z = zipfile.ZipFile(io.BytesIO(base64.b64decode(blob)))
         f = msgpack.unpackb(z.read('frames/frame_0.msgpack'), raw=False, strict_map_key=False)['data']
@@ -350,7 +352,9 @@ class VisionaryCamera(Camera):
         intensity, _ = image('IntensityImage')
         o, s = hd['Origin'], hd['PixelSize']
         grid = (np.array([o['x'], o['y'], o['z']], float) / 1000, np.array([s['x'], s['y'], s['z']], float) / 1000)
-        return height, intensity, grid
+        ext = ((f.get('Extensions') or {}).get('data') or {}).get('Content') or []
+        top = next((e['Value'][-1] / 1000 for e in ext if e.get('Key') == 'NovaWorkingRange_Height'), None)
+        return height, intensity, grid, top
 
     def _run(self):
         mode = self._call('NovaExecution/getAcquisitionMode')['mode']
@@ -368,7 +372,7 @@ class VisionaryCamera(Camera):
                     raise RuntimeError('T Mini: no new frames for 5 s')
             else:
                 last, t_new = blob, time.time()
-                height, intensity, grid = self._decode(blob)
+                height, intensity, grid, self.z_top = self._decode(blob)
                 depth = np.where(height > 0, grid[0][2] + height * grid[1][2], 0).astype(np.float32)
                 self.grid = grid
                 self.size = [height.shape[1], height.shape[0]]
@@ -377,6 +381,14 @@ class VisionaryCamera(Camera):
                 if time.time() - t0 > 2:
                     self.fps, t0, n = n / (time.time() - t0), time.time(), 0
             time.sleep(max(0.0, dt - (time.time() - t)))
+
+    def info(self):
+        """+ ortho: the grid's origin and pixel size (m) and the working-range top, for the
+        3D view (footprint + apex) and for looking straight down through it."""
+        i = super().info()
+        if self.grid is not None:
+            i['ortho'] = {'origin': self.grid[0].tolist(), 'pixel': self.grid[1].tolist(), 'top': self.z_top}
+        return i
 
     def cloud(self, color, depth, stride=1):
         o, s = self.grid

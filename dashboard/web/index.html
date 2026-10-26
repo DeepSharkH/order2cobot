@@ -19,7 +19,7 @@
       <button data-tab="qa">Port QA</button>
       <button data-tab="cams">Cameras</button>
       <button data-tab="obj">Objects</button>
-      <button data-tab="claude">Claude</button>
+      <button data-tab="circuit">Circuit Assembly</button>
       <button data-tab="exp">Experiments</button>
     </nav>
     <div class="status" id="status"></div>
@@ -162,25 +162,63 @@
     </section>
   </main>
 
-  <main class="layout chat-layout hidden" id="tab-claude">
-    <section class="section chat">
-      <div class="section-head">
-        <h2>Claude</h2>
-        <div class="tools">
-          <select id="cc-mode" title="Permission mode: tools that need approval are denied in default">
-            <option value="default">default</option>
-            <option value="acceptEdits">acceptEdits</option>
-            <option value="plan">plan</option>
-          </select>
-          <button id="cc-new" title="Start a new session">New</button>
+  <main class="ca hidden" id="tab-circuit">
+    <div class="ca-top">
+      <ol class="ca-rail" id="ca-rail"></ol>
+      <div class="ca-status" id="ca-status"></div>
+      <div class="ca-bar" id="ca-bar"><i></i></div>
+    </div>
+
+    <div class="ca-design" id="ca-design">
+      <aside class="ca-parts" id="ca-parts"></aside>
+      <section class="ca-main">
+        <div class="ca-head">
+          <div><h2 id="ca-title"></h2><p id="ca-sub"></p></div>
+          <div class="tools">
+            <div class="seg"><button data-ca-view="fit" class="on">Fit</button><button data-ca-view="whole">Whole board</button></div>
+            <button id="ca-cas" class="toggle on" title="Footprints of the printed casings">Casings</button>
+          </div>
         </div>
+        <div class="ca-board"><svg id="ca-svg" role="img" aria-label="Breadboard layout"></svg></div>
+        <div class="ca-info" id="ca-info"></div>
+        <div class="ca-scrub hidden" id="ca-scrub">
+          <button id="ca-prev" title="Previous step">&larr;</button>
+          <button id="ca-play">Play</button>
+          <button id="ca-next" title="Next step">&rarr;</button>
+          <div class="ca-film" id="ca-film"></div>
+        </div>
+        <div class="ca-note" id="ca-note"></div>
+      </section>
+
+      <section class="ca-conv">
+        <div class="ca-log" id="ca-log"></div>
+        <form class="ca-in" id="ca-form">
+          <textarea id="ca-text" rows="2"></textarea>
+          <button id="ca-send" class="primary" type="submit">Send</button>
+        </form>
+        <div class="ca-check hidden" id="ca-check"></div>
+        <div class="ca-actions hidden" id="ca-actions">
+          <button id="ca-restart" title="Discard this design and start over">Restart</button>
+          <button id="ca-start" class="primary" disabled>Start assembly</button>
+        </div>
+      </section>
+    </div>
+
+    <div class="ca-run hidden" id="ca-run">
+      <div class="ca-runhead">
+        <div id="ca-runhead"></div>
+        <div class="tools"><button id="ca-back">Layout</button><button id="ca-abort">Abort</button></div>
       </div>
-      <div class="chat-log" id="cc-log"></div>
-      <form class="chat-in" id="cc-form">
-        <textarea id="cc-prompt" rows="3" placeholder="Ask Claude Code (Enter sends, Shift+Enter newline)"></textarea>
-        <button id="cc-send" class="primary" type="submit">Send</button>
-      </form>
-    </section>
+      <section class="section ca-runcams" id="ca-feeds"></section>
+      <section class="section ca-runsteps">
+        <div class="section-head"><h2>Sequence</h2><div class="legend"><span>pick · move · insert · verify</span></div></div>
+        <ol class="ca-runlist" id="ca-runlist"></ol>
+      </section>
+      <section class="section ca-runbottom">
+        <div class="ca-runboard"><svg id="ca-runsvg" role="img" aria-label="Build progress on the breadboard"></svg></div>
+        <div class="ca-runlog" id="ca-runlog"></div>
+      </section>
+    </div>
   </main>
 
   <main class="exp-layout hidden" id="tab-exp">
@@ -214,5 +252,6 @@
   <div id="conn" class="conn">Connecting to the dashboard server</div>
 
   <script type="module" src="app.js"></script>
+  <script type="module" src="circuit.js"></script>
 </body>
 </html>

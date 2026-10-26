@@ -20,6 +20,7 @@ board:
   cols: 8
   rows: 7
   square: 0.0152
+  thickness: 0.004          # plate top above the table (gripper-cam depth); the T Mini's ToF reads it ~2 mm high
 
 fixed_camera:              # RealSense D435 above the table
   label: Fixed D435
