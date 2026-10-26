@@ -466,13 +466,14 @@ document.addEventListener('keydown', (e) => {
 // ── tabs ────────────────────────────────────────────────────────────────────
 // one set of camera feeds, moved into whichever tab is showing
 function showTab(name) {
-  for (const t of ['calib', 'qa', 'claude']) $(`#tab-${t}`).classList.toggle('hidden', t !== name);
+  for (const t of ['calib', 'qa', 'cams', 'claude']) $(`#tab-${t}`).classList.toggle('hidden', t !== name);
   document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === name));
-  if (name !== 'claude') $(name === 'qa' ? '#qa-cams' : '#calib-cams').appendChild($('#feeds'));
+  const home = { calib: '#calib-cams', qa: '#qa-cams', cams: '#cams-only' }[name];
+  if (home) $(home).appendChild($('#feeds'));
   history.replaceState(null, '', name === 'calib' ? location.pathname : `#${name}`);
 }
 $('#tabs').onclick = (e) => { const b = e.target.closest('button'); if (b) showTab(b.dataset.tab); };
-if (location.hash === '#qa' || location.hash === '#claude') showTab(location.hash.slice(1));
+if (['#qa', '#cams', '#claude'].includes(location.hash)) showTab(location.hash.slice(1));
 
 // ── port QA ─────────────────────────────────────────────────────────────────
 let qaSel = 1;

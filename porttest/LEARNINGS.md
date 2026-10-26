@@ -72,6 +72,52 @@ tests the 8 ports of a TP-Link LS108G one by one; the Jetson checks the link on
   deviation limit on x/z — tighten it to ~1 mm. Wiggle a-axis max 3.69 N (port 4: 3.38) → use
   ~3 N for a, keep 4 N for b. The port-4 seat had moved the switch +0.4 mm (y) / +0.3 mm (x).
 
+- **Port 1, unattended run (20:53, run 20261025-204844):** link 1000/full, first attempt, 0 false
+  hits, 0 operator actions. The shell tag had moved 1.6 mm / ~8° against the flange since the 20:23
+  seat (repeatable to 0.2 mm, so real; `grip.yaml` tag pose updated, `tcp_tip` kept) — the tip
+  touches absorbed it and the candidate was 1.0 mm from the target. The seat had moved the switch
+  +0.73 mm y / +0.43 mm x. **The wiggle moves z:** telemetry z +4.7 mm in the wiggle (20:23: −3.4 mm),
+  seat_x only +0.5 mm. Next: x/z deviation ~1 mm in the contact/engage/wiggle force mode, or skip
+  the wiggle when depth > 4 mm (the depth gate decided in the last 3 runs; b-axis max 3.44 N here).
+
+- **Port 2, unattended run (21:13, run 20261025-210552):** link 1000/full on attempt 2, 1 false
+  hit, 0 operator actions. Attempt 1: candidate 1.3 mm from the target, but the **x/z-compliant
+  `engage` let z climb 3.9 mm** (Fz ≈ 0, payload bias) and the plug jammed at 3.97 mm (gate 4.0);
+  wiggle b max 2.19 N → false hit. The 11 N jam moved the local face +0.71 mm. Attempt 2 from the
+  candidate with **`engage_x` (z stiff, x compliant; defined in the run's `scripts/s7_insert2.script`,
+  not yet in `urlib`)**: 4.5 mm in 0.62 s, z +0.13 mm; depth gate (5.9 mm) instead of the wiggle;
+  `seat_x` timed out at 5 s / 11.6 mm with stiff z holding ~5 N (stiff height = candidate z, ~1 mm
+  under the target), release cap left 4.6 N. Switch had moved −0.57 x / +0.2 y / +0.72 z (top edge)
+  since 20:53. Next: move `engage_x` into `urlib`; hold z at the touch-based target z (or z compliant
+  with a −2 N wrench) so the seat does not drag; let `release` go further than 1 mm.
+
+- **Port 4, unattended run (21:25, run 20261025-211558):** link 1000/full on attempt 3, 2 false
+  hits (1 not found + 1 jam), 0 operator actions. The formula target (`ls108g.yaml` port-1 offsets
+  + 3 × 14.51 pitch) was **1.6 mm too far −x**: attempt 1 (r 1.5) left the tip 1.5–1.85 mm past the
+  local face everywhere (under the 2.11 threshold); attempt 2 at +1.0 x entered 1.5 mm but
+  `engage_x` stalled at 2.85 mm (0.8 mm x error jams even with x compliant at 11 N). Attempt 3 at
+  the 20:04 engaged position relative to today's touches went in at once (engage_x 4.5 mm in 0.7 s,
+  seat_x to 11.4 mm, then `release` to 2 mm → 2.7 N). Seated tip = left +77.95 / top −15.02;
+  port 2 engaged at left +47.81 → **~15.0 mm per port in tip coordinates**, not the survey's 14.51.
+  Measured per-port offsets are now in `ls108g.yaml` (`measured_from_left_x`, `measured_below_top_z`);
+  for ports 5–8 extrapolate with ~15.0 mm. `engage_x` is now in `urlib`. seat_x still dragged z
+  +1.3 mm (Fz +3.2 N). The port-2 seat had moved the switch −0.9 x / +1.3 y.
+
+- **Port 6, unattended run (21:33, run 20261025-212927):** link 1000/full on attempt 1, 0 false
+  hits, 0 operator actions. Target left +108.7 / top −16.4 (port-4 entry + 2 × 15.2); the tip
+  entered at the start point 0.8 mm from it (entry offset left +107.94 / top −16.11 → entry offsets
+  2/4/6 = 47.81/78.33/107.94, **15.0 mm/port**). Local face above port 6 121.6 vs 125.6 at the left
+  spot (~2.7° yaw). **Danger found:** in `engage_x` and then `seat_x` the force-mode *target* of the
+  non-selected z axis sank (tgt_z = act_z: 19.3 → 16.9 → 7.1 mm in 4 s), the robot pushed the plug
+  down with **Fz ≈ 70 N** while ~8 mm deep, and only then did `force_mode_max_position_error` abort
+  the program — skipping the closing `set_tcp(flange)` and leaving the load held. The link was up
+  anyway. Relief: interpolate back to the entry z + ROT in 0.1 mm steps (the load was elastic, gone
+  after ~10 mm); then extraction was clean and the grip tag unchanged (≤ 0.3 mm). **The F/T reading
+  (program and RTDE) re-zeroes at every program start** — after an abort, carry the last RTDE force
+  as an offset. Next: a watchdog inside `seat_x`/`engage_x` (stop and release at |Fz| > ~15 N or
+  z drift > 1 mm), or hold z with a position servo instead of a non-selected force-mode axis;
+  the port-4 seat had again moved the switch +0.35 x / +0.6 y.
+
 ## Robot control through the AI Agent Bridge
 
 - The bridge (`https://192.168.2.12/universal-robots/ai-agent-bridge/mcp/v1/`, client

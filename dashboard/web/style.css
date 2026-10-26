@@ -281,3 +281,8 @@ kbd { font: 400 10px var(--font); opacity: .6; margin-left: 4px; }
 .chat-in { display: flex; gap: 10px; margin-top: 12px; }
 .chat-in textarea { flex: 1; resize: vertical; background: #1c1c1c; color: var(--white); border: 1px solid var(--rule); font: inherit; padding: 10px; }
 #cc-mode { background: #1c1c1c; color: var(--white); border: 1px solid var(--rule); font: inherit; padding: 4px 6px; }
+
+/* ── cameras tab: the feeds alone, filling the page ───────────── */
+.cams-layout { display: flex; }
+.cams-layout .cams { flex: 1; min-width: 0; }
+.cams-layout .feeds { justify-content: center; }

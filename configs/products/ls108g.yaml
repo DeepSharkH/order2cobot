@@ -13,3 +13,11 @@ touch:
 port1_from_left_pass_x: 0.03248   # port1 x = left_end_pass_x + this
 port1_below_top_pass_z: 0.01536   # port1 z = top_pass_z - this
 seat_depth: 0.013                 # past the face, at 25 N
+# seated / engaged tip positions per port relative to the touches (left_end_pass_x, top_pass_z)
+# of the same run; the survey pitch under-predicts: port 2 engaged at +47.81 (21:13), port 4
+# seated at +77.95 (21:25) -> ~15.0 mm per port in tip coordinates. Use these, not pitch.
+measured_from_left_x: {2: 0.04781, 4: 0.07795, 6: 0.10794}   # runs 20261025-210552 (engage), 20261025-211558 (seat), 20261025-212927 (entry)
+measured_below_top_z: {2: 0.01641, 4: 0.01502, 6: 0.01611}
+# port 6 (21:33): entered at the start point 0.76 mm -x / 0.29 mm +z from left+108.7/top-16.4
+# (port-4 entry 78.33 + 2 x 15.2); entry offsets port 2/4/6: 47.81 / 78.33 / 107.94 -> 15.0 mm/port
+

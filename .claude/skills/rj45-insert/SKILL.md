@@ -30,6 +30,24 @@ memories `rj45-port-qa-status`, `ur3-cable-limits`, `ur-bridge-motion`.
 6. **Stop on surprises.** Any protective stop, false hit or disagreement between two
    measurements > tolerance: stop, log it, re-measure. Do not retry blindly.
 
+## Fast path: Option B (use this for routine ports)
+
+Every program edit through the bridge costs ~9 s (`program_update_node`, measured 2026-10-26)
+plus ~5 s per new bridge session. **Do not upload a new script per step.** Instead:
+
+- `porttest/skill_b.py`: the skill program (urlib + socket dispatcher) is uploaded **once per
+  session** (`SkillB().upload()`); every step is **one play** (`with sk.session() as s:`) that
+  runs any sequence of primitives (`s.creep`, `s.contact`, `s.slide`, `s.search_port`,
+  `s.engage`, `s.wiggle`, `s.seat_x`, `s.guarded_axial`, `s.movel`, `s.movej`, `s.ik`, …)
+  sent from Python over a socket (round trip 2 ms), results returned as (value, tip pose).
+  The per-step play still goes through the bridge (move tier + Remote gate).
+- `porttest/rj45_b.py port N`: one full port (touch refs → insert → link → extract → lift) as
+  3 plays with run log + telemetry. **Measured: port 1 in 123 s** (vs 283 s per-step upload).
+- Use one long-lived Python process for a whole run (a new process = new bridge session ~5 s).
+- If the robot does not connect within 20 s: the program was replaced (someone else edited or
+  loaded another app) → `SkillB().upload()` again. Bump `VERSION` when urlib or the dispatcher
+  changes. Use the old per-step `urexec.run` only for new, not-yet-supported primitives.
+
 ## Logging protocol (mandatory)
 
 Tool calls and user messages are logged automatically (hook → `data/runs/current/tools.jsonl`).
@@ -138,6 +156,15 @@ two is wrong — find out which before continuing). Repeat the **left-end** touc
   pushed it +2.25 mm in y and −1.6 mm in x (10-25; the fixed cam confirmed 6–7 px). Compare
   with the last run's touches; a change > 0.3 mm = the switch moved → use the new touches
   (targets are relative to them, so this is handled) and log `assumption false`.
+- **Tell the operator when the fixture is not good enough — and propose the fix.** If the
+  switch moved > 1 mm since the last run, is yawed > 1°, or lifted during a seat (tip z rose
+  > 1 mm, or the fixed cam shows it): say so in plain words with the numbers (e.g. "the switch
+  moved +2.3 mm in y and −1.6 mm in x since port 1; the 25 N seat pushes it"), log it as
+  `note interpretation`, and propose a concrete change: a printed corner stop / bracket
+  against the switch's back and left side, screws or clamps instead of tape, or a lower seat
+  force. Keep going with re-touching meanwhile — it is a recommendation, not a stop. (5 runs
+  on 10-25: face +4 mm, left end −2 mm, ~2° yaw, one 7 mm lift; re-touching cost 35–40 % of
+  the run time.)
 - Also touch the face **locally above port N** (z between the port top and the top edge):
   the face can be yawed after a push (0.77 mm over 27 mm between port 1 and 2 on 10-25).
 

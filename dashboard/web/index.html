@@ -17,6 +17,7 @@
     <nav class="tabs" id="tabs">
       <button data-tab="calib" class="on">Calibration</button>
       <button data-tab="qa">Port QA</button>
+      <button data-tab="cams">Cameras</button>
       <button data-tab="claude">Claude</button>
     </nav>
     <div class="status" id="status"></div>
@@ -113,6 +114,10 @@
         <div class="card" id="qa-c-run"></div>
       </div>
     </section>
+  </main>
+
+  <main class="layout cams-layout hidden" id="tab-cams">
+    <section class="section cams" id="cams-only"></section>
   </main>
 
   <main class="layout chat-layout hidden" id="tab-claude">
