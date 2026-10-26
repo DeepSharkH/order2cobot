@@ -325,7 +325,7 @@ async function sendText(text) {
 
 async function attach(id) {
   const r = await fetch(`/api/circuit/${encodeURIComponent(id)}/events?from=0`).catch(() => null);
-  if (!r || !r.ok) { remember(null); return; }
+  if (!r || !r.ok) { remember(null); return false; }
   D.id = id;
   address();
   busy(true);
@@ -335,6 +335,7 @@ async function attach(id) {
   D.stream = null;
   busy(false);
   if (D.phase === 'handoff') { await pollRun(); showView('run'); }
+  return true;
 }
 
 // #circuit:<id> opens that design (link to share, or for a second screen)
@@ -380,7 +381,7 @@ function updateInput() {
   const form = $('#ca-form');
   form.classList.toggle('hidden', D.phase !== 'design' || !!D.mapping);
   const ta = $('#ca-text');
-  ta.placeholder = D.running ? 'The designer is working…' : D.id ? 'Reply to the designer' : 'For example: a green LED with a switch on 5 V';
+  ta.placeholder = D.running ? 'The designer is working…' : D.id ? 'Reply to the designer' : 'For example: a green LED with a 220 Ω resistor on 5 V';
   $('#ca-send').textContent = D.running ? 'Stop' : 'Send';
 }
 
@@ -932,6 +933,10 @@ hover($('#ca-runsvg'), null);
   try { id = localStorage.getItem('circuitDesign'); } catch { /* storage blocked */ }
   const m = decodeURIComponent(location.hash).match(/^#circuit:(.+)$/);
   if (m) id = m[1];
-  if (id) await attach(id);
+  // nothing remembered (or it is gone): open the most recent design; "New design" starts a fresh one
+  if (!id || !(await attach(id))) {
+    const latest = (await (await fetch('/api/circuit/latest')).json()).id;
+    if (latest) await attach(latest);
+  }
   if (!log().children.length) intro();
 })();

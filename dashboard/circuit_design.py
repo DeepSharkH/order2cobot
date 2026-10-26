@@ -16,6 +16,7 @@ POST /api/circuit                     {"text", "design"?}  new design, or the ne
                                       -> NDJSON events of the turn (the turn goes on without the
                                          browser; GET .../events picks it up again)
 GET  /api/circuit/static              board, inventory parts and gripper model, for drawing
+GET  /api/circuit/latest              {"id"} of the most recent design (null if none)
 GET  /api/circuit/{id}/events?from=N  NDJSON events from N, open until the turn ends
 POST /api/circuit/{id}/stop           stop the running turn
 POST /api/circuit/{id}/start          approve the layout and hand it to the assembly pipeline:
@@ -529,6 +530,10 @@ def routes(cfg=None):
         d.task.add_done_callback(lambda _: d.changed.set())     # wakes the followers once it is over
         return await stream(request, d, start)
 
+    async def latest(_request):
+        ids = sorted(p.parent.name for p in DESIGNS.glob('*/events.jsonl'))
+        return web.json_response({'id': ids[-1] if ids else None})
+
     async def static(_request):
         return web.json_response({'board': cd.board, 'parts': cd.parts, 'gripper': cd.gripper})
 
@@ -558,7 +563,7 @@ def routes(cfg=None):
         except (ValueError, IndexError, KeyError) as e:
             return web.json_response({'ok': False, 'reason': str(e)}, status=400)
 
-    return [web.post('/api/circuit', post), web.get('/api/circuit/static', static),
+    return [web.post('/api/circuit', post), web.get('/api/circuit/static', static), web.get('/api/circuit/latest', latest),
             web.get('/api/circuit/{id}/events', events), web.post('/api/circuit/{id}/stop', stop),
             web.post('/api/circuit/{id}/start', start),
             web.get('/api/circuit/{id}/run', run_get), web.post('/api/circuit/{id}/run', run_post)]
