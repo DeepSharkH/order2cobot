@@ -45,7 +45,7 @@ def strip(line):
 
 def lint(script):
     lines = [strip(l) for l in script.splitlines()]
-    defined = {m for l in lines for m in re.findall(r"\bdef\s+([A-Za-z_]\w*)\s*\(", l)}
+    defined = {m for l in lines for m in re.findall(r"\b(?:def|thread)\s+([A-Za-z_]\w*)\s*\(", l)}
     allowed = BUILTINS | defined | KEYWORDS
     problems = []
     for n, l in enumerate(lines, 1):

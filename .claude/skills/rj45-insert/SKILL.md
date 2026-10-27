@@ -23,6 +23,27 @@ simulator unchanged; watch it in the dashboard's **Simulation** tab. Not simulat
 (frames still come from the real dashboard), RTDE telemetry, the link check. Say in the run log
 that a run was simulated; a simulated pass is not a robot pass. See `simulation/README.md`.
 
+## URScript gate (before any program goes to the robot)
+
+Check every piece of URScript you write or change against the **`polyscope-script`** skill
+before it is played. That covers a new or edited primitive in `urlib.LIB`, a one-off step
+script, a program generator (`breadboard/*.py`, `porttest/rj45_b.py`) and the skill_b dispatcher.
+
+1. **Load `polyscope-script`** (Skill tool, once per session) and check the new code against it:
+   missing built-ins, `local` for scratch variables in LIB helpers, every loop using up robot
+   time (`speedl` with `t`, `sync()`), `force_mode` selection 0/1 and held-axis limits about
+   0.001, `zero_ftsensor()` at rest, a force check in every force-mode loop, guarded IK, no
+   `halt`, and the program never ending while pressing.
+2. **Lint before spending a bridge round trip**: `python -m porttest.urscript_lint` for the LIB,
+   or `from urcore.urscript_lint import lint` on the generated text. `URExec.run` refuses a
+   script that fails the lint anyway.
+3. **On a failure** (`compile_error_*`, `invalid_argument_value`, a `force_mode_*` abort, "Lost
+   communication with Controller", a protective stop), look up the cause in `polyscope-script`
+   before changing parameters. If the cause is new, add a **[seen]** entry there.
+
+Validated primitives that only get new parameters skip step 1. Only check that the force caps
+and `force_mode` limits are within the ranges in `polyscope-script`.
+
 ## Principles (why this skill looks like this)
 
 1. **Vision gets close, touch gets in.** Cameras bring the plug tip within ~2 mm. The last
@@ -394,11 +415,9 @@ Notes on the reference code (check on the robot, tune, log what you change):
   data to tune the threshold.
 - `seat_compliant` lets x/z float at zero force: a wrong payload makes the tip sag. The
   preamble's `set_target_payload` must match the tool (Hand-E + camera + shell).
-- If URScript rejects a construct (e.g. list negation, `elif`), fix it and note the change.
-- **URScript has no `abs()`** (compile_error_name_not_found on 2026-10-25). Use `norm(x)`;
-  `fabs` is not in the PolyScope X 10.14 directory either. Also absent: `min`, `max`, `len`
-  (→ `size(x)` / `x.length()`), `round` (→ `floor(x+0.5)`), `range`, `print` (→ `textmsg`),
-  `str`/`int`/`float` (→ `to_str`/`to_num`), `for` loops (→ `while`), `**` (→ `pow`).
+- Language and force-mode pitfalls (missing `abs`/`min`/`max`/`len`/`round`, scoping, loops,
+  `force_mode` limits, F/T zeroing): see the **`polyscope-script`** skill and the URScript gate
+  above. `elif` is valid URScript. If the controller rejects a construct, add it there as [seen].
 - **Run `python -m porttest.urscript_lint` after every change to `urlib.LIB`** (and on any
   generated script: `from porttest.urscript_lint import lint`). It checks every call against
   the 267 documented functions of the PolyScope X 10.14 directory plus the script's own

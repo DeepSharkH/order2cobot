@@ -81,6 +81,27 @@ simulator unchanged; watch it in the dashboard's **Simulation** tab. Not simulat
 (frames still come from the real dashboard), RTDE telemetry, the link check. Say in the run log
 that a run was simulated; a simulated pass is not a robot pass. See `simulation/README.md`.
 
+## URScript gate (before any program goes to the robot)
+
+Check every piece of URScript you write or change against the **`polyscope-script`** skill
+before it is played. That covers a new or edited primitive in `urlib.LIB`, a one-off step
+script, a program generator (`breadboard/*.py`, `porttest/rj45_b.py`) and the skill_b dispatcher.
+
+1. **Load `polyscope-script`** (Skill tool, once per session) and check the new code against it:
+   missing built-ins, `local` for scratch variables in LIB helpers, every loop using up robot
+   time (`speedl` with `t`, `sync()`), `force_mode` selection 0/1 and held-axis limits about
+   0.001, `zero_ftsensor()` at rest, a force check in every force-mode loop, guarded IK, no
+   `halt`, and the program never ending while pressing.
+2. **Lint before spending a bridge round trip**: `python -m porttest.urscript_lint` for the LIB,
+   or `from urcore.urscript_lint import lint` on the generated text. `URExec.run` refuses a
+   script that fails the lint anyway.
+3. **On a failure** (`compile_error_*`, `invalid_argument_value`, a `force_mode_*` abort, "Lost
+   communication with Controller", a protective stop), look up the cause in `polyscope-script`
+   before changing parameters. If the cause is new, add a **[seen]** entry there.
+
+Validated primitives that only get new parameters skip step 1. Only check that the force caps
+and `force_mode` limits are within the ranges in `polyscope-script`.
+
 ## Principles (why this skill looks like this)
 
 1. **Vision gives the pins, touch only enters.** There are no touch references. Hole and pin
@@ -518,9 +539,9 @@ Notes (check on the robot, tune, log what you change):
   reading goes back to ~0.
 - `seat_compliant` lets a/b float at zero force: with a stale F/T zero (~6 N after the pull)
   it drove the arm into a singularity. Pins use `seat_z` instead (principle 8).
-- URScript has no `abs`, `min`, `max`, `len`, `round`, `range`, `for`, `**`; see the
-  `rj45-insert` skill notes. **Run `python -m porttest.urscript_lint` after every change to
-  `urlib.LIB`.**
+- URScript has no `abs`, `min`, `max`, `len`, `round`, `range`, `for`, `**`. See the
+  **`polyscope-script`** skill and the URScript gate above. **Run
+  `python -m porttest.urscript_lint` after every change to `urlib.LIB`.**
 
 ## Done criteria for the run
 PASS = S8 confirms the casing at the target labels, seated flush, **and** the trace exists.

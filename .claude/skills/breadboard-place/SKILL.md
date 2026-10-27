@@ -25,6 +25,27 @@ YAML files), and the memories `ur3-cable-limits`, `ur-bridge-motion`.
 - **Bridge client** `breadboard-explore`, app `breadboard_explore` (the operator grants Move &
   run once; Remote Control for every motion).
 
+## URScript gate (before any program goes to the robot)
+
+Check every piece of URScript you write or change against the **`polyscope-script`** skill
+before it is played. That covers a new or edited primitive in `urlib.LIB`, a one-off step
+script, a program generator (`breadboard/*.py`, `porttest/rj45_b.py`) and the skill_b dispatcher.
+
+1. **Load `polyscope-script`** (Skill tool, once per session) and check the new code against it:
+   missing built-ins, `local` for scratch variables in LIB helpers, every loop using up robot
+   time (`speedl` with `t`, `sync()`), `force_mode` selection 0/1 and held-axis limits about
+   0.001, `zero_ftsensor()` at rest, a force check in every force-mode loop, guarded IK, no
+   `halt`, and the program never ending while pressing.
+2. **Lint before spending a bridge round trip**: `python -m porttest.urscript_lint` for the LIB,
+   or `from urcore.urscript_lint import lint` on the generated text. `URExec.run` refuses a
+   script that fails the lint anyway.
+3. **On a failure** (`compile_error_*`, `invalid_argument_value`, a `force_mode_*` abort, "Lost
+   communication with Controller", a protective stop), look up the cause in `polyscope-script`
+   before changing parameters. If the cause is new, add a **[seen]** entry there.
+
+Validated primitives that only get new parameters skip step 1. Only check that the force caps
+and `force_mode` limits are within the ranges in `polyscope-script`.
+
 ## Steps
 
 ### S0 Preflight (read-only)
