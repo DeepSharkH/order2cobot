@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from ortools.sat.python import cp_model
 
-ROOT = Path(__file__).parents[1] / "src/circuit_mapper"
+ROOT = Path(__file__).parents[2] / "src/circuit_mapper"
 sys.path.insert(0, str(ROOT))
 import geometry  # noqa: E402
 import mapper  # noqa: E402

@@ -5,18 +5,12 @@ configs/calibration/scene.yaml (multi-view solve, dashboard/scene_solve.py; the 
 sits on the side bracket, optical axis ~24 deg off the tool axis). Intrinsics are the
 factory ones (no distortion).
 """
-import asyncio
-import sys
 from pathlib import Path
 
-import cv2
 import numpy as np
 import yaml
 from scipy.spatial.transform import Rotation as R
 
-from dashboard import calibration as cal
-from porttest import dash
-from porttest.square_from_depth import _grab
 from porttest.urexec import URBridge, call
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -49,29 +43,3 @@ def on_z(C, u, v, z):
     o, d = ray(C, u, v)
     return o + d * (z - o[2]) / d[2]
 
-
-def frame():
-    """Latest colour frame of the gripper camera, upscaled to 1280x720 pixel coordinates."""
-    color, _ = asyncio.run(_grab())
-    return cv2.resize(color, (1280, 720))
-
-
-def board_in_base(C, img):
-    ok, c = cv2.findChessboardCornersSB(cv2.cvtColor(img, cv2.COLOR_BGR2GRAY), (8, 7))
-    if not ok:
-        return None
-    T = cal.solve_pnp(cal.Board(8, 7, SQUARE), c.reshape(-1, 1, 2).astype(np.float64), K, np.zeros(5))[0]
-    return C @ T
-
-
-if __name__ == '__main__':
-    F = flange()
-    C = camera(F)
-    img = frame()
-    B = board_in_base(C, img)
-    print('camera in base', np.round(C[:3, 3], 4), 'looking along', np.round(C[:3, 2], 3))
-    if B is not None:
-        print('board origin', np.round(B[:3, 3], 4), 'normal', np.round(B[:3, 2], 3))
-    zs = float(sys.argv[1]) if len(sys.argv) > 1 else None
-    for uv in [tuple(map(float, a.split(','))) for a in sys.argv[2:]]:
-        print(uv, '->', np.round(on_z(C, *uv, zs), 4))

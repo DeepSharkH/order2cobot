@@ -28,7 +28,7 @@ from typing import Any
 import cv2
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # agents.vision.pins uses scripts.wire_from_cloud
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from agents.vision.board_grid import BoardGrid  # noqa: E402
 from agents.vision.locate import load_objects  # noqa: E402
@@ -73,7 +73,7 @@ def main() -> None:
     ap.add_argument("--shifts-u", type=int, default=10)
     ap.add_argument("--targets", default="", help="target hole labels, pin order: H1:C28,H1:C30")
     ap.add_argument("--casing", default=None, help="force the casing type (casings.json name)")
-    ap.add_argument("--objects", type=Path, default=Path("configs/objects.yaml"))
+    ap.add_argument("--objects", type=Path, default=Path("configs/wire/objects.yaml"))
     ap.add_argument("--board", default="halves",
                     help="halves = two half boards (objects.yaml STEP); or a hole table JSON, e.g. "
                          "dashboard/web/models/cad/breadboard.json (one-piece full-size board)")

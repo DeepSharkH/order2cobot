@@ -2,7 +2,7 @@
 """Claude Code hook: append every tool call and user prompt to the active run log.
 
 Wired in .claude/settings.json for PostToolUse and UserPromptSubmit. Writes to
-data/runs/current/tools.jsonl only while a run is active (porttest.runlog start).
+data/runs/current/tools.jsonl only while a run is active (urcore.runlog start; porttest.runlog is the same CLI).
 Never blocks Claude: any error is swallowed and the hook exits 0.
 """
 import json

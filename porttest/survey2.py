@@ -12,7 +12,7 @@ import numpy as np
 import yaml
 
 from porttest import ports
-from porttest.geometry import urpose
+from urcore.urexec import urpose
 from porttest.locate import camera, flange
 from porttest.port_survey import capture_png
 from porttest.urexec import URExec

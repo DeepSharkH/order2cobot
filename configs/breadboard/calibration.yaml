@@ -1,0 +1,7 @@
+# Breadboard calibration (breadboard/calibration.py), written by `python -m breadboard.teach`.
+# TODO(calibration 2026-10-27): taught on the robot by hand: corner inserts of a centre-gripped
+# part (3+ corners, same tool orientation), workspace poses, then `teach fit`.
+# TODO(board model): the board has 63 rows (user 10-27); fix the CAD hole table first
+# (breadboard/board.py), then teach corners near A1/J1/A63/J63 on both sides of the channel.
+corners: []
+workspace: {}

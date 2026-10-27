@@ -260,6 +260,6 @@ def test_load_config_resolves_path_entries(tmp_path: Path) -> None:
 
 
 def test_ethernet_config_loads() -> None:
-    config = load_claude_cli_config(SCRIPTS.parent / "configs/agents/ethernet_exp.yaml")
+    config = load_claude_cli_config(SCRIPTS.parent / "configs/switch/ethernet_exp.yaml")
     assert "Bash" in config.allowed_tools and "Bash(rm -rf *)" in config.disallowed_tools
     assert "--strict-mcp-config" in config.extra_args

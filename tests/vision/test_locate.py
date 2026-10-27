@@ -190,7 +190,7 @@ def test_image_fit_recovers_the_pose_from_an_oblique_view() -> None:
 
 
 def test_objects_config_has_the_protoboard() -> None:
-    specs = load_objects(Path(__file__).resolve().parents[2] / "configs/objects.yaml")
+    specs = load_objects(Path(__file__).resolve().parents[2] / "configs/wire/objects.yaml")
     p = specs["protoboard"]
     assert p.size == pytest.approx((0.08301, 0.05608, 0.00951)) and p.instances == 2
     assert p.plate_z == pytest.approx(-0.0045)

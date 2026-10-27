@@ -4,13 +4,20 @@ Goal: UR3e + Robotiq Hand-E holding an RJ45 plug (3D-printed H shell, `~/rj45_gr
 tests the 8 ports of a TP-Link LS108G one by one; the Jetson checks the link on
 `enP7p1s0f0` (`dashboard/check_link.py`, 1000 Mb/s full duplex = pass).
 
+> 2026-10-27 restructure: shared robot code moved to `urcore/` (urexec, urlib core, lint,
+> runlog, telemetry, record; `python -m porttest.X` still works). Older scripts and files named
+> below (find_port*, qa_run, rj45_skill, plan_views, approach_shots, touch_board, handeye_*,
+> joint_solve, fcam_calib, look, depth_*, square_from_depth, snap, dash, geometry,
+> configs/calibration/{result,handeye_gripper}.yaml) are in `archive/porttest_legacy/`.
+> `configs/grip.yaml` is now `configs/switch/grip_rj45.yaml`.
+
 ## Current state (2026-10-25 19:11, rj45-insert skill run 20261025-184457)
 
 - **Port 1 seated with the new grip, no alignment hints:** link up 1000 Mb/s full after 0.24 s,
   0 flaps; extracted straight back (no blocking force) and the link dropped. One insert attempt,
   0 false hits. Run log + trace: `data/runs/20261025-184457_rj45-port1/`.
 - **The shell tag is 12 mm**, not 15. With 15 mm both cameras put the tool 13–40 mm off. Tool
-  model in `configs/grip.yaml`: tip at flange (-41, -2, 189) mm, ±4 mm. The tip touches made
+  model in `configs/switch/grip_rj45.yaml`: tip at flange (-41, -2, 189) mm, ±4 mm. The tip touches made
   the remaining error irrelevant (face touch = survey face within 0.1 mm).
 - **Touch references** (tip, `slide_until_advance`, 3.5 N, 2 mm/s): face y 118.85, top edge pass
   at tip z 35.06, left end pass at tip x -359.44; repeat within 0.1 mm. Measured port-1 offsets
@@ -29,7 +36,7 @@ tests the 8 ports of a TP-Link LS108G one by one; the Jetson checks the link on
     and play. `run()` reloads `rj45_qa` right before play and ignores other programs' start/stop.
   - Own bridge client `rj45-skill` (needs the move tier granted once on the pendant).
 - `find_port1.py` / `qa_run.py` / old LIB users assume a flange TCP inside steps; with the tip
-  TCP preamble they are wrong — use `porttest/rj45_skill.py` steps.
+  TCP preamble they are wrong — use `porttest/skill_b.py` / `porttest/rj45_b.py` steps.
 
 - **Port 2 seated (19:20, run 20261025-191456):** link 1000/full after 0.74 s, extracted cleanly,
   0 operator actions. Target from today's touches + `ls108g.yaml` + pitch was within 1.4 mm (x) /

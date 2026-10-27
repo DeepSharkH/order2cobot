@@ -1,0 +1,34 @@
+# Tool model of the custom breadboard fingers on the Hand-E (breadboard task only), flange
+# frame, metres. CAD: assets/models/gripper/Gripper_R7_W15to5_L30_T2_C0p2.* (Jan, e0702f9):
+# a cap (13.2 x 29.4 mm, 21.5 mm tall, 0.2 mm clearance; the stock tip sits in its 19 mm pocket
+# on a 2.5 mm floor) slips over the stock Hand-E fingertip, and a 30 mm finger hangs below it,
+# tapering to a 2.0 x 5.0 mm tip (2.58 x 5.52 mm 10 mm up, 4.8 x 7.5 mm 20 mm up). The CSP
+# solver models only the tip (src/circuit_mapper/gripper.json).
+#
+# Conventions (breadboard/calibration.py relies on them):
+#   - The jaw closes along flange x (measured 2026-10-26, protoboard-wire): a centre-gripped
+#     casing has its pin row (casing x) along flange y.
+#   - tcp_pins = the midpoint of the held part's pin exits (casing bottom): x along pin 1 -> N
+#     (= flange y, hence the +pi/2 about z), z INTO the board = flange z of a downward tool.
+#     NOT the z-up convention of configs/wire/grip_wire.yaml: a measurement from there must be
+#     turned 180 deg about x before it goes here.
+#
+# TODO(calibration 2026-10-27): every number below is PROVISIONAL until measured on the robot:
+#   fingertip_z  stock fingertips 0.222 below the flange (protoboard-wire run 10-26) + 2.5 mm
+#                cap floor + 30 mm finger, if the stock tip bottoms in the pocket;
+#   grasp_h      fingertip ends above the casing bottom (Jan: at what height do the tips grip a
+#                20 mm casing?); tcp_pins z = fingertip_z + grasp_h.
+# After the first successful grasps, breadboard/grasp_calib.py corrects tcp_pins per grasp.
+stamp: '2026-10-27T00:00'
+source: PROVISIONAL from the CAD, not measured
+fingertip_z: 0.2545
+grasp_h: 0.010
+tcp_pins: [0.0, 0.0, 0.2645, 0.0, 0.0, 1.5708]
+finger:
+  length: 0.030          # below the cap
+  tip: [0.002, 0.005]    # thickness (closing direction, flange x) x width (flange y)
+collision_points:        # for move_checked clearance
+  fingertip_a: [0.004, 0.0, 0.2545]
+  fingertip_b: [-0.004, 0.0, 0.2545]
+  casing_bottom: [0.0, 0.0, 0.2645]
+  pin_tip: [0.0, 0.0, 0.2725]      # casing bottom + ~8 mm of pin

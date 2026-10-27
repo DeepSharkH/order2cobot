@@ -233,3 +233,6 @@ Log/
 .deps/
 data/
 dashboard/web/models/cad/poses.json
+
+# mapper example output written to the cwd (src/circuit_mapper/README.md)
+/mapping.json

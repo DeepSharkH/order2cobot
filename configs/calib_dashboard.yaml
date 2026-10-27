@@ -56,6 +56,7 @@ experiments:
   shao: {dir: /home/lab/dev/shao/order2cobot/results, cache: data/cache/experiments-shao}
 
 scene_file: configs/calibration/scene.yaml   # base x/y/yaw + fixed cam pose, written by the dashboard
+objects_file: configs/wire/objects.yaml     # Objects tab: the protoboard (wire track, agents/vision/locate.py)
 
 # Switch port QA (dashboard Port QA tab, dashboard/check_link.py). The robot
 # moves the cable from this Jetson port between the switch's ports.
