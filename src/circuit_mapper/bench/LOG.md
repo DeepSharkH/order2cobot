@@ -30,3 +30,11 @@
 - pl5: its 24-row K ≤ 4 stage gets a first candidate after 1.5 s, where 48 or 64 rows give none in 30 s. But that stage only starts about 50 s into the run, after the K = 1 and 2 stages, which cannot be proven infeasible.
 - why kept: the gate passes, and the fast instances are 1.2-2.6× faster with compact, centred layouts.
 - trade-off: on the 64-row board, a layout with jumpers is now FEASIBLE, never OPTIMAL. A whole-board K = 0 proof would cost 2-6 s for p3-p5, and could not be completed in 7 s for pl5.
+
+## P4 drop the order ints; topological assembly order - KEPT (ca67270)
+- change: no `order_*` ints or precedence constraints. `constrain_assembly` cuts forbidden pairs, then sorts the "A's fingers hit B, so A first" digraph with `graphlib`; ready steps go jumpers, slim casings, then LEDs, each by row. A cycle (3 or more steps) becomes one `add_bool_or` nogood. Models are 12-14 % smaller (p4_npn K = 1 window 4995 → 4394 vars, whole board 20672 → 18144).
+- bench p4 vs p3. Fast instances are the median of 3 runs (p4, p4_rep2, p4_rep3), all OPTIMAL with 0 jumpers and ver = yes:
+  - p1 1.6 → 1.5 s; p2 1.4 → 1.7 s; led_circuit 2.4 → 1.5 s (it 8/1/3); parallel_resistors 1.3 → 1.3 s; rc_low_pass 1.4 → 2.4 s (it 7/1/6)
+  - p3/p4/p5/parallel_leds_5 still UNKNOWN: 76/45/29/7 solves at load 22. p4_heapq (an earlier hand-written sort, same cuts and order) gave 90/73/34/7 at load 16.5, against p3's 106/85/34/7. Others unchanged.
+- A/B against the P3 code (same load, alternating runs): p4_npn did 74 old vs 81 new solves in 120 s, and K = 1 rounds took 0.8-1.4 s in both. So the order ints cost no measurable time per round. Round medians over 8 runs each (old → new): rc_low_pass 1 → 2.5, p2 1 → 1, led_circuit 8.5 → 2, p1 3.5 → 4.5 (125 vs 133 rounds in total). Which first layout CP-SAT returns depends on the model, so rc lost its lucky 1-round layout and led gained one. Every run stayed under 5 s.
+- why kept: the gate passes. The model is smaller, every lazy cut is a clause, and the order is deterministic and readable (led_circuit gives R1, D1). Old order-only rounds were rare (1 in 9 fast runs, 2 of 74 in p4_npn) because forbidden pairs usually came in the same round. After P6 they would be the only lazy rounds left; now they cost none. Cost: geometry.py has 26 more lines, and there is no speed gain for now.
