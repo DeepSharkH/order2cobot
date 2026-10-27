@@ -226,8 +226,6 @@ def map_circuit(circuit, inventory, board, time_limit=30, casings=None, gripper=
             model.add(sum(chosen for chosen, _, _ in wires) <= budget)
         for occupants in occupancy.values():
             model.add_at_most_one(occupants)
-        owner_count = len(physical) + len(wires)
-        orders = [model.new_int_var(0, owner_count - 1, f"order_{i}") for i in range(owner_count)]
 
         # Send abstract flow from each net's first pin to all its pins.
         # Flow can cross strips only on installed jumpers carrying that net.
@@ -266,7 +264,13 @@ def map_circuit(circuit, inventory, board, time_limit=30, casings=None, gripper=
                 model.add(
                     sum(balance[n, g]) == len(net["pins"]) * sum(roots[n, g]) - sum(terminals[n, g])
                 )
-        return model, labels, candidates, choices, manual_choices, wires, orders
+        return model, labels, candidates, choices, manual_choices, wires
+
+    def priority(step):
+        """Among steps ready to insert: jumpers, slim casings, LEDs (flange band) last; by row."""
+        kind = used_parts[step["part_id"]]["type"]
+        rank = 0 if kind == "jumper" else 2 if kind in ("led", "rgb_led") else 1
+        return rank, step["shape"]["center_mm"][1], step["id"]
 
     rows = sorted({y for _, y in positions.values()})
     length = sum(shapes[part["part_id"]]["width_x"] for part in physical.values()) / 2
@@ -300,12 +304,12 @@ def map_circuit(circuit, inventory, board, time_limit=30, casings=None, gripper=
             continue
         stage_end = now + (deadline - now) / (len(STAGES) - stage)
         inside = window(width)
-        model, labels, candidates, choices, manual_choices, wires, orders = build(budget, inside)
+        model, labels, candidates, choices, manual_choices, wires = build(budget, inside)
         by_key = {(c["id"], c["holes"]): c for c in candidates}
         known = set()
         for keys in checked:
             replay = [by_key[k] for k in keys if k in by_key]
-            constrain_assembly(model, replay, orders, known, margin)
+            constrain_assembly(model, replay, known, margin)
         while True:
             remaining = stage_end - monotonic()
             if remaining <= 0:
@@ -317,7 +321,8 @@ def map_circuit(circuit, inventory, board, time_limit=30, casings=None, gripper=
                 break
             selected = [c for c in candidates if solver.value(c["chosen"])]
             checked.append([(c["id"], c["holes"]) for c in selected])
-            if not constrain_assembly(model, selected, orders, known, margin):
+            order = constrain_assembly(model, selected, known, margin, priority)
+            if order is not None:
                 break
         if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
             break
@@ -332,7 +337,6 @@ def map_circuit(circuit, inventory, board, time_limit=30, casings=None, gripper=
             else "No verified layout found within the search limit; not proof of infeasibility."
         )
         raise ValueError(f"No mapping returned: {solver.status_name(status)}. {reason}")
-    selected.sort(key=lambda c: (solver.value(orders[c["owner"]]), c["owner"]))
     pin_to_hole = {}
     for cid, options in choices.items():
         holes = next(holes for chosen, holes in options if solver.value(chosen))
@@ -364,7 +368,7 @@ def map_circuit(circuit, inventory, board, time_limit=30, casings=None, gripper=
             continue
         jumpers = rest
     kept = {j["id"] for j in jumpers}
-    selected = [c for c in selected if c["owner"] < len(physical) or c["id"] in kept]
+    selected = [c for c in order if c["owner"] < len(physical) or c["id"] in kept]
     verify_assembly(selected, margin)
     result = {
         "circuit_id": circuit["circuit_id"],

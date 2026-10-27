@@ -69,10 +69,13 @@ physical verification are still necessary before executing a layout.
 2. Solve a candidate layout, then check permanent footprints and swept finger
    rectangles for the selected placements.
 3. For overlapping bodies or mutually blocking grips, forbid that placement
-   pair. If inserting A would hit an installed B, require A before B.
-4. Solve again with these conditional constraints. Cyclic order requirements
-   force another layout. Return only after independently checking the final
-   assembly order and electrical connectivity.
+   pair. If inserting A would hit an installed B, A goes before B: these
+   requirements are sorted topologically (among the steps ready to insert:
+   jumpers, then slim casings, then LEDs, each by row). A requirement cycle
+   (three or more parts) forbids that combination of placements.
+4. Solve again with these constraints until a layout needs no new one. Return
+   only after independently checking the final assembly order and electrical
+   connectivity.
 
 The search runs in stages (`STAGES` in `mapper.py`), each a row window and a
 jumper budget: in the first window no jumpers (a model with no wire variables

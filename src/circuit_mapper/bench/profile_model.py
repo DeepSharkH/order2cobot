@@ -83,7 +83,7 @@ FAMILIES = [
     ("mapper.py", "flow >= -capacity", "flow: capacity bound"),
     ("mapper.py", "sum(balance", "flow: conservation per (net, strip)"),
     ("geometry.py", "<= 1", "lazy cut: forbidden pair"),
-    ("geometry.py", "orders[", "lazy cut: order precedence (enforced)"),
+    ("geometry.py", "add_bool_or", "lazy cut: precedence cycle nogood"),
 ]
 
 
@@ -287,18 +287,18 @@ cp_model.CpSolver.solve = profiled_solve
 _original_constrain = mapper.constrain_assembly
 
 
-def profiled_constrain(model, selected, orders, known, margin):
+def profiled_constrain(model, selected, known, margin, priority=None):
     before_known = len(known)
     before_tags = len(STATE["tags"])
     t = time.monotonic()
-    changed = _original_constrain(model, selected, orders, known, margin)
+    order = _original_constrain(model, selected, known, margin, priority)
     kinds = Counter(family(*tag) for tag in STATE["tags"][before_tags:])
     round_ = STATE["rounds"][-1]
     round_["cuts_added"] = len(known) - before_known
     round_["cut_kinds"] = dict(kinds)
     round_["constrain_s"] = round(time.monotonic() - t, 4)
     round_["selected"] = [c["id"] for c in selected]
-    return changed
+    return order
 
 
 mapper.constrain_assembly = profiled_constrain

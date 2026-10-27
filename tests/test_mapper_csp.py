@@ -9,6 +9,7 @@ from ortools.sat.python import cp_model
 
 ROOT = Path(__file__).parents[1] / "src/circuit_mapper"
 sys.path.insert(0, str(ROOT))
+import geometry  # noqa: E402
 import mapper  # noqa: E402
 
 
@@ -199,6 +200,54 @@ def test_window_infeasibility_is_no_proof(monkeypatch):
     result = mapper.map_circuit(circuit, inventory, board, time_limit=20)
     assert result["status"] == "FEASIBLE" and len(result["jumpers"]) == 1
     assert used_rows(result) <= {3, 4, 5, 6}
+
+
+def box_step(model, name, body, finger):
+    """A step with a box body and one finger box; relation() reads nothing else."""
+    shape = {"body": body, "fingers": [finger]}
+    return {"id": name, "owner": 0, "chosen": model.new_bool_var(name), "shape": shape}
+
+
+def test_precedence_cycle_gets_one_nogood():
+    """A's fingers hit B, B's hit C and C's hit A: no order exists, so one nogood cuts it."""
+    model = cp_model.CpModel()
+    boxes = [(0, 0, 1, 1), (10, 0, 11, 1), (20, 0, 21, 1)]
+    a, b, c = (box_step(model, n, boxes[i], boxes[(i + 1) % 3]) for i, n in enumerate("ABC"))
+    assert geometry.relation(a["shape"], b["shape"], 0) == "a_first"
+    assert geometry.relation(c["shape"], a["shape"], 0) == "a_first"
+    known = set()
+    assert geometry.constrain_assembly(model, [a, b, c], known, 0) is None
+    (nogood,) = model.proto.constraints
+    # A negated literal is -index - 1 in the proto.
+    assert sorted(nogood.bool_or.literals) == sorted(-s["chosen"].index - 1 for s in (a, b, c))
+    # The same cycle again (a replayed layout) adds nothing.
+    assert geometry.constrain_assembly(model, [c, a, b], known, 0) is None
+    assert len(model.proto.constraints) == 1
+    # Without C nothing cycles: A goes first, and that order verifies.
+    order = geometry.constrain_assembly(model, [b, a], known, 0)
+    assert order == [a, b] and len(model.proto.constraints) == 1
+    geometry.verify_assembly(order, 0)
+
+
+def test_ready_steps_follow_priority():
+    model = cp_model.CpModel()
+    far = [
+        box_step(model, n, (30 * i, 0, 30 * i + 1, 1), (30 * i, 5, 30 * i + 1, 6))
+        for i, n in enumerate("XYZ")
+    ]
+    order = geometry.constrain_assembly(model, far, set(), 0, lambda s: "ZXY".index(s["id"]))
+    assert [s["id"] for s in order] == ["Z", "X", "Y"]
+
+
+def test_no_order_variables(monkeypatch):
+    models = record_models(monkeypatch)
+    circuit, inventory, board = six_pin_case()
+    result = mapper.map_circuit(circuit, inventory, board, time_limit=20)
+    # The returned order passed verify_assembly inside map_circuit.
+    assert set(result["assembly_order"]) == {p["id"] for p in result["placements"]}
+    assert models and not any(
+        v.name.startswith("order_") for model in models for v in model.proto.variables
+    )
 
 
 def test_bench_jumpers_are_all_needed():

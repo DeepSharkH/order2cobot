@@ -1,5 +1,7 @@
 """Conservative 2D casing and finger envelopes; dimensions are millimeters."""
 
+from graphlib import CycleError, TopologicalSorter
+from heapq import heappop, heappush
 from itertools import combinations
 from math import isclose
 
@@ -94,27 +96,47 @@ def relation(a, b, margin):
     return "a_first" if a_first else "b_first" if b_first else "independent"
 
 
-def constrain_assembly(model, selected, orders, known, margin):
-    """Add exact conditional cuts for collisions found in a candidate solution.
+def constrain_assembly(model, selected, known, margin, priority=None):
+    """Add exact cuts for collisions found in a candidate solution, or return its order.
 
-    Checking only selected placements avoids millions of unused pair constraints.
-    The solver is rerun after new cuts; no unverified solution is returned.
+    Checking only selected placements avoids millions of unused pair constraints. A
+    forbidden pair is cut. Otherwise "A's fingers hit B" puts A before B, and the steps
+    are sorted topologically, lowest priority first among the ready ones. A precedence
+    cycle (3 or more steps: a 2-cycle is forbidden) gets one nogood. With any cut this
+    returns None and the solver is rerun; no unverified solution is returned.
     """
-    changed = False
-    for a, b in combinations(selected, 2):
-        key = (a["chosen"].index, b["chosen"].index)
-        rule = relation(a["shape"], b["shape"], margin)
-        if rule == "independent" or key in known:
+    sorter = TopologicalSorter({i: () for i in range(len(selected))})
+    cuts = []
+    for i, j in combinations(range(len(selected)), 2):
+        rule = relation(selected[i]["shape"], selected[j]["shape"], margin)
+        if rule == "forbidden":
+            cuts.append((i, j))
+        elif rule != "independent":
+            sorter.add(*((j, i) if rule == "a_first" else (i, j)))  # (step, its predecessor)
+    try:
+        sorter.prepare()
+    except CycleError as error:
+        cuts.append(error.args[1][1:])  # The cycle lists its first step twice.
+    for steps in cuts:
+        literals = [selected[i]["chosen"] for i in steps]
+        key = tuple(sorted(x.index for x in literals))
+        if key in known:
             continue
         known.add(key)
-        changed = True
-        both = [a["chosen"], b["chosen"]]
-        if rule == "forbidden":
-            model.add(a["chosen"] + b["chosen"] <= 1)
+        if len(literals) == 2:
+            model.add(literals[0] + literals[1] <= 1)
         else:
-            before, after = (a, b) if rule == "a_first" else (b, a)
-            model.add(orders[before["owner"]] < orders[after["owner"]]).only_enforce_if(both)
-    return changed
+            model.add_bool_or([~x for x in literals])
+    if cuts:
+        return None
+    order, ready = [], []
+    while sorter.is_active():
+        for i in sorter.get_ready():
+            heappush(ready, (priority(selected[i]) if priority else 0, i))
+        _, i = heappop(ready)
+        order.append(selected[i])
+        sorter.done(i)
+    return order
 
 
 def verify_assembly(steps, margin):
