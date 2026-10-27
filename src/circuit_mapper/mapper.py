@@ -63,6 +63,13 @@ def placements(part, positions):
                 yield holes
 
 
+def step_key(candidate):
+    """A wire's ID depends on the window, so replay finds a wire by its holes."""
+    if candidate["id"].startswith("jumper:"):
+        return "jumper:", tuple(sorted(candidate["holes"]))
+    return candidate["id"], candidate["holes"]
+
+
 def map_circuit(circuit, inventory, board, time_limit=30, casings=None, gripper=None):
     casings = read_json(DEFAULT_CASINGS) if casings is None else casings
     gripper = read_json(HERE / "gripper.json") if gripper is None else gripper
@@ -305,7 +312,7 @@ def map_circuit(circuit, inventory, board, time_limit=30, casings=None, gripper=
         stage_end = now + (deadline - now) / (len(STAGES) - stage)
         inside = window(width)
         model, labels, candidates, choices, manual_choices, wires = build(budget, inside)
-        by_key = {(c["id"], c["holes"]): c for c in candidates}
+        by_key = {step_key(c): c for c in candidates}
         known = set()
         for keys in checked:
             replay = [by_key[k] for k in keys if k in by_key]
@@ -320,7 +327,7 @@ def map_circuit(circuit, inventory, board, time_limit=30, casings=None, gripper=
             if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
                 break
             selected = [c for c in candidates if solver.value(c["chosen"])]
-            checked.append([(c["id"], c["holes"]) for c in selected])
+            checked.append([step_key(c) for c in selected])
             order = constrain_assembly(model, selected, known, margin, priority)
             if order is not None:
                 break

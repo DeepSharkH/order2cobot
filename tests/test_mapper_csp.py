@@ -277,3 +277,35 @@ def test_bench_jumpers_are_all_needed():
         ]
         mapper.verify_connections(row["mapping"], nets, groups)
         assert_every_jumper_needed(row["mapping"], nets, groups)
+
+
+def test_replay_finds_wires_by_holes(monkeypatch):
+    """A wire's ID depends on the window; the wider stage still replays the wire's cuts."""
+    monkeypatch.setattr(mapper, "STAGES", ((1, 1), (2, 1)))
+    monkeypatch.setattr(mapper, "FIRST_WINDOW_ROWS", (4, 4))
+    checked, replays = [], []
+    original_check = mapper.constrain_assembly
+    original_solve = cp_model.CpSolver.solve
+
+    def check(model, selected, known, margin, priority=None):
+        if priority is None:
+            replays.append(selected)
+        else:
+            checked.append(selected)
+            if len(checked) == 1:
+                return None  # As if it collided: the stage solves again.
+        return original_check(model, selected, known, margin, priority)
+
+    def solve(self, model, *args, **kwargs):
+        if len(checked) == 1 and not replays:
+            return cp_model.UNKNOWN  # The first stage runs out of time.
+        return original_solve(self, model, *args, **kwargs)
+
+    monkeypatch.setattr(mapper, "constrain_assembly", check)
+    monkeypatch.setattr(cp_model.CpSolver, "solve", solve)
+    circuit, inventory, board = six_pin_case()
+    result = mapper.map_circuit(circuit, inventory, board, time_limit=20)
+    assert len(result["jumpers"]) == 1
+    first, (replayed,) = checked[0], replays
+    assert any(step["id"].startswith("jumper:") for step in first)
+    assert sorted(s["holes"] for s in replayed) == sorted(s["holes"] for s in first)
