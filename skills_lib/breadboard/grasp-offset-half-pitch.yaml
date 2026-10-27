@@ -13,9 +13,14 @@ cause: 'MISS: legs in j19/j21, target j20/j22 (one row towards the robot). Cause
 fix: 'measure the legs under the TCP per grasp before the search, coarse is enough (< +-1.27 mm): push the casing
   against a known face (board row-1 end) at <= 1.5 N, legs from casings.json exit_x; then the peck drop gives the
   fine position. Verify the hole pair afterwards (camera / operator) until the calibration is validated. Bias: the
-  jumper (11.5 mm casing, carefully centred) never showed it'
-status: proposed
-validated_by: []
+  jumper (11.5 mm casing, carefully centred) never showed it. The reference face must be in the hole frame (model
+  + learned board offset), else the calibration is off by that offset (0.85 vs 1.58 mm). Repeatable to ~0.01 mm
+  at 1.5 N.'
+status: validated
+validated_by:
+- 'place_probe_20261027-124151 (LED led_s2, grasp +1.58 mm, first peck, pair_check ok, operator: j20/j22)'
 seen_in:
 - place_probe_20261027-121451 (LED led_s2, j19/j21 for j20/j22)
+- 'place_probe_20261027-123645 (calibration against the MODEL end face: 0.85 mm, one hole off again, flagged by
+  pair_check)'
 stamp: '2026-10-27'
