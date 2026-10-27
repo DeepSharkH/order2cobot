@@ -141,11 +141,59 @@ def fit(C, yaw):
     return out
 
 
+GRIPPER = ROOT / 'configs/breadboard/gripper.yaml'
+
+
+def top_from_scene():
+    """Board top z in base (m) from the calibrated scene: plate top (world, objects.yaml) +
+    board height (board.yaml) - base z in the world (scene.yaml)."""
+    scene = yaml.safe_load((ROOT / 'configs/calibration/scene.yaml').read_text())
+    plate = yaml.safe_load((ROOT / 'configs/wire/objects.yaml').read_text())['objects']['protoboard']['plate_z_mm'] / 1000
+    board = yaml.safe_load((ROOT / 'configs/breadboard/board.yaml').read_text())['size_mm']['height'] / 1000
+    return plate + board - scene['base']['z']
+
+
+def fingertip_from_top(C, used):
+    """The real flange -> fingertip length: the tip touched the top at z_c with TCP `used`, so the
+    tip is (top - z_c) longer than modelled."""
+    zc = np.mean([C[k][2] for k in ('top1', 'top2', 'top3') if k in C])
+    return used + (top_from_scene() - zc)
+
+
+def update_gripper(est, run, tol=0.001):
+    """Write a measured fingertip length into gripper.yaml (comments kept): fingertip_z, tcp_pins z
+    and every collision point move by the same delta. Only when it changed by more than `tol`."""
+    import re
+    txt = GRIPPER.read_text()
+    old = yaml.safe_load(txt)['fingertip_z']
+    delta = est - old
+    if abs(delta) <= tol:
+        print(f'fingertip {old:.4f} m confirmed ({delta * 1000:+.1f} mm)')
+        return False
+
+    def shift(m):
+        return f'{m.group(1)}{float(m.group(2)) + delta:.4f}{m.group(3)}'
+    txt = re.sub(r'^(fingertip_z: )([\d.]+)()', shift, txt, flags=re.M)
+    txt = re.sub(r'^(tcp_pins: \[[^,]+, [^,]+, )([\d.]+)(,)', shift, txt, flags=re.M)
+    txt = re.sub(r'^(  \w+: \[[^,]+, [^,]+, )([\d.]+)(\])', shift, txt, flags=re.M)     # collision points
+    txt = re.sub(r"^stamp: .*$", f"stamp: '{time.strftime('%Y-%m-%dT%H:%M')}'", txt, flags=re.M)
+    txt = re.sub(r'^source: .*$', f'source: fingertip_z measured by touch ({run}); grasp_h still PROVISIONAL', txt, flags=re.M)
+    GRIPPER.write_text(txt)
+    print(f'gripper.yaml: fingertip {old:.4f} -> {est:.4f} m ({delta * 1000:+.1f} mm)')
+    return True
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--run', action='store_true')
+    ap.add_argument('--set-fingertip', metavar='RUN_DIR', help='apply the fingertip length of a saved run')
     a = ap.parse_args()
-    g = yaml.safe_load((ROOT / 'configs/breadboard/gripper.yaml').read_text())
+    if a.set_fingertip:
+        res = json.loads((Path(a.set_fingertip) / 'result.json').read_text())
+        C = {k: np.array(v) / 1000 for k, v in res['contacts_mm'].items()}
+        update_gripper(fingertip_from_top(C, res.get('fingertip_z_used', 0.2545)), Path(a.set_fingertip).name)
+        return
+    g = yaml.safe_load(GRIPPER.read_text())
     grip = {'tcp_tip': [0, 0, g['fingertip_z'], 0, 0, 0], 'collision_points': g['collision_points']}
     ex = URExec(APP, CLIENT, grip, tcp_key='tcp_tip')
     q0 = [call(ex.b, 'robot_get_joint_positions')['data'][k] for k in ('base', 'shoulder', 'elbow', 'wrist1', 'wrist2', 'wrist3')]
@@ -174,13 +222,17 @@ def main():
     msgs, pose = ex.run(prog, timeout=240)
     C = parse(msgs)
     res = {'stamp': time.strftime('%Y-%m-%dT%H:%M:%S'), 'secs': round(time.time() - t0, 1), 'msgs': msgs,
-           'tool_yaw_deg': round(float(np.degrees(yaw)), 1),
+           'tool_yaw_deg': round(float(np.degrees(yaw)), 1), 'fingertip_z_used': g['fingertip_z'],
            'contacts_mm': {k: np.round(v * 1000, 2).tolist() for k, v in C.items()}, 'fit': fit(C, yaw)}
+    if all(k in C for k in ('top1', 'top2', 'top3')):
+        res['fingertip_z_est'] = round(float(fingertip_from_top(C, g['fingertip_z'])), 4)
     print(json.dumps(res, indent=1))
     d = ROOT / 'data' / 'runs' / time.strftime('touch_locate_%Y%m%d-%H%M%S')
     d.mkdir(parents=True, exist_ok=True)
     (d / 'result.json').write_text(json.dumps(res, indent=1))
     print('saved', d)
+    if 'fingertip_z_est' in res:      # the tool is measured every run; the file follows the hardware
+        update_gripper(res['fingertip_z_est'], d.name)
 
 
 if __name__ == '__main__':
