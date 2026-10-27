@@ -2,22 +2,56 @@
   "circuit_id": "led_circuit",
   "board_id": "breadboard_830",
   "status": "OPTIMAL",
-  "pin_to_hole": {
-    "J_POWER.positive": "E56",
-    "J_POWER.negative": "E57",
-    "R1.1": "A59",
-    "R1.2": "A58",
-    "D1.anode": "B58",
-    "D1.cathode": "B57"
-  },
-  "jumpers": [
-    {
-      "part_id": "jumper_rigid_3_pitch",
-      "pins": {
-        "1": "B56",
-        "2": "B59"
-      },
-      "net": "VCC"
+  "geometry_model": "2d_casing_and_opening_fingers",
+  "gripper": {
+    "finger_thickness_mm": 2.0,
+    "finger_width_mm": 5.0,
+    "opening_per_finger_mm": 1.0,
+    "safety_margin_mm": 0.0,
+    "grip_center_x_mm": 0.0,
+    "assembled_thickness_overrides_mm": {
+      "led_s1": 6.2,
+      "led_s2": 6.2,
+      "led_s4": 6.2,
+      "rgb_led_s1": 6.2,
+      "rgb_led_s2": 6.2
     }
-  ]
+  },
+  "placements": [
+    {
+      "id": "R1",
+      "part_id": "resistor_1kohm_gap_0",
+      "orientation_deg": 90,
+      "center_mm": [
+        10.16,
+        39.370000000000005
+      ],
+      "casing_id": "resistor_s1"
+    },
+    {
+      "id": "D1",
+      "part_id": "led_red_gap_0",
+      "orientation_deg": 90,
+      "center_mm": [
+        0.0,
+        41.910000000000004
+      ],
+      "casing_id": "led_s1"
+    }
+  ],
+  "assembly_order": [
+    "R1",
+    "D1"
+  ],
+  "pin_to_hole": {
+    "R1.1": "E16",
+    "R1.2": "E17",
+    "D1.anode": "A17",
+    "D1.cathode": "A18"
+  },
+  "manual_connections": {
+    "J_POWER.negative": "B18",
+    "J_POWER.positive": "C16"
+  },
+  "jumpers": []
 }
