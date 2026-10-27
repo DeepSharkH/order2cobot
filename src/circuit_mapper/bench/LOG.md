@@ -46,3 +46,12 @@
   - every layout lies in rows 26-35 (window 26-37); no hole past row 37, none in row 64
   - p3/p4/p5/parallel_leds_5 still UNKNOWN: 116/99/26/7 solves (p4: 76/45/29/7; load 12-15 at their start, so not comparable). Others unchanged.
 - why kept: data fix confirmed by the user; the gate passes and nothing regressed. Becomes the new reference.
+
+## P5 lift every cut to all translations - REVERTED (n/a; wire-key replay fix kept, 69e4a43)
+- change tried: relation() cached by (kind A, kind B, centre offset in µm), kind = the boxes around the centre (a symmetric casing at 90° and 270° is one kind). A forbidden pair became one at-most-one per centre over the two cells (a cell's candidates share holes, so exact), wires included. Its unit test passed: every lifted pair is forbidden or shares a hole, and every pair with a lifted key is cut. Patch: scratchpad p5/p5_lift_full.patch.
+- bench p5 vs r2_63rows. Fast instances are the median of 3 runs (p5, _rep2, _rep3) at load 11-23, all OPTIMAL with 0 jumpers and ver = yes:
+  - p1 1.4 → 1.9 s, it 2 → 5 (7/5/2); led_circuit 1.7 → 2.3 s, it 2 → 7 (8/4/7); rc_low_pass 1.5 → 1.8 s; p2 and parallel_resistors 1 round
+  - p3/p4/p5/parallel_leds_5 still UNKNOWN: 27/47/27/7 solves (r2: 116/99/26/7). Others unchanged.
+- why reverted: target missed. Nothing converged, and rounds got slower. Each round finds 6-8 new conflict keys, but p3's 12-row window has 1,127 forbidden (kind pair, offset) keys for the resistor, LED and 4-pitch jumper alone (3,059 by casing and orientation). Each key costs 60-140 clauses per window, and replay lifts every key again: on p3, the K = 1 window went from 6.8k to 16.4k constraints (2.1 s per round, was about 1 s), the 2× window had 48k (12.7 s) and the whole board 97k (22 s per round).
+- kept: replay keys a wire by its holes (P3 follow-up). `jumper:N` depends on the window, so widening used to drop the wire cuts. test_replay_finds_wires_by_holes fails on the old key. Bench p5_wirekeys (load 19-22): the same 5 OPTIMAL and verified, p3/p4/p5/pl5 UNKNOWN (81/92/34/7 solves).
+- surprising: p5_wirekeys ran r2's exact code path for p1 and drew 8 rounds, so fast-instance round counts of 1-8 are first-layout luck. P6 needs the eager per-candidate × partner-part cliques; per-key cells are too many constraints.
