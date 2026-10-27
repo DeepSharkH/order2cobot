@@ -28,12 +28,9 @@ rough:                        # camera box corrected by the first locate's touch
   origin_mm: [-336.7, -60.7]  # x from the touched end; y: +y edge guessed at 10.5 (< 12.1 measured)
   yaw_deg: 0.6
   top_z_mm: 22.6              # plate (board top 13.1 - 8.5, board_pose.yaml) + 18
-camera_fit:                   # the rack as the FIXED CAM sees it (biased ~20 mm in base): rack_pick find measures
-  source: fixed cam frame 13:43, 12 slits back-projected onto z top_z_mm, grid fit rms 0.9 mm (find refines it on the slits)
-  stamp: '2026-10-27T13:50'
-  origin_mm: [-330.8, -45.7]
-  yaw_deg: 0.6
-  top_z_mm: 22.6
+# find (fixed cam) starts from the touched pose and refines it on the visible slits. The 13:43 camera fit
+# (20 mm off) was made with the old scene.yaml; Jan's recalibration (9ab7a26) projects the touched pose onto the
+# slits (checked 15:15), so it is gone.
 # Seen on the camera 2026-10-27 (keep touches away): yellow tape straps across x' ~26-46 and
 # ~146-167 (also down both long sides); the post-it covers x' ~105-181 (end of the rack, robot side).
 pose: {"origin_mm": [-335.56, -67.63], "yaw_deg": 1.01, "top_z_mm": 20.51, "tilt_deg": 0.95, "top_spread_mm": 0.5, "source": "touch (rack_locate_20261027-140804): 2 edge + 1 end + 3 top", "stamp": "2026-10-27T14:09:27"}

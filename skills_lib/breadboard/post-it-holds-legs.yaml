@@ -7,9 +7,10 @@ symptom: 'pull_out from rack slot R4 (led_s2, legs pushed through the post-it by
 cause: the paper grips the two legs it was pierced by; the skill's 3 N "a leg is caught" stop was a guess without
   a measurement
 fix: 'pull stop 8 N (rack_pick --pull-stop 8; cap 20 N): pulled 30 mm, peak 4.06 N, legs out, post-it stayed flat
-  with two holes. Keep the 3 N default until a second pick confirms the peak, then raise it'
-status: proposed
-validated_by: []
+  with two holes; default now 8 N (rack_pick F_CAUGHT)'
+status: validated
+validated_by:
+- 'rack_pick_20261027-151740 (R14 led_s2 after a push-down, stop 8 N: pulled 30 mm, peak 2.10 N)'
 seen_in:
 - rack_pick_20261027-142033 (3.07 N stop at 0.16 mm; then 8 N stop, peak 4.06 N, pulled)
 stamp: '2026-10-27'

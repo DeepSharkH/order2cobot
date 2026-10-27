@@ -17,7 +17,7 @@ out along base x as placing needs them. Never halt; aborts go through if/else.
 
   python -m breadboard.rack_pick locate                      # plan: programs + IK, no motion
   python -m breadboard.rack_pick locate --run
-  python -m breadboard.rack_pick find                        # which slots hold a casing (fixed cam)
+  python -m breadboard.rack_pick find [--run]                # which slots hold a casing (fixed cam); --run parks the arm first
   python -m breadboard.rack_pick pick R4 --part led_s2       # plan
   python -m breadboard.rack_pick pick R4 --part led_s2 --run             # (A), holds at the grasp
   python -m breadboard.rack_pick pick R4 --part led_s2 --close --run     # (B)
@@ -425,6 +425,7 @@ def pick(a, grip, rv):
 
 SCENE = ROOT / 'configs/calibration/scene.yaml'
 FRAME_URL = 'http://127.0.0.1:8090/api/frame/0'
+VIEW, VIEW_DZ = (-0.250, 0.035), 0.050   # arm parked beside the rack (+y, free table) for find
 
 
 def fcam():
@@ -456,13 +457,12 @@ def nearest_slot(cfg, xr):
 
 
 def find(cfg):
-    """Casings standing in the rack, from one fixed-cam frame. The camera is ~20 mm off in base (10-27), so
-    everything is measured in its own view of the rack ('camera_fit' in rack.yaml): refined on the visible
-    slits, then each white blob inside the rack top (always blue / pink / yellow there) is a casing whose
-    lowest pixel is its foot on the rack top."""
+    """Casings standing in the rack, from one fixed-cam frame: the touched rack pose, refined on the visible
+    slits (the camera's own view of the rack, so a camera bias cancels), then each white blob inside the rack
+    top (always blue / pink / yellow there) is a casing whose lowest pixel is its foot on the rack top."""
     import urllib.request
     import cv2
-    cam, (L, W) = dict(cfg['camera_fit']), cfg['geometry']['size']
+    cam, (L, W) = dict(cfg['pose']), cfg['geometry']['size']
     zt = cam['top_z_mm'] / 1000
     onto, project = fcam()
     im = cv2.imdecode(np.frombuffer(urllib.request.urlopen(FRAME_URL, timeout=5).read(), np.uint8), cv2.IMREAD_COLOR)
@@ -540,7 +540,17 @@ def main():
     if a.cmd == 'locate':
         locate(a, grip, rv)
     elif a.cmd == 'find':
-        res, im = find(load_rack())
+        cfg = load_rack()
+        if a.run:       # the arm over the rack hides it from the fixed cam: park beside it first
+            o, p = P(rv)
+            z = cfg['pose']['top_z_mm'] / 1000 + VIEW_DZ
+            ex = open_ex(grip, True)
+            q0, bad = check_ik(ex, grip, rv, [(*VIEW, z)])
+            if bad:
+                raise SystemExit(f'view pose not reachable: {bad}')
+            ex.run('\n'.join(['q = get_actual_tcp_pose()', f'if q[2] < {z:.5f}:', f'  movel(p[q[0], q[1], {z:.5f}, {o}], a=0.3, v=0.03)',
+                              'end', f'movel({p(*VIEW, z)}, a=0.3, v=0.05)']), timeout=90)
+        res, im = find(cfg)
         d = run_dir('rack_find')
         import cv2
         cv2.imwrite(str(d / 'fixed.png'), im)
