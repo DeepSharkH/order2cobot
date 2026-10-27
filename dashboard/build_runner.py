@@ -47,15 +47,69 @@ def _clip(s, n=160):
     return s if len(s) <= n else s[:n - 1] + '…'
 
 
-def rack_slot(casing):
-    """The rack slot that holds this casing, from rack-pick's state; None if no slot says so."""
+# Jan's latest holder (All_Casings_Holder_Print.stl, 10-27 15:33): 4 columns x 5 rows of leg-hole
+# pairs, column c (1..4) drilled for legs c x 2.54 mm apart; slot k: column (k-1) % 4 + 1
+RACK_COLS, RACK_SLOTS = 4, 20
+
+
+# ── what stands on the rack ─────────────────────────────────────────────────
+# data/rack_state.json is rack-pick's file: slots {"R7": {"part": <casing>, "part_id": <inventory
+# part>, "pin1": ...}}, in_gripper, pending, history. The operator says what stands where (the
+# Rack card); rack-pick sets "part" to None when it takes a casing out.
+def read_rack():
     try:
-        st = json.loads(RACK_STATE.read_text())
+        return json.loads(RACK_STATE.read_text())
     except (FileNotFoundError, ValueError):
-        return None
-    for name, s in sorted((st.get('slots') or {}).items(), key=lambda kv: int(kv[0].lstrip('Rr') or 0)):
-        if (s or {}).get('part') == casing:
-            return name.upper()
+        return {'slots': {}, 'history': []}
+
+
+def rack_contents():
+    """{slot: {part_id, casing}} for every slot that holds a casing now."""
+    out = {}
+    for name, s in (read_rack().get('slots') or {}).items():
+        if s and s.get('part'):
+            out[name.upper()] = {'casing': s['part'], 'part_id': s.get('part_id')}
+    return out
+
+
+def set_rack_slot(slot, part_id, casing):
+    """The operator's word on one slot: part_id + its casing, or empty (part_id None)."""
+    st = read_rack()
+    slots = st.setdefault('slots', {})
+    s = slots.setdefault(slot, {})
+    s.update(part=casing if part_id else None, part_id=part_id, set_by='operator', stamp=time.strftime('%Y-%m-%dT%H:%M:%S'))
+    st.setdefault('history', []).append({'stamp': s['stamp'], 'slot': slot, 'operator': part_id or 'empty'})
+    st['history'] = st['history'][-500:]
+    RACK_STATE.parent.mkdir(parents=True, exist_ok=True)
+    tmp = RACK_STATE.with_suffix('.tmp')
+    tmp.write_text(json.dumps(st, indent=1))
+    tmp.replace(RACK_STATE)
+
+
+def shopping_list(sequence):
+    """What the rack lacks for these steps: [{part_id, casing, need, have}] (empty: all there)."""
+    need, casing = {}, {}
+    for st in sequence:
+        need[st['part_id']] = need.get(st['part_id'], 0) + 1
+        casing[st['part_id']] = st['casing']
+    have = {}
+    for s in rack_contents().values():
+        if s['part_id']:
+            have[s['part_id']] = have.get(s['part_id'], 0) + 1
+    return [{'part_id': pid, 'casing': casing[pid], 'need': n, 'have': have.get(pid, 0)}
+            for pid, n in need.items() if have.get(pid, 0) < n]
+
+
+def rack_slot(step, taken=()):
+    """The rack slot for this step: one that holds its exact part, else (rack-pick's own entries
+    without a part_id) its casing; None if no slot does."""
+    slots = sorted(rack_contents().items(), key=lambda kv: int(kv[0].lstrip('R') or 0))
+    for exact in (True, False):
+        for name, s in slots:
+            if name in taken:
+                continue
+            if (s['part_id'] == step['part_id']) if exact else (not s['part_id'] and s['casing'] == step['casing']):
+                return name
     return None
 
 
@@ -81,6 +135,21 @@ def check_result(phase, res):
             return 'the legs did not find the holes'
         if str(res.get('pair_check', 'ok')).startswith('ONE HOLE OFF'):
             return res['pair_check']
+    return None
+
+
+def rack_mismatch():
+    """Why rack-pick's slot numbers would not be the dashboard's, or None: rack_pick places slot k
+    by configs/breadboard/rack.yaml's geometry, the Rack card by Jan's 4 x 5 holder."""
+    try:
+        import yaml
+        g = yaml.safe_load((ROOT / 'configs' / 'breadboard' / 'rack.yaml').read_text())['geometry']
+    except Exception as e:      # noqa: BLE001
+        return f'configs/breadboard/rack.yaml unreadable: {_clip(e, 80)}'
+    cols = g.get('cols', 5)
+    if cols != RACK_COLS:
+        return (f"rack-pick's configs/breadboard/rack.yaml describes a {cols}-column rack ({g.get('source', '?')}); "
+                f'the Rack card is the {RACK_COLS}-column holder: update rack.yaml before picking')
     return None
 
 
@@ -206,6 +275,9 @@ class BuildRunner:
                 bad = check_step(step)
                 if bad:
                     return self._fail(d, k, f'cannot place: {bad}')
+                bad = rack_mismatch()
+                if bad:
+                    return self._fail(d, k, bad)
                 slot = await self._slot(d, k, step)
                 if slot is None:
                     return self._stop(d, self.want or 'abort')
@@ -250,8 +322,11 @@ class BuildRunner:
         """The slot for this step: the operator's, else rack-pick's state; else wait for the operator."""
         while True:
             run = self._run(d)
-            slot = (run.get('slot_override') or {}).get(str(k)) or rack_slot(step['casing'])
+            used = {v for kk, v in (run.get('slots_used') or {}).items() if int(kk) != k and not self.motion}
+            slot = (run.get('slot_override') or {}).get(str(k)) or rack_slot(step, used)
             if slot:
+                run.setdefault('slots_used', {})[str(k)] = slot      # plan mode: the rack is not emptied, so no slot twice
+                self._save(d, run)
                 return slot
             if self.want:
                 return None

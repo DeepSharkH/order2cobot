@@ -11,6 +11,7 @@ import { UR3eModel } from './ur3e_model.js';
 import { HandEModel } from './hande_model.js';
 import { SwitchView } from './switch3d.js';
 import { ObjectsView } from './objects3d.js';
+import { RackView } from './rack.js';
 
 const C = { bg: 0x111111, cream: 0xfef5da, brass: 0xc9a15d, grey: 0x8c8577, teal: 0x6fb3a8 };
 const JN = ['Base', 'Shoulder', 'Elbow', 'Wrist 1', 'Wrist 2', 'Wrist 3'];
@@ -413,6 +414,11 @@ function buildCards() {
       <div class="actions"><button id="b-tint" class="toggle" title="Paint each camera's points in its colour">Colour by camera</button></div>
       <table class="fuse" id="fuse-rows"></table>
       <p class="note" id="fuse-sum"></p>
+    </div>
+    <div class="card dark" id="c-rack">
+      <div class="card-head"><div><h3>Rack</h3><p>tap a slot to say what stands in it</p></div>
+        <span class="chip quiet" id="rack-count"></span><button id="rack-turn" title="Turn the drawing 180°">↻</button></div>
+      <div class="rack-view" id="rack-grid"></div>
     </div>`;
   $('#b-edit').onclick = () => (editor.active && editor.sel === 'base' ? editor.close() : editor.open('base'));
   $('#b-tint').onclick = (e) => { fuse.tint = !fuse.tint; e.target.classList.toggle('on', fuse.tint); clouds.forEach((_, i) => paintCloud(i)); };
@@ -425,6 +431,16 @@ function buildCards() {
   };
 }
 buildCards();
+
+// the rack card: the rack from above with what stands in each slot (web/rack.js)
+const rackView = new RackView($('#rack-grid'), { turnButton: $('#rack-turn'),
+  onChange: (r) => { $('#rack-count').textContent = `${Object.keys(r.contents).length} / ${r.slots.length}`; } });
+async function loadRack() {
+  const r = await rackView.load();
+  if (r) $('#rack-count').textContent = `${Object.keys(r.contents).length} / ${r.slots.length}`;
+}
+loadRack();
+setInterval(() => { if (!document.hidden && !$('#tab-calib').classList.contains('hidden') && !rackView.picking) loadRack(); }, 10000);
 
 const mm = (v) => fmt(v * 1000, 0);
 

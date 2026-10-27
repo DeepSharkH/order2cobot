@@ -131,7 +131,8 @@ def at(pose, xp, yp):
 
 def slot(cfg, k):
     g = cfg['geometry']
-    c, r = (k - 1) % 5, (k - 1) // 5
+    n = g.get('cols', 5)            # slots per row along x' (the original slit print: 5; Jan's 10-27 holder: 4)
+    c, r = (k - 1) % n, (k - 1) // n
     return g['slot_x0'] + g['slot_dx'] * c, g['slot_y0'] + g['slot_dy'] * r
 
 

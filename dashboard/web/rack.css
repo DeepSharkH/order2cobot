@@ -1,0 +1,30 @@
+/* web/rack.js: the casing rack from above (3D Environment's Rack card, a project's shopping list) */
+.rk { position: relative; }
+.rk-svg { display: block; width: 100%; }
+.rk-svg .plate { fill: #1d3a70; stroke: #3a5fa3; stroke-width: .6; }
+.rk-svg .side { font: 700 4px var(--font, system-ui); letter-spacing: .3em; fill: #8c8577; text-anchor: middle; }
+.rk-svg .slot { cursor: pointer; }
+.rk-svg .hit { fill: transparent; }
+.rk-svg .pad { fill: #22447f; stroke: #2f5596; stroke-width: .3; }
+.rk-svg .hole { fill: #070b14; }
+.rk-svg .col { font: 700 3.6px var(--font, system-ui); fill: #8c8577; text-anchor: middle; }
+.rk-svg .slot:hover .pad { stroke: #fef5da; stroke-width: .7; }
+.rk-svg .slot.needed .pad { stroke: #e9b65a; stroke-width: .7; }
+.rk-svg .body { stroke: #111; stroke-width: .3; }
+.rk-svg .lbl { font: 700 3.6px var(--font, system-ui); fill: #9fb3d6; text-anchor: middle; }
+.rk-svg .slot.full .lbl { fill: #fef5da; }
+.rk-pick { position: absolute; z-index: 5; width: 250px; padding: 10px; background: #0d0d0d; border: 1px solid #fef5da;
+  display: flex; flex-direction: column; gap: 8px; box-shadow: 0 10px 30px rgba(0, 0, 0, .6); }
+.rk-pick.hidden { display: none; }
+.rk-pick .rp-head { display: flex; align-items: center; justify-content: space-between; font-weight: 900; letter-spacing: .1em; color: #fff; }
+.rk-pick .rp-group { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.rk-pick .rp-group span { width: 100%; font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: #8c8577; }
+.rk-pick .rp-group.need span { color: #e9b65a; }
+.rk-pick button { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; font-size: 11px; text-transform: none; letter-spacing: 0;
+  background: transparent; color: #fff; border: 1px solid #3a3a3a; cursor: pointer; }
+.rk-pick button.on { background: #fef5da; color: #111; }
+.rk-sw { display: inline-block; flex: none; width: 9px; height: 9px; border-radius: 2px; border: 1px solid #000; }
+.rk-svg .slot.misfit .pad { stroke: #d2483c; stroke-width: .9; }
+.rk-svg .slot.misfit .lbl { fill: #f0a49c; }
+.rk-svg .slot.wanted .pad { stroke: #e9b65a; stroke-width: .6; stroke-dasharray: 1.2 .8; animation: rk-want 1.6s ease-in-out infinite; }
+@keyframes rk-want { 50% { stroke-opacity: .35; } }

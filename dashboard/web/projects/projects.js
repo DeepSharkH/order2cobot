@@ -2,13 +2,14 @@
 // breadboard layout, the chat that refines it and, once the robot has started, the construction.
 // A thin client over /api/circuit (dashboard/circuit_design.py).
 
-import { h, sv, drawBoard, isSupply, isGround, ohm, LED } from '/board.js';
+import { h, sv, drawBoard, isSupply, isGround, ohm, LED, partLabel } from '/board.js';
 import { startBackground } from '/projects/bg3d.js';
+import { RackView, partLook, swatch } from '/rack.js';
 
 const $ = (s) => document.querySelector(s);
 // the server's project states (circuit_design.CircuitDesigner.state)
 const STATUS = { new: 'new', designing: 'designing', question: 'needs answer', failed: 'needs attention', ready: 'ready to build',
-  outdated: 'outdated', waiting: 'queued', running: 'building', waiting_part: 'needs a part', paused: 'paused',
+  outdated: 'outdated', missing_parts: 'parts missing', waiting: 'queued', running: 'building', waiting_part: 'needs a part', paused: 'paused',
   interrupted: 'interrupted', done: 'built', aborted: 'aborted' };
 const SPIN = ['designing', 'waiting', 'running'];               // states with work going on
 const LIVE = ['designing', 'waiting', 'running', 'waiting_part'];   // the page polls the state while in these
@@ -312,11 +313,35 @@ function renderActions() {
       P.launching ? spinner() : playIcon(),
       h('span', {}, 'Build it'), h('small', {}, `${P.assembly?.sequence?.length || 0} steps`)));
   }
+  if (idle && st === 'missing_parts') out.push(shoppingList());
   if (idle && st === 'outdated') {
     out.push(h('button', { class: 'redo', onclick: () => say('Redesign this circuit with the parts in stock and the board as they are now.') }, 'Redesign'));
   }
   $('#actions').replaceChildren(...out);
   $('#chat-form').hidden = !!st && !can('message') && !P.running;
+}
+
+// before Build it: what the rack lacks for this layout, shown on the rack itself; a tap on a slot
+// offers the missing parts first (web/rack.js, the same view as the 3D Environment's Rack card)
+let shop = null;      // {key, box, rack}: kept while the list is the same, so a re-render keeps the view
+function shoppingList() {
+  const key = JSON.stringify(P.view.shopping);
+  if (shop?.key === key && shop.id === P.id) return shop.box;
+  const host = h('div', { class: 'shop-rack' }), chips = h('div', { class: 'shop-need' });
+  const box = h('div', { class: 'shop' }, h('div', { class: 'shop-head' }, 'Missing on the rack · tap a slot to fill it'), chips, host,
+    h('button', { class: 'launch', disabled: true, title: 'Every part has to be on the rack first' }, playIcon(), h('span', {}, 'Build it')));
+  const rack = shop?.rack && shop.id === P.id ? shop.rack : new RackView(host, { onChange: () => refresh() });
+  if (rack.host !== host) { host.replaceWith(rack.host); }
+  rack.setNeed(P.view.shopping);
+  rack.load().then((r) => {
+    const opts = Object.fromEntries((r?.options || []).map((o) => [o.part_id, o]));
+    chips.innerHTML = P.view.shopping.map((m) => {
+      const o = opts[m.part_id] || { part_id: m.part_id, name: m.part_id, type: m.part_id.split('_')[0], casing: m.casing };
+      return `<span class="need-chip">${swatch(o)}<b>${m.need - m.have}×</b> ${partLook(o).tag}<em>${m.casing}</em></span>`;
+    }).join('');
+  });
+  shop = { key, id: P.id, box, rack };
+  return box;
 }
 
 function playIcon() {

@@ -420,6 +420,9 @@ button.exp-t:hover { color: var(--cream); }
 
 /* fused cloud card: one row per camera, its coverage share as a bar */
 .fuse { width: 100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; margin-bottom: 6px; }
+/* the rack card (the drawing itself: rack.css) */
+#c-rack .card-head { align-items: center; }
+#rack-turn { padding: 2px 8px; margin-left: 6px; }
 .fuse th { font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; text-align: right; opacity: .6; padding-bottom: 4px; }
 .fuse td { padding: 4px 0; vertical-align: top; }
 .fuse td.n { text-align: right; padding-left: 12px; white-space: nowrap; }

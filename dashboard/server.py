@@ -442,8 +442,9 @@ class App:
         uv, ok = project((Wb[:3, :3] @ self.board.obj.T).T + Wb[:3, 3])
         for p in uv[ok]:
             cv2.circle(img, tuple(p), 4, (255, 220, 0), 1, cv2.LINE_AA)
-        # located objects: model instances (grey) and the bounding box (brass)
-        for name, corners, inst in self.objects.boxes():
+        # located objects: model instances (grey) and the bounding box (brass); off unless
+        # config objects_overlay: the Objects tab is hidden and its last box went stale
+        for name, corners, inst in (self.objects.boxes() if self.cfg.get('objects_overlay') else []):
             for c in (inst if len(inst) > 1 else []):
                 box(c, (119, 133, 140), 1)
             box(corners, (93, 161, 201), 2)

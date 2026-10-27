@@ -1,7 +1,8 @@
 """Casing rack (Jan's latest print) for the dashboard's 3D scene.
 
 Input:  assets/models/component_casings/All_Casings_Holder_Print.stl (binary STL, mm; print
-        frame: corner at the origin, x along the long side, z up)
+        frame: corner at the origin, x along the long side, printed upside down: a 4 mm plate on
+        the bed with the 5 mm feet up, so it is turned 180 deg about x to stand on its feet)
 Output (dashboard/web/models/cad/): rack.glb, rack.json (size)
 
 Object frame: origin = centre of the footprint on the table, x along the long side, z up;
@@ -35,6 +36,7 @@ def read_stl(path):
 
 def main():
     V, F = read_stl(SRC)
+    V = V * [1, -1, -1]                 # print frame -> standing on the table (180 deg about x)
     lo, hi = V.min(0), V.max(0)
     V = V - [(lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, lo[2]]
     size = (hi - lo).round(2).tolist()

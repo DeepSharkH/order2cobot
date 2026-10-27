@@ -43,7 +43,7 @@ from aiohttp import web
 
 from . import assembly_plan as ap
 from . import claude_chat
-from .build_runner import BuildRunner
+from .build_runner import RACK_COLS, RACK_SLOTS, BuildRunner, rack_contents, set_rack_slot, shopping_list
 
 ROOT = Path(__file__).resolve().parent.parent
 MAPPER_DIR = ROOT / 'src' / 'circuit_mapper'
@@ -491,6 +491,7 @@ class CircuitDesigner:
     #   new -> designing -> question | failed | ready | outdated      (the design turns)
     #   ready -build-> waiting/running <-> paused | waiting_part | interrupted -> done | failed | aborted
     #   outdated: a layout with parts no longer in stock or holes the board does not have
+    #   missing_parts: a good layout whose parts are not all on the rack (the shopping list)
     def stale(self, d):
         if not d.mapping:
             return []
@@ -508,7 +509,7 @@ class CircuitDesigner:
         if d.running:
             return 'designing'
         if d.phase == 'review':
-            return 'outdated' if self.stale(d) else 'ready'
+            return 'outdated' if self.stale(d) else 'missing_parts' if self.shopping(d) else 'ready'
         last = next((e['t'] for e in reversed(d.events) if e['t'] not in ('turn_end', 'stage', 'trace', 'reasoning', 'thought', 'session', 'note')), None)
         return {None: 'new', 'error': 'failed', 'questions': 'question', 'agent': 'question', 'user': 'failed'}.get(last, 'question')
 
@@ -516,15 +517,47 @@ class CircuitDesigner:
         """What the page may offer in this state; the routes refuse the rest."""
         return {
             'new': ['message'], 'question': ['message'], 'failed': ['message', 'solve'], 'designing': ['stop'],
-            'ready': ['message', 'build', 'solve'], 'outdated': ['message', 'solve'],
+            'ready': ['message', 'build', 'solve'], 'outdated': ['message', 'solve'], 'missing_parts': ['message', 'solve'],
             'waiting': ['abort'], 'running': ['pause', 'abort'], 'waiting_part': ['slot', 'abort'],
             'paused': ['resume', 'retry', 'skip', 'abort'], 'interrupted': ['resume', 'abort'],
             'done': [], 'aborted': ['retry'],
         }.get(state, [])
 
+    def shopping(self, d):
+        """The parts this layout needs that the rack does not hold (empty once handed off)."""
+        return shopping_list(d.assembly['sequence']) if d.assembly and d.phase != 'handoff' else []
+
     def view(self, d):
         s = self.state(d)
-        return {'id': d.id, 'state': s, 'actions': self.actions(s), 'stale': self.stale(d), 'run': self.runner.state(d)}
+        return {'id': d.id, 'state': s, 'actions': self.actions(s), 'stale': self.stale(d), 'shopping': self.shopping(d),
+                'run': self.runner.state(d)}
+
+    # ── the rack: what the operator says stands in each slot ──────────────────
+    def rack_options(self):
+        """Inventory parts the robot can pick: their part_id, casing and stock."""
+        out = []
+        for p in self.parts:
+            if ap.is_manual(p) or not ap.has_casing(p, self.casings):
+                continue
+            out.append({'part_id': p['part_id'], 'name': p.get('name', p['part_id']), 'type': p['type'], 'pin_spacing': p['pin_spacing'],
+                        'casing': ap.geo.casing_for(p, self.casings, 2.54)['casing'], 'quantity': p.get('quantity')})
+        return out
+
+    def rack(self):
+        return {'slots': [f'R{k}' for k in range(1, RACK_SLOTS + 1)], 'contents': rack_contents(), 'options': self.rack_options()}
+
+    def set_rack(self, slot, part_id):
+        slot = str(slot).upper()
+        if slot not in {f'R{k}' for k in range(1, RACK_SLOTS + 1)}:
+            raise ValueError(f'slot must be R1..R{RACK_SLOTS}')
+        opt = next((o for o in self.rack_options() if o['part_id'] == part_id), None) if part_id else None
+        if part_id and not opt:
+            raise ValueError(f'{part_id}: not a part the robot picks')
+        col = (int(slot[1:]) - 1) % RACK_COLS + 1        # each rack column is drilled for one leg spacing
+        if opt and opt['pin_spacing'] != col:
+            raise ValueError(f"{slot} takes legs {col} x 2.54 mm apart, {part_id} has {opt['pin_spacing']}")
+        set_rack_slot(slot, part_id or None, opt['casing'] if opt else None)
+        return self.rack()
 
     def run(self, d):
         p = d.dir / 'run.json'
@@ -651,6 +684,16 @@ def routes(cfg=None):
             return web.json_response({'ok': False, 'reason': str(e)}, status=409)
         return web.json_response(cd.view(d))
 
+    async def rack_get(_request):
+        return web.json_response(cd.rack())
+
+    async def rack_post(request):
+        body = await request.json()
+        try:
+            return web.json_response(cd.set_rack(body.get('slot'), body.get('part_id')))
+        except ValueError as e:
+            return web.json_response({'ok': False, 'reason': str(e)}, status=400)
+
     async def build_control(request):
         d = design_or_404(request)
         action = request.match_info['action']
@@ -694,6 +737,7 @@ def routes(cfg=None):
 
     return [web.post('/api/circuit', post), web.get('/api/circuit/static', static), web.get('/api/circuit/latest', latest),
             web.get('/api/circuit/list', listing), web.get('/api/circuit/{id}/state', state),
+            web.get('/api/rack', rack_get), web.post('/api/rack', rack_post),
             web.post('/api/circuit/{id}/build', build), web.post('/api/circuit/{id}/build/{action}', build_control),
             web.get('/api/circuit/{id}/events', events), web.post('/api/circuit/{id}/stop', stop),
             web.post('/api/circuit/{id}/start', start), web.post('/api/circuit/{id}/solve', solve),
