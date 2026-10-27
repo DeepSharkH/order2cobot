@@ -45,6 +45,9 @@ RINGS = (0.0007, 0.0014)
 X_MIN = -0.460        # reach: further out the elbow straightens (singularity)
 CALIB_Y = -0.045      # grasp calibration at the row-1 end, near half (the white cube sits on the a-side rail)
 BOARD_H = 0.0085      # board top above the plate (board.yaml)
+LEGS_RANGE_MM = (5.6, 8.5)   # leg tips below the fingertips (strip; 6.2-6.6 with the usual grip, 7.8 with a 1 mm deeper
+                              # one, 10-27); bent legs read 3.9, legs pulled out of the casing 13.1
+GRASP_MAX = 0.006     # grasp calibration beyond this = suspect bent legs (-4.56 placed fine on 10-27; the bent case read -4.34 with 3.9 mm legs: leg length is the better sign)
 
 
 def casing(name):
@@ -88,7 +91,7 @@ def pull_lines(top):
             f'movel(p[q[0], q[1], {top + SAFE:.5f}, q[3], q[4], q[5]], a=0.3, v=0.02)']
 
 
-def program(rv, strip_xy, target, offset, top, pull_first):
+def program(rv, strip_xy, target, offset, top, pull_first, drop=DROP):
     o = ', '.join(f'{v:.5f}' for v in rv)
     P = lambda x, y, z: f'p[{x:.5f}, {y:.5f}, {z}, {o}]'  # noqa: E731
     sx, sy = strip_xy
@@ -108,7 +111,7 @@ def program(rv, strip_xy, target, offset, top, pull_first):
               f'  movel({P(x, y, f"zs + {DROP}")}, a=0.2, v=0.01)',
               f'  h = guarded_axial([0, 0, -1], 0.006, {F_TOUCH}, 0.003)',
               '  z = get_actual_tcp_pose()[2]',
-              f'  if zs - z > {DROP}:',
+              f'  if zs - z > {drop}:',
               '    found = True', '    zf = z', f'    textmsg("found {i} ", get_actual_tcp_pose())',
               '  else:', f'    textmsg("peck {i} ", z)', f'    movel({P(x, y, f"zs + {DROP}")}, a=0.2, v=0.01)', '  end',
               'end']
@@ -149,7 +152,7 @@ def grip_record(ex, note):
     return rec
 
 
-def ik_ok(ex, grip, rv, q0, pts):
+def ik_ok(ex, grip, rv, q0, pts, w3_tol=0.8):
     bad = []
     for x, y, z in pts:
         fl = R.from_rotvec(rv).as_matrix() @ -np.array(grip['tcp_tip'][:3]) + [x, y, z]
@@ -159,7 +162,7 @@ def ik_ok(ex, grip, rv, q0, pts):
             bad.append(((x, y, z), 'no IK'))
             continue
         q = [float(r['data'][k]) for k in J]
-        if abs(q[5] - q0[5]) > 0.8 or abs(q[2]) < 0.5:
+        if abs(q[5] - q0[5]) > w3_tol or abs(q[2]) < 0.5:
             bad.append(((x, y, z), 'w3/elbow', np.round(q, 2).tolist()))
     return bad
 
@@ -172,6 +175,10 @@ def main():
     ap.add_argument('--pull', action='store_true')
     ap.add_argument('--confirm', action='store_true', help='record the holes the operator read')
     ap.add_argument('--calib', action='store_true', help='grasp calibration (casing against the row-1 end) first')
+    ap.add_argument('--grasp-dx', type=float, help='insertion only: the grasp (legs - fingertip along x, mm) of an earlier --calib with the same grip')
+    ap.add_argument('--shift', type=float, nargs=2, default=[0.0, 0.0], metavar=('DX', 'DY'),
+                    help='search centre shift for a retry, mm (from the last pecks\' drops; logged, never learned as is)')
+    ap.add_argument('--drop', type=float, default=DROP * 1000, help='legs this far below the strip = found, mm')
     ap.add_argument('--note', default='', help='operator note on the grasp (how it was closed, tilt, ...)')
     a = ap.parse_args()
     st = load_state()
@@ -242,9 +249,22 @@ def main():
         if g is None:
             raise SystemExit('grasp calibration: no side contact')
         print(f'grasp: legs {g * 1000:+.2f} mm from the fingertip along x')
+        # bent legs peck at 2 N and find nothing (lesson rack-pick-bent-legs): stop before the first peck
+        zl = next((float(m.split()[1]) for m in cmsgs if m.startswith('strip ')), None)
+        legs = None if zl is None else (zl - top) * 1000
+        dc = next((float(m.split()[-1]) for m in cmsgs if m.startswith('casing bottom below tips ')), None)
+        if legs is None and dc:      # the strip line can be lost in the log read-back (10-27); dc = legs - LEG_BELOW_CASING
+            legs = (dc + grasp_calib.LEG_BELOW_CASING) * 1000
+        if legs is None or not LEGS_RANGE_MM[0] <= legs <= LEGS_RANGE_MM[1] or abs(g) > GRASP_MAX:
+            raise SystemExit(f'suspect bent legs: leg length {legs} mm (normal {LEGS_RANGE_MM}), '
+                             f'grasp {g * 1000:+.2f} mm (max {GRASP_MAX * 1000:.0f}); no pecks')
         offset = board_off - [g, 0.0]
         q0 = [call(ex.b, 'robot_get_joint_positions')['data'][k] for k in J]   # the arm moved: fresh joints
-    prog = program(rv, strip, target, offset, top, pull_first)
+    if a.grasp_dx is not None and not a.calib:
+        g = a.grasp_dx / 1000
+        offset = board_off - [g, 0.0]
+    offset = offset + np.array(a.shift) / 1000
+    prog = program(rv, strip, target, offset, top, pull_first, a.drop / 1000)
     problems = lint(LIB + prog)
     print(prog, '\n---\nlint:', problems or 'ok', '| part', a.part, '| yaw deg', round(np.degrees(yaw)),
           '| target mm', np.round(target * 1000, 2).tolist(), '| offset mm', np.round(offset * 1000, 2).tolist(),
@@ -263,7 +283,8 @@ def main():
     res = {'grip': grip_record(ex, a.note), 'shots': list(shots),
            'stamp': time.strftime('%Y-%m-%dT%H:%M:%S'), 'secs': round(time.time() - t0, 1), 'part': a.part,
            'holes': [h.lower() for h in a.holes], 'target_mm': np.round(target * 1000, 2).tolist(),
-           'offset_used_mm': np.round(offset * 1000, 2).tolist(), 'yaw_deg': round(float(np.degrees(yaw))), 'msgs': msgs}
+           'offset_used_mm': np.round(offset * 1000, 2).tolist(), 'yaw_deg': round(float(np.degrees(yaw))), 'msgs': msgs,
+           'shift_mm': a.shift, 'drop_mm': a.drop, 'grasp_given_mm': a.grasp_dx}
     zs = next((float(m.split()[1]) for m in msgs if m.startswith('strip ')), None)
     if zs is not None:
         res['leg_length_mm'] = round((zs - top) * 1000, 2)
@@ -274,7 +295,7 @@ def main():
         legs = np.array(p[:2]) + [g, 0.0]
         res['legs_offset_mm'] = np.round((legs - target) * 1000, 2).tolist()                   # legs - target
         st['inserted'] = res['holes']
-        if a.calib:
+        if a.calib or a.grasp_dx is not None:
             ok, dev = grasp_calib.legs_offset_ok(p[0], target[0], board_off[0], g)
             res['grasp_dx_mm'] = round(g * 1000, 2)
             res['pair_check'] = 'ok' if ok else f'ONE HOLE OFF suspected: legs {dev * 1000:+.2f} mm from the expected pair'

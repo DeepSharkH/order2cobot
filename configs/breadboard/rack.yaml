@@ -18,22 +18,22 @@ geometry:
   pocket: [24.2, 5.4, 4.5]    # under the post-it the casing stands on paper over this pocket
   solid_between_pockets: [12.1, 23.0]   # along x' from a slot centre
 orientation:
-  source: operator 2026-10-27 (slot 1 at the breadboard end)
-  slot1_end: breadboard       # breadboard (-x base) or robot (+x base)
-  # -> x' along +x base, S1 on the -y (pendant) edge, robot end = x' 181.2
-rough:                        # camera box corrected by the first locate's touches
-  source: fixed cam 13:43 (slit grid, rms 0.9 mm) corrected by rack_locate_20261027-140429 (end face x -336.7; +y edge
-    not met at y >= 14.1 -> cam biased >= +13 mm in y, +6 in x)
-  stamp: '2026-10-27T14:12'
-  origin_mm: [-336.7, -60.7]  # x from the touched end; y: +y edge guessed at 10.5 (< 12.1 measured)
-  yaw_deg: 0.6
-  top_z_mm: 22.6              # plate (board top 13.1 - 8.5, board_pose.yaml) + 18
-# find (fixed cam) starts from the touched pose and refines it on the visible slits. The 13:43 camera fit
-# (20 mm off) was made with the old scene.yaml; Jan's recalibration (9ab7a26) projects the touched pose onto the
-# slits (checked 15:15), so it is gone.
-# Seen on the camera 2026-10-27 (keep touches away): yellow tape straps across x' ~26-46 and
-# ~146-167 (also down both long sides); the post-it covers x' ~105-181 (end of the rack, robot side).
-# 2026-10-27 15:35 the rack was turned 90 deg and moved (clears placing's grasp calibration at the row-1 end):
-# the touched pose below is STALE; run rack_pick locate again (the orientation / faces may need a new rough box).
+  source: 'agent 2026-10-27 16:15, NOT verified: the S1-S4 labels are under the -y tape strap; the rack is symmetric
+    under 180 deg, so the numbering may be the turned twin (slot k <-> 21 - k)'
+  slot1_end: minus_y          # rack turned 90 deg (15:35): x' along +y base, front (S1) = the robot-side long edge
+  # breadboard / robot / minus_y: only `robot` flips the frame (x' along -x base)
+rough:                        # fixed-cam box for locate's touches (rack turned 90 deg and moved by the user, 15:35)
+  source: 'fixed cam 16:12 (arm parked at -150/-150), blue outline + 7 slits on the top plane (cols c1/c2, 4 rows,
+    within ~1.5 mm of the CAD grid); -y end from the blue beyond the -y strap'
+  stamp: '2026-10-27T16:15'
+  origin_mm: [-180.0, -70.0]  # front-left corner: robot-side long edge (x -180), -y end
+  yaw_deg: 90.0               # x' along +y base, y' along -x base
+  top_z_mm: 20.5              # the last touched top (rack on the same plate)
+# Seen on the camera 16:12 (rough frame): yellow tape straps across x' ~0-27 (-y end) and ~135-175; the post-it
+# covers x' ~110-181 (+y end); the LED casing stands on it near x' 126, y' 44 (slot R14 in this numbering).
+# Older pose (rack along base x, before 15:35):
 # stale: {"origin_mm": [-335.56, -67.63], "yaw_deg": 1.01, "top_z_mm": 20.51, "tilt_deg": 0.95, "top_spread_mm": 0.5, "source": "touch (rack_locate_20261027-140804): 2 edge + 1 end + 3 top", "stamp": "2026-10-27T14:09:27"}
-pose: null
+wrist3_tol_rad: 0.8           # touches / transit (memory ur3-cable-limits; reference -3.78)
+wrist3_grasp_tol_rad: 1.4     # grasp / pull / lift only. User 2026-10-27 16:25: the turned rack needs tool yaw 180 deg
+                              # for the jaw across the rows; the LED at R14 needs w3 -2.42 (1.36 off). Watch the cable.
+pose: {"origin_mm": [-183.43, -72.18], "yaw_deg": 90.982, "top_z_mm": 20.92, "tilt_deg": 0.699, "top_spread_mm": 0.33, "source": "touch (rack_locate_20261027-162508): 2 edge + 1 end + 3 top; top2 from its pose line (C line lost in the log read-back); edge recheck invalid (pushed -y, bug fixed), top1 recheck 0.009 mm", "stamp": "2026-10-27T16:26:31"}

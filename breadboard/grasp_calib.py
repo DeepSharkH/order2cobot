@@ -20,6 +20,8 @@ F_SIDE, V_SIDE = 1.5, 0.002
 GAP = 0.010            # start this far from the casing face
 PLATE_CLEAR = 0.0008   # leg tips at least this far above the plate
 OVERLAP_MIN = 0.0005   # casing bottom at least this far below the board top
+LEG_BELOW_CASING = 0.006   # legs below the casing bottom, rounded up (10-27: 5.2-5.8): longer legs below the tips =
+                           # the casing hangs that much below the tips (a deeper grip), underestimated on purpose
 
 
 def program(rv, face_x, y, top, plate, spec, leg_len, safe=0.020, strip=None):
@@ -59,7 +61,9 @@ def program(rv, face_x, y, top, plate, spec, leg_len, safe=0.020, strip=None):
               # casing bottom 1 mm below the top, unless the legs would come closer than PLATE_CLEAR to the plate
               f'zc = {top - 0.001:.5f}',
               f'if {plate + PLATE_CLEAR:.5f} + (zs - {top:.5f}) > zc:', f'  zc = {plate + PLATE_CLEAR:.5f} + (zs - {top:.5f})', 'end',
-              f'if {top:.5f} - zc < {OVERLAP_MIN}:', '  textmsg("ABORT legs too long for the end face")',
+              f'dc = (zs - {top:.5f}) - {LEG_BELOW_CASING}', 'if dc < 0:', '  dc = 0', 'end',
+              'textmsg("casing bottom below tips ", dc)',
+              f'if {top:.5f} - (zc - dc) < {OVERLAP_MIN}:', '  textmsg("ABORT legs too long for the end face")',
               'else:'] + side + ['end', 'end']
     s += ['textmsg("grasp_calib done")']
     return '\n'.join(s), z, x0

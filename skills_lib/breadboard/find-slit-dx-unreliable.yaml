@@ -1,0 +1,19 @@
+id: find-slit-dx-unreliable
+title: do not shift the rack grasp along the slit by find's foot-pixel estimate; it was 5 mm wrong
+applies_to:
+- pick_step
+symptom: 'rack_pick_20261027-162952 R14 with --slit-dx -5.1 (find off_slot x'') -> place_probe_20261027-163342: grasp
+  calibration legs -4.56 mm from the fingertip centre, casing hanging off one side of the fingers in the image, 17 pecks
+  NOT FOUND at j20/j22'
+cause: 'find takes the mean x of the lowest pixels of a white blob seen obliquely by the fixed cam (casing face, LED
+  dome, shading): along the slit it is not a measurement. The casing stood at the slot centre; the shift moved the
+  grasp ~5 mm off the casing centre'
+fix: 'grasp at the slot centre (fingertips 24 mm wide cover the 14 mm casing for +-5 mm); measure x'' before shifting
+  (gripper-cam image from above, or a side touch on the casing end). A grasp calibration > ~3 mm after a pick = re-grip
+  centred before pecking'
+status: proposed
+validated_by: []
+seen_in:
+- rack_pick_20261027-162952
+- place_probe_20261027-163342
+stamp: '2026-10-27'

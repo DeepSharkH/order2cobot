@@ -12,8 +12,12 @@
     surface; the robot holds there. (B, --close, after the operator's go) Gripper Close
     (100 % force, the only setting), pull straight up (stop at 3 N = a leg is caught), lift.
 
-Tool yaw -90 deg (jaw along base y = rack y', across the rows): the placing yaw, so the legs come
-out along base x as placing needs them. Never halt; aborts go through if/else.
+Grasp, pull and lift: tool yaw = rack yaw -/+ 90 deg (jaw along rack y', across the rows), whichever keeps wrist 3
+nearer the cable reference; the legs then lie along the finger faces as placing needs (placing turns the tool
+itself). With the rack along base x that is -90 deg, the placing yaw. Touches and transit (closed tips, any yaw): the
+multiple of 90 deg off the rack nearest the reference. Wrist 3 limits from rack.yaml: `wrist3_tol_rad` (0.8) for
+touches / transit, `wrist3_grasp_tol_rad` for the grasp (the user accepted 1.4 for the rack turned 90 deg, 10-27);
+the wrist turns between the two by a joint move at transit height. Never halt; aborts go through if/else.
 
   python -m breadboard.rack_pick locate                      # plan: programs + IK, no motion
   python -m breadboard.rack_pick locate --run
@@ -46,7 +50,6 @@ APP, CLIENT = 'breadboard_pick', 'breadboard-pick'
 RACK = ROOT / 'configs/breadboard/rack.yaml'
 STATE = ROOT / 'data' / 'rack_state.json'
 J = ('base', 'shoulder', 'elbow', 'wrist1', 'wrist2', 'wrist3')
-YAW = -np.pi / 2
 F_TOP, F_CASE, F_SIDE, F_HIT = 2.0, 1.0, 1.5, 2.0
 F_CAUGHT = 8.0       # pull stop: the post-it holds the legs with ~4 N (lesson post-it-holds-legs; 3 N stopped a clean pick)
 V_TOUCH, V_SLOW = 0.005, 0.002
@@ -56,7 +59,7 @@ SAFE = 0.045          # transit: tips this far above the rack top (25 mm over a 
 OUT = 0.015           # side touches start this far outside the rough face
 REACH = 0.015         # ... and push this far past it (the camera box was 13+ mm off in y, 10-27)
 UNDER = 0.004         # side touches run this far below the top (plate face z' 10-18)
-HALF = (0.0025, 0.002)   # closed tip (4 mm jaw x 5 mm) half size along base x / y at yaw -90
+HALF = (0.002, 0.0025)   # closed tip (4 mm jaw x 5 mm) half size along the jaw (flange x) / across it
 CASE_TOL = 0.001      # casing top - surface = CAD height +- this
 MOVED = 0.0003
 # touch spots in rack mm, chosen on 10-27's camera image: bare blue between the tape straps
@@ -65,6 +68,50 @@ EDGE_X = (60.0, 95.0)
 TOP = [(73.1, 19.3), (73.1, 51.9), (95.0, 35.6)]   # on the strips between rows S1/S2, S3/S4, S2/S3
 END_Y = 10.0          # end touch this far from the -y long edge (rack mm)
 W3_REF = -3.78        # wrist 3 where the camera cable is relaxed (memory ur3-cable-limits)
+
+
+def w3_tol(grasp=False):
+    cfg = load_rack()
+    t = float(cfg.get('wrist3_tol_rad', 0.8))
+    return float(cfg.get('wrist3_grasp_tol_rad', t)) if grasp else t
+
+
+def half_along(d, rv):
+    """Closed tip half size along the unit base-xy direction d, for the tool orientation rv."""
+    c = abs(np.asarray(d, float) @ R.from_rotvec(rv).as_matrix()[:2, 0])
+    return c * HALF[0] + np.sqrt(max(0.0, 1 - c * c)) * HALF[1]
+
+
+def pushes(rough, cfg):
+    """Base-xy push directions of the edge and the end touches: into the rack through the touched faces."""
+    _, ux, uy = frame(rough)
+    s = -1 if flipped(cfg) else 1
+    return -s * uy, s * ux
+
+
+def choose_rv(ex, grip, xy, z, across=True):
+    """Tool down, the yaw whose IK wrist 3 is nearest the cable reference at xy: across=True (grasp) the jaw across
+    the rows (rack y', two yaws 180 deg apart); across=False (closed-tip touches, transit) any multiple of 90 deg."""
+    cfg = load_rack()
+    th = np.radians((cfg.get('pose') or cfg['rough'])['yaw_deg'])
+    q0 = [call(ex.b, 'robot_get_joint_positions')['data'][k] for k in J]
+    best = None
+    # one IK (the old placing yaw, reachable on this table); tool straight down, wrist 3 moves one-for-one with the
+    # tool yaw, so the other yaws follow without IK (an unreachable IK only returns after a timeout)
+    rv0 = tool_down(-np.pi / 2)
+    fl = R.from_rotvec(rv0).as_matrix() @ -np.array(grip['tcp_tip'][:3]) + [xy[0], xy[1], z]
+    r = call(ex.b, 'robot_inverse_kinematics', pose={'position': list(fl), 'orientation': list(rv0)}, qNear=q0[:5] + [W3_REF])
+    if 'data' not in r:
+        raise SystemExit(f'no IK at {np.round(np.array(xy) * 1000, 1).tolist()}')
+    w0 = float(r['data']['wrist3'])
+    for yaw in (th - np.pi / 2, th + np.pi / 2) + (() if across else (th, th + np.pi)):
+        w = w0 - np.angle(np.exp(1j * (yaw + np.pi / 2)))          # IK 10-27: yaw +90 -> wrist 3 -1.57
+        w += 2 * np.pi * np.round((W3_REF - w) / (2 * np.pi))      # the turn nearest the reference
+        if best is None or abs(w - W3_REF) < best[0]:
+            best = (abs(w - W3_REF), tool_down(yaw), yaw)
+    print(f'{"grasp" if across else "touch"} tool yaw {np.degrees(best[2]):.0f} deg, wrist 3 {best[0]:.2f} rad off the cable '
+          f'reference (tol {w3_tol(across)})')
+    return best[1]
 
 
 def load_rack():
@@ -166,10 +213,11 @@ def locate_p1(cfg, rv):
     rough, (yE, xE, yEnd) = cfg['rough'], touched_faces(cfg)
     top = rough['top_z_mm'] / 1000
     o, p = P(rv)
-    s = 1 if not flipped(cfg) else -1      # +y / +x base in rack directions
-    pts = [(f'edge{i + 1}', at(rough, x, yE + s * OUT * 1000), (0, -1)) for i, x in enumerate(EDGE_X)]
-    pts.append(('end', at(rough, xE - s * OUT * 1000, yEnd), (1, 0)))
-    pts.append(('edge1b', pts[0][1], (0, -1)))
+    s = 1 if not flipped(cfg) else -1      # outward normals of the touched faces in rack directions
+    de, dn = (tuple(np.round(v, 4).tolist()) for v in pushes(rough, cfg))
+    pts = [(f'edge{i + 1}', at(rough, x, yE + s * OUT * 1000), de) for i, x in enumerate(EDGE_X)]
+    pts.append(('end', at(rough, xE - s * OUT * 1000, yEnd), dn))
+    pts.append(('edge1b', pts[0][1], de))
     lines = ['textmsg("rack locate P1 start")']
     for n, xy, d in pts:
         lines += side_touch(p, o, n, xy, d, top + SAFE, top - UNDER)
@@ -194,26 +242,27 @@ def parse(msgs):
     return C
 
 
-def fit_pose(cfg, C):
-    """Rack pose from the touched +y edge (2 points) and breadboard end: tip centre -> face by the tip half size."""
-    a, b = C['edge1'][:2] - [0, HALF[1]], C['edge2'][:2] - [0, HALF[1]]
-    e = C['end'][:2] + [HALF[0], 0]
-    s = -1 if flipped(cfg) else 1
-    ux = (b - a) / np.linalg.norm(b - a) * np.sign((b - a)[0]) * s
+def fit_pose(cfg, C, rv):
+    """Rack pose from the touched long edge (2 points) and end: tip centre -> face by the tip half size."""
+    de, dn = pushes(cfg['rough'], cfg)
+    a, b = C['edge1'][:2] + de * half_along(de, rv), C['edge2'][:2] + de * half_along(de, rv)
+    e = C['end'][:2] + dn * half_along(dn, rv)
+    ux = (b - a) / np.linalg.norm(b - a)
+    ux *= np.sign(ux @ frame(cfg['rough'])[1])
     uy = np.array([-ux[1], ux[0]])
     yE, xE, _ = touched_faces(cfg)
     o = ux * (e @ ux - xE / 1000) + uy * ((a + b) / 2 @ uy - yE / 1000)
     return {'origin_mm': np.round(o * 1000, 2).tolist(), 'yaw_deg': round(float(np.degrees(np.arctan2(ux[1], ux[0]))), 3)}
 
 
-def check_ik(ex, grip, rv, pts):
+def check_ik(ex, grip, rv, pts, grasp=False):
     q0 = [call(ex.b, 'robot_get_joint_positions')['data'][k] for k in J]
-    return q0, ik_ok(ex, grip, rv, q0[:5] + [W3_REF], pts)     # wrist 3 judged against the cable
+    return q0, ik_ok(ex, grip, rv, q0[:5] + [W3_REF], pts, w3_tol(grasp))     # wrist 3 judged against the cable
 
 
 def start_move(ex, rv, grip, xy, z, floor):
     fl = R.from_rotvec(rv).as_matrix() @ -np.array(grip['tcp_tip'][:3]) + [xy[0], xy[1], z]
-    ex.move_checked(list(fl) + rv, w3_ref=W3_REF, v=0.2, floor=floor, min_clear=0.03)
+    ex.move_checked(list(fl) + list(rv), w3_ref=W3_REF, w3_tol=w3_tol(), v=0.2, floor=floor, min_clear=0.03)
 
 
 def start_q(ex, rv, grip, xy, z, floor):
@@ -225,7 +274,7 @@ def start_q(ex, rv, grip, xy, z, floor):
     r = call(ex.b, 'robot_inverse_kinematics', pose={'position': list(ik[:3]), 'orientation': list(ik[3:])}, qNear=q0)['data']
     q = [float(r[k]) for k in J]
     low = min((fl + R.from_rotvec(rv).as_matrix() @ np.array(c))[2] for c in grip['collision_points'].values()) - 0.005 - floor
-    if abs(q[2]) < 0.5 or abs(q[5] - W3_REF) > 0.8 or low < 0.03:
+    if abs(q[2]) < 0.5 or abs(q[5] - W3_REF) > w3_tol() or low < 0.03:
         raise SystemExit(f'start pose rejected: elbow {q[2]:.2f}, wrist3 {q[5]:.2f} (ref {W3_REF}), clearance {low * 1000:.0f} mm')
     return q
 
@@ -259,7 +308,7 @@ def locate(a, grip, rv):
     if not all(k in C for k in ('edge1', 'edge2', 'end')):
         res['miss_reason'] = 'P1: ' + '; '.join(m for m in msgs1 if m.startswith(('BLOCKED', 'MISS')))
     else:
-        pose = fit_pose(cfg, C)
+        pose = fit_pose(cfg, C, rv)
         res['pose_p1'] = pose
         if 'edge1b' in C:
             res['edge_moved_mm'] = round(float(abs(C['edge1b'][1] - C['edge1'][1])) * 1000, 3)
@@ -314,8 +363,9 @@ def grip_depth(z_tips, z_top, z_surface, height):
 
 
 def prog_grasp(p, sxy, z_tr, z_top, z_grasp):
-    """Open fingers: fast to 5 mm above the casing top (the neighbours' tops are as high), guarded below."""
-    return '\n'.join(['textmsg("rack pick grasp start")', f'movel({p(*sxy, z_tr)}, a=0.5, v={V_APPROACH})',
+    """Open fingers: turn the wrist to the grasp yaw above the casing (joint move, tips in place), fast to 5 mm above
+    the casing top (the neighbours' tops are as high), guarded below."""
+    return '\n'.join(['textmsg("rack pick grasp start")', f'movej({p(*sxy, z_tr)}, a=1.0, v=0.8)',
                       f'movel({p(*sxy, z_top + 0.005)}, a=0.5, v={V_APPROACH})',
                       f'h = guarded_axial([0, 0, -1], {z_top + 0.005 - z_grasp:.4f}, {F_HIT}, {V_TOUCH})',
                       'if h:', '  textmsg("ABORT finger hit something above the grasp height")',
@@ -323,15 +373,18 @@ def prog_grasp(p, sxy, z_tr, z_top, z_grasp):
                       'else:', '  textmsg("grasp ", get_actual_tcp_pose())', 'end'])
 
 
-def prog_pull(o, stop, z_lift):
-    """Straight up: the first PULL_SLOW slow with the force stop (legs in paper / slit), then lift fast."""
+def prog_pull(o, stop, z_lift, o_t=None):
+    """Straight up: the first PULL_SLOW slow with the force stop (legs in paper / slit), then lift fast; at the top
+    turn the wrist back to the touch yaw o_t (joint move, tips in place)."""
     return '\n'.join(['textmsg("rack pick B start")', f'ok = pull_out([0, 0, -1], {stop}, {PULL_SLOW:.4f}, {V_SLOW})',
                       'if ok:', '  q = get_actual_tcp_pose()', f'  movel(p[q[0], q[1], {z_lift:.5f}, {o}], a=0.5, v={V_LIFT})',
-                      '  textmsg("lifted ", get_actual_tcp_pose())', 'else:', '  textmsg("CAUGHT: holding")', 'end',
+                      '  textmsg("lifted ", get_actual_tcp_pose())']
+                     + ([f'  movej(p[q[0], q[1], {z_lift:.5f}, {o_t}], a=1.0, v=0.8)'] if o_t and o_t != o else [])
+                     + ['else:', '  textmsg("CAUGHT: holding")', 'end',
                       'textmsg("rack pick B done")'])
 
 
-def pick(a, grip, rv):
+def pick(a, grip, rv, rv_t):
     """One command: [close] -> A (joint move + surface / casing-top touches) -> height check -> open -> G (grasp
     descent) -> close -> B (pull, lift). Every check stops the run (height, gripper warning, finger contact,
     pull limit). --close resumes at the close from the pending grasp (--closed: pull only)."""
@@ -342,8 +395,10 @@ def pick(a, grip, rv):
     spec = casing(a.part)
     H = spec['height'] / 1000
     pose, top, sxy, nxy = pick_points(cfg, k)
+    sxy = sxy + frame(pose)[1] * a.slit_dx / 1000     # the casing along the slit, from find (post-it: anywhere in it)
     z_tr = top + SAFE
-    o, p = P(rv)
+    o, p = P(rv)            # grasp, pull, lift
+    o_t, p_t = P(rv_t)      # touches, transit
     ex = open_ex(grip, a.run)
     tm, t0 = {}, time.time()
     mark = lambda name: tm.__setitem__(name, round(time.time() - t0, 1))  # noqa: E731
@@ -383,7 +438,7 @@ def pick(a, grip, rv):
             res['miss_reason'] = f'Gripper Close failed ({res["close"]["warnings"][0][:90]}): not pulled; fingers open around the casing'
             (d / 'result.json').write_text(json.dumps(res, indent=1))
             raise SystemExit(res['miss_reason'])
-        msgs, _ = ex.run(prog_pull(o, a.pull_stop, zs + H + 0.030), timeout=120)
+        msgs, _ = ex.run(prog_pull(o, a.pull_stop, zs + H + 0.030, o_t), timeout=120)
         mark('B pulled')
         finish(d, res, msgs)
 
@@ -391,7 +446,7 @@ def pick(a, grip, rv):
         pend = st.get('pending')
         if not pend or pend['slot'] != f'R{k}':
             raise SystemExit(f'no grasp pending at R{k}: run the pick first')
-        q0, bad = check_ik(ex, grip, rv, [(*sxy, pend['z_surface'] + H + 0.030)])
+        q0, bad = check_ik(ex, grip, rv, [(*sxy, pend['z_surface'] + H + 0.030)], grasp=True)
         here = np.array(call(ex.b, 'robot_get_pose')['data']['pose']['position'])
         want = np.array(pend['grasp_mm']) / 1000 + R.from_rotvec(rv).as_matrix() @ -np.array(grip['tcp_tip'][:3])
         off = float(np.linalg.norm(here - want))
@@ -407,13 +462,13 @@ def pick(a, grip, rv):
 
     # plan: every program (grasp / pull with the nominal surface) linted, every point through IK
     progs = {'A': '\n'.join(['textmsg("rack pick A start")', 'movej(q_start, a=0.8, v=0.5)']
-                            + down_touch(p, o, 'surf', nxy, top + 0.006, 0.012, F_TOP, V_SLOW, z_tr)
-                            + down_touch(p, o, 'ctop', sxy, top + H + 0.006, 0.012, F_CASE, V_SLOW, z_tr)
+                            + down_touch(p_t, o_t, 'surf', nxy, top + 0.006, 0.012, F_TOP, V_SLOW, z_tr)
+                            + down_touch(p_t, o_t, 'ctop', sxy, top + H + 0.006, 0.012, F_CASE, V_SLOW, z_tr)
                             + ['textmsg("rack pick A done")']),
-             'G': prog_grasp(p, sxy, z_tr, top + H, top + 0.001), 'B': prog_pull(o, a.pull_stop, top + H + 0.030)}
+             'G': prog_grasp(p, sxy, z_tr, top + H, top + 0.001), 'B': prog_pull(o, a.pull_stop, top + H + 0.030, o_t)}
     problems = {n: lint(LIB + ('q_start = [0, 0, 0, 0, 0, 0]\n' if n == 'A' else '') + s) for n, s in progs.items()}
-    pts = [(*nxy, z_tr), (*nxy, top), (*sxy, z_tr), (*sxy, top + H), (*sxy, top + 0.001), (*sxy, top + H + 0.030)]
-    q0, bad = check_ik(ex, grip, rv, pts)
+    q0, bad = check_ik(ex, grip, rv_t, [(*nxy, z_tr), (*nxy, top), (*sxy, z_tr), (*sxy, top + H), (*sxy, top + H + 0.030)])
+    bad += check_ik(ex, grip, rv, [(*sxy, z_tr), (*sxy, top + H), (*sxy, top + 0.001), (*sxy, top + H + 0.030)], grasp=True)[1]
     print(progs['A'], '\n---\nlint:', {n: v or 'ok' for n, v in problems.items()})
     print(f'R{k} {a.part}: slot (base mm)', np.round(sxy * 1000, 1).tolist(), '| surface touch', np.round(nxy * 1000, 1).tolist(),
           '| rack top', round(top * 1000, 2), '| fingers', st.get('fingers', 'unknown'),
@@ -424,7 +479,7 @@ def pick(a, grip, rv):
         raise SystemExit(f'the gripper holds {st["in_gripper"]}: place or release it first')
     d = run_dir('rack_pick')
     res = {'stamp': time.strftime('%Y-%m-%dT%H:%M:%S'), 'slot': f'R{k}', 'part': a.part,
-           'rack_pose': pose.get('source'), 'slot_mm': np.round(sxy * 1000, 2).tolist()}
+           'rack_pose': pose.get('source'), 'slot_mm': np.round(sxy * 1000, 2).tolist(), 'slit_dx_mm': a.slit_dx}
 
     def stop(reason):
         res['miss_reason'] = reason
@@ -439,7 +494,7 @@ def pick(a, grip, rv):
         mark('closed empty')
         if res['close_empty']['warnings']:
             return stop(f'Gripper Close failed ({res["close_empty"]["warnings"][0][:90]}): activate the Hand-E')
-    q = start_q(ex, rv, grip, nxy, top + 0.06, top)
+    q = start_q(ex, rv_t, grip, nxy, top + 0.06, top)
     msgs, _ = ex.run(f'q_start = {[round(v, 5) for v in q]}\n' + progs['A'], timeout=180)
     mark('A touched')
     res['msgs_a'] = msgs
@@ -449,8 +504,8 @@ def pick(a, grip, rv):
     zs, zt = C['surf'][2], C['ctop'][2]
     res |= {'z_surface_mm': round(zs * 1000, 2), 'z_top_mm': round(zt * 1000, 2),
             'height_mm': round((zt - zs) * 1000, 2), 'cad_height_mm': spec['height']}
-    if abs(zt - zs - H) > CASE_TOL:
-        return stop(f'casing top - surface {res["height_mm"]} mm vs CAD {spec["height"]} +- {CASE_TOL * 1000:.0f}: '
+    if abs(zt - zs - H) > a.height_tol / 1000:
+        return stop(f'casing top - surface {res["height_mm"]} mm vs CAD {spec["height"]} +- {a.height_tol}: '
                     'wrong casing, sunk into the pocket, standing proud or tilted; not grasped')
     res['open'] = gripper(ex, 'open', st)
     mark('opened')
@@ -473,7 +528,7 @@ def pick(a, grip, rv):
 
 SCENE = ROOT / 'configs/calibration/scene.yaml'
 FRAME_URL = 'http://127.0.0.1:8090/api/frame/0'
-VIEW, VIEW_DZ = (-0.250, 0.035), 0.050   # arm parked beside the rack (+y, free table) for find
+VIEW, VIEW_DZ = (-0.150, -0.150), 0.130   # arm parked out of the fixed cam's view of the rack (10-27, rack turned)
 
 
 def fcam():
@@ -578,13 +633,24 @@ def main():
     ap.add_argument('--close', action='store_true', help='(B) close on the casing and pull it out')
     ap.add_argument('--closed', action='store_true', help='(B) the fingers are already closed on the casing: pull only')
     ap.add_argument('--pull-stop', type=float, default=F_CAUGHT, help='(B) stop the pull above this force, N (cap 20)')
+    ap.add_argument('--height-tol', type=float, default=CASE_TOL * 1000,
+                    help='casing top - surface = CAD height +- this, mm (user 10-27: 1.0; a wider one only by the user)')
+    ap.add_argument('--slit-dx', type=float, default=0.0, help="casing centre along the slit (x') from the slot centre, mm (find's off_slot)")
     ap.add_argument('--confirm', nargs=2, metavar=('SLOT', 'TEXT'))
     a = ap.parse_args()
     if a.confirm:
         return confirm(*a.confirm)
     g = yaml.safe_load(GRIPPER.read_text())
     grip = {'tcp_tip': [0, 0, g['fingertip_z'], 0, 0, 0], 'collision_points': g['collision_points']}
-    rv = tool_down(YAW)
+    cfg = load_rack()
+    if a.cmd in ('locate', 'find', 'pick'):
+        g_ = cfg.get('pose') or cfg['rough']
+        xy = at(g_, *slot(cfg, int(a.slot.upper().lstrip('R')))) if a.cmd == 'pick' and a.slot \
+            else at(g_, cfg['geometry']['size'][0] / 2, cfg['geometry']['size'][1] / 2)
+        ex_ = open_ex(grip, False)
+        z_ = g_['top_z_mm'] / 1000 + SAFE
+        rv = list(choose_rv(ex_, grip, xy, z_, across=a.cmd == 'pick'))
+        rv_t = list(choose_rv(ex_, grip, xy, z_, across=False)) if a.cmd == 'pick' else rv
     if a.cmd == 'locate':
         locate(a, grip, rv)
     elif a.cmd == 'find':
@@ -607,7 +673,7 @@ def main():
     elif a.cmd == 'pick':
         if not a.slot or not a.part:
             raise SystemExit('pick R<k> --part <casing>')
-        pick(a, grip, rv)
+        pick(a, grip, rv, rv_t)
     else:
         ap.print_help()
 
