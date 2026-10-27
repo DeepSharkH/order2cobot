@@ -3,6 +3,7 @@
 import argparse
 import json
 from collections import defaultdict
+from itertools import combinations
 from math import ceil
 from pathlib import Path
 from time import monotonic
@@ -15,6 +16,7 @@ if __package__:
         constrain_assembly,
         no_fit_cliques,
         placement_geometry,
+        relation,
         verify_assembly,
     )
     from .inventory import checked_parts, limit_jumpers
@@ -25,6 +27,7 @@ else:
         constrain_assembly,
         no_fit_cliques,
         placement_geometry,
+        relation,
         verify_assembly,
     )
     from inventory import checked_parts, limit_jumpers
@@ -78,6 +81,41 @@ def placements(part, positions):
             if None not in holes and holes not in seen:
                 seen.add(holes)
                 yield holes
+
+
+def strip_capacity(parts, positions, groups, shape, margin):
+    """Most casing pins that fit together in one strip, over a middle strip of each board half
+    (an edge strip has a subset of its placements). Pairwise no-fit only, so an upper bound."""
+    rows = sorted({y for _, y in positions.values()})
+    mid = rows[len(rows) // 2]
+    reach = max(part["pin_spacing"] * (len(part["pins"]) - 1) for part in parts)
+    near = {hole: xy for hole, xy in positions.items() if abs(xy[1] - mid) <= reach}
+    best = 0
+    for column in ("A", "J"):
+        strip = groups[f"{column}{int(mid) + 1}"]
+        model = cp_model.CpModel()
+        options, occupancy = [], defaultdict(list)
+        for part in parts:
+            for holes in placements(part, near):
+                inside = sum(groups[hole] == strip for hole in holes)
+                if inside != 1:
+                    continue  # Two pins in one strip short them (no part here joins a net).
+                chosen = model.new_bool_var("")
+                options.append((chosen, shape(part, holes)))
+                for hole in holes:
+                    occupancy[hole].append(chosen)
+        for occupants in occupancy.values():
+            model.add_at_most_one(occupants)
+        for (a, sa), (b, sb) in combinations(options, 2):
+            if relation(sa, sb, margin) == "forbidden":
+                model.add_bool_or([~a, ~b])
+        model.maximize(sum(chosen for chosen, _ in options))
+        solver = cp_model.CpSolver()
+        solver.parameters.max_time_in_seconds = 10
+        if solver.solve(model) != cp_model.OPTIMAL:
+            return None
+        best = max(best, round(solver.objective_value))
+    return best
 
 
 def step_key(candidate):
@@ -150,6 +188,8 @@ def map_circuit(circuit, inventory, board, time_limit=30, casings=None, gripper=
     jumper_parts = [part for part in parts.values() if part["type"] == "jumper"]
     if any(len(part["pins"]) != 2 for part in jumper_parts):
         raise ValueError("Routing requires two-pin jumper parts")
+    stocked = all(type(part.get("quantity")) is int for part in jumper_parts)
+    pieces = [p for p in jumper_parts for _ in range(p["quantity"] if stocked else 1)]
     shape_cache = {}
     rules = {}  # relation() by kinds and centre offset, for every stage
 
@@ -160,6 +200,31 @@ def map_circuit(circuit, inventory, board, time_limit=30, casings=None, gripper=
                 holes, positions, shapes[part["part_id"]], gripper, pitch
             )
         return shape_cache[key]
+
+    # Strips joined by k jumpers have k + 1 strips' room and the jumpers fill 2k of it, so with
+    # room for 2 casing pins per strip a net never takes more than 2 robot-placed pins. (Not
+    # for parts that join a net's strips themselves; a bodyless wire would need the same care.)
+    robot_pins = defaultdict(int)
+    for cid, part in physical.items():
+        for pin in part["pins"]:
+            robot_pins[pin_net[f"{cid}.{pin}"]] += 1
+    crowded = [n for n, count in robot_pins.items() if count > 2]
+    joins_net = any(
+        len({pin_net[f"{cid}.{pin}"] for pin in part["pins"]}) < len(part["pins"])
+        for cid, part in physical.items()
+    )
+    if crowded and not joins_net:
+        capacity = strip_capacity(
+            list(used_parts.values()), positions, groups, shape, margin
+        )
+        if capacity is not None and capacity <= 2:
+            raise ValueError(
+                "No mapping returned: INFEASIBLE. "
+                + ", ".join(f"net {nets[n]['id']} has {robot_pins[n]} robot-placed pins" for n in crowded)
+                + f"; at most {capacity} casings fit in one 5-hole strip, and every rigid jumper"
+                " fills the room it adds, so no number of jumpers connects more than 2."
+                " Give each net at most 2 robot-placed parts (join the rest with hand-wired links)."
+            )
 
     def build(budget, inside, until):
         """One stage's model: at most budget jumpers (None: any number, 0: no wire variables),
@@ -222,19 +287,24 @@ def map_circuit(circuit, inventory, board, time_limit=30, casings=None, gripper=
             model.add_exactly_one(chosen for chosen, _ in options)
             manual_choices[pin] = options
 
+        # A jumper in stock is that many pieces, each placed at most once, so a piece is an
+        # owner like a part and its collisions are eager cliques too. Unlimited jumpers stay
+        # one owner per wire, and wire-wire pairs lazy.
         wires, edges = [], defaultdict(list)
-        seen_pairs = set()
-        for part in jumper_parts if budget != 0 else ():
+        previous = {}  # part_id: (used, position) of the piece before, for symmetry breaking
+        for piece, part in enumerate(pieces if budget != 0 else ()):
+            seen_pairs, used = set(), []
             for holes in placements(part, inside):
                 pair = tuple(sorted(holes))
                 if pair in seen_pairs or groups[holes[0]] == groups[holes[1]]:
                     continue
                 seen_pairs.add(pair)
                 chosen = model.new_bool_var(f"wire_{len(wires)}")
+                used.append(chosen)
                 candidates.append(
                     {
                         "chosen": chosen,
-                        "owner": len(physical) + len(wires),
+                        "owner": len(physical) + (piece if stocked else len(wires)),
                         "id": f"jumper:{len(wires) + 1}",
                         "part_id": part["part_id"],
                         "holes": holes,
@@ -248,14 +318,28 @@ def map_circuit(circuit, inventory, board, time_limit=30, casings=None, gripper=
                 edges[a, b].append(chosen)
                 model.add(labels[a] == labels[b]).only_enforce_if(chosen)
                 model.add(labels[a] >= 0).only_enforce_if(chosen)
+            if stocked and used:
+                model.add_at_most_one(used)
+                # Identical pieces: the second one is used only after the first, further on.
+                on = model.new_bool_var(f"piece_{piece}")
+                model.add(sum(used) == on)
+                at = model.new_int_var(0, len(used), f"piece_{piece}_at")
+                model.add(at == sum(i * c for i, c in enumerate(used, 1)))
+                if part["part_id"] in previous:
+                    on_before, at_before = previous[part["part_id"]]
+                    model.add_implication(on, on_before)
+                    model.add(at > at_before).only_enforce_if(on)
+                previous[part["part_id"]] = on, at
         limit_jumpers(model, wires, parts)
         if budget is not None and wires:
             model.add(sum(chosen for chosen, _, _ in wires) <= budget)
         for occupants in occupancy.values():
             model.add_at_most_one(occupants)
-        # Collisions with a part are excluded up front; only wire pairs and cycles stay lazy.
-        # The lazy cuts are exact anyway, so posting stops when the stage's time is up.
-        for clique in no_fit_cliques(candidates, len(physical), margin, rules):
+        # Collisions with a part or a stock piece are excluded up front; only wire pairs of
+        # unlimited jumpers and cycles stay lazy. The lazy cuts are exact anyway, so posting
+        # stops when the stage's time is up.
+        owners = len(physical) + (len(pieces) if stocked else 0)
+        for clique in no_fit_cliques(candidates, owners, margin, rules):
             if monotonic() > until:
                 break
             model.add_at_most_one(clique)

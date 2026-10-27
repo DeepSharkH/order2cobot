@@ -64,3 +64,24 @@
 - why kept: the gate passes, part-part cuts per round are 0, and every fast instance takes 1 round. Missed: rounds ≤ 2 on p3-p5, which now find no layout at all.
 - surprising: exact models settle the window stages. K = 1 in the 12-row window is proven INFEASIBLE for p3/p4/p5 in 18/12/19 s, and pl5's K = 0 in 6.5 s (was 22 s). But K = 2 and 4 find nothing in their 24 s. Clique literals: 0.13-0.33M in the 12-row window, 1.4M on the whole board (p3-p5), 6.7M for pl5 (10 s build). Part-only cliques (the PLAN variant, wires lazy) bring the thrash back: p3 K = 2 and p4 K = 1 find layouts in 2-7 s, with 2-4 new wire-part cuts every round.
 - next: with 240 s on the whole board, p3 got its first exact layout at 109 s, but with 122 colliding wires (485 wire-wire cuts). So the open problems are first-solution search (P10 symmetry; probing back on, since presolve now runs once per stage) and the wire count in the any-K stage.
+
+## S1 bench on the real stock (Jan's c77b847) - baseline_stock (39bd642)
+- change: the inventory is the real stock (mostly 1 piece per part; LEDs red/green 4-pitch and yellow 1-pitch, no RGB, no 220 Ω, no transistor; jumpers 1× s1, 2× s2, 1× s3, 1× s4) and the supply is fixed at C1 (+) / H1 (−). bench.py died on a KeyError. p1/p2 take stock part ids; p3 = two 330 Ω + red and green LED; p5 = three inputs, each driving its own LED (no RGB in stock); parallel_leds_5 → parallel_leds_3 (3 LEDs in stock); p4 dropped (no transistor).
+- baseline_stock at 120 s (load 9-10): p1 FEASIBLE 2.2 s, 1 jumper (the C1/H1 supply forces one even for one LED); p2 OPTIMAL 1.5 s; led_circuit FEASIBLE 2.2 s, 1 jumper; parallel_resistors 1.3 s, rc_low_pass 1.4 s OPTIMAL; p3, p5, parallel_leds_3 UNKNOWN (121.6-121.8 s, 6 solves). p5 re-run on clean HEAD (baseline_stock_p5): the same.
+
+## P13 stock jumpers as pieces: every wire collision eager - KEPT
+- change: with every jumper part stocked (int quantity), each piece is an owner like a part: one at-most-one over its placements, so no_fit_cliques covers wire-part and wire-wire pairs (only order cycles stay lazy). Identical pieces are ordered (second used only after the first, at a later placement). Unlimited jumpers (the test fixture) keep the old one-owner-per-wire path.
+- effect: proofs become possible. p3 is proven INFEASIBLE on the whole board in 80 s (6 solves, the any-K stage 28.6 s, 13.9k vars / 72k constraints), where the lazy model returned UNKNOWN. p1/led_circuit 2.2 → 1.3 s alone, 2.4 s in the bench at load 19.
+- why kept: gate passes (pieces_capacity: all five fast instances verified, 1.3-2.4 s at load 19-20 vs 9-10), and UNKNOWN turns into a proof.
+
+## P14 strip capacity bound: 3 robot pins on one net is refused at once - KEPT
+- finding: two casings with a pin in the same 5-hole strip need ≥ 3 columns between them (resistor, jumper, LED; LED-LED 4), and a casing bridging the E-F channel leaves room only for one at A or B. So a strip half holds at most 2 casing pins. A net on k + 1 strips needs ≥ k jumpers, which fill 2k of the 2(k + 1) slots: **a net never takes more than 2 robot-placed pins, whatever the jumper count.** Rigid jumpers add exactly the room they use up.
+- change: before any search, `strip_capacity()` solves the exact max-packing of one middle strip per board half (pairwise relation(), tiny CP-SAT, ~0.5 s); if it is ≤ 2, a net with > 2 robot-placed pins raises INFEASIBLE with the net named. Skipped when a part has two pins on one net (it would join strips itself).
+- bench pieces_capacity vs baseline_stock: p5 UNKNOWN 121.6 s → INFEASIBLE 1.8 s (GND: 3 LED cathodes); parallel_leds_3 UNKNOWN 121.8 s → INFEASIBLE 1.6 s (VCC 3 resistors, GND 3 cathodes); p3 → INFEASIBLE 80.1 s (P13; its nets have 2 robot pins each, so the bound does not apply). Fast five unchanged.
+- what 3 per strip would need (offset 2 = columns A, C, E): casings ≤ 2.5 mm thick with today's 2 mm finger and 0.5 mm opening, or 3.0 mm with a 1.5 mm finger. Not possible for 5 mm LEDs.
+
+## W1 what-ifs on p3 / p5 / parallel_leds_3 (sandbox copies, nothing committed)
+- p3 with 0.5 mm opening, without the 6.2 mm LED band, and with both: still proven INFEASIBLE (81-83 s). The geometry relaxations of geometry_audit.md do not rescue it.
+- p3 with the supply moved to C32/H32 (centred window): INFEASIBLE up to K = 4 in the 12-row window, UNKNOWN beyond. The row-1 supply is not the only problem: every net of p3 fills each strip it touches.
+- p3 with 10 of each jumper: UNKNOWN (766k constraints in the whole-board stage).
+- hand-placed wires (no casing, no grip, only two holes; operator plugs them after the robot, like the supply), lengths 1-8 along a row or column, normal stages: p3 FEASIBLE with 4 hand wires (48 s), p5 FEASIBLE with 2 (53 s), parallel_leds_3 UNKNOWN at 120 s (a single whole-board stage found one with 46 wires in 55 s; needs a wire objective or tighter windows).

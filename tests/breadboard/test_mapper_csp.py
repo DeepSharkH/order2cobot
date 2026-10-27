@@ -379,6 +379,55 @@ def test_part_collisions_are_eager(monkeypatch):
     assert result["status"] == "OPTIMAL" and len(models) == 1
 
 
+def test_three_robot_pins_on_a_net_are_refused_at_once(monkeypatch):
+    """Two casings per strip at most, and a jumper fills the room it adds: the stock parts can
+    never put 3 robot-placed pins on one net, so it is refused before any search."""
+    models = record_models(monkeypatch)
+    circuit = mapper.read_json(ROOT / "circuits/parallel_leds_3.json")
+    inventory = mapper.read_json(ROOT / "example_components.json")
+    board = mapper.read_json(ROOT / "board_connections.json")
+    with pytest.raises(ValueError, match="INFEASIBLE. net VCC has 3 robot-placed pins, net GND"):
+        mapper.map_circuit(circuit, inventory, board, time_limit=20)
+    assert len(models) == 2  # the capacity check, one strip per board half; no layout search
+
+
+def test_strip_capacity_is_two_casings():
+    board = mapper.read_json(ROOT / "board_connections.json")
+    positions, groups = mapper.board_geometry(board)
+    inventory = {p["part_id"]: p for p in mapper.read_json(ROOT / "example_components.json")["components"]}
+    casings = mapper.read_json(mapper.DEFAULT_CASINGS)
+    gripper = mapper.read_json(ROOT / "gripper.json")
+    parts = [p for p in inventory.values() if p.get("placement_mode") != "manual"]
+
+    def shape(part, holes):
+        casing = geometry.casing_for(part, casings, 2.54)
+        return geometry.placement_geometry(holes, positions, casing, gripper, 2.54)
+
+    assert mapper.strip_capacity(parts, positions, groups, shape, 0) == 2
+    thin = {**gripper, "finger_thickness_mm": 0.1, "opening_per_finger_mm": 0}
+    casings["casings"] = [{**c, "thickness_y": 1.0} for c in casings["casings"]]
+    shape_thin = lambda part, holes: geometry.placement_geometry(  # noqa: E731
+        holes, positions, geometry.casing_for(part, casings, 2.54), thin, 2.54
+    )
+    leadless = [p for p in parts if p["type"] != "led"]  # the LED band stays 6.2 mm
+    assert mapper.strip_capacity(leadless, positions, groups, shape_thin, 0) > 2
+
+
+def test_stock_jumpers_are_eager_pieces(monkeypatch):
+    """Jumpers in stock are pieces placed at most once, so their collisions are cliques too:
+    no lazy round, one solve per stage (K = 0 refuted, K = 1 found)."""
+    models = record_models(monkeypatch)
+    circuit, inventory, board = six_pin_case()
+    for part in inventory["components"]:
+        if part["type"] == "jumper":
+            part["quantity"] = 2
+    result = mapper.map_circuit(circuit, inventory, board, time_limit=20)
+    assert result["status"] == "OPTIMAL" and len(result["jumpers"]) == 1
+    assert len(models) == 2
+    names = [v.name for v in models[-1].proto.variables]
+    assert sum(n.startswith("piece_") and not n.endswith("_at") for n in names) == 8
+
+
 @pytest.mark.parametrize("solver", ["v1", "v2"])
 def test_cli_solver_switch(solver):
     """mapper.py --solver v1 runs the old solver (mapper_v1.py, kept to compare), v2 this one."""
