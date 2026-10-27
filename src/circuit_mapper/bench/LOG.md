@@ -85,3 +85,22 @@
 - p3 with the supply moved to C32/H32 (centred window): INFEASIBLE up to K = 4 in the 12-row window, UNKNOWN beyond. The row-1 supply is not the only problem: every net of p3 fills each strip it touches.
 - p3 with 10 of each jumper: UNKNOWN (766k constraints in the whole-board stage).
 - hand-placed wires (no casing, no grip, only two holes; operator plugs them after the robot, like the supply), lengths 1-8 along a row or column, normal stages: p3 FEASIBLE with 4 hand wires (48 s), p5 FEASIBLE with 2 (53 s), parallel_leds_3 UNKNOWN at 120 s (a single whole-board stage found one with 46 wires in 55 s; needs a wire objective or tighter windows).
+
+## V3 topology first, then exact columns; opt-in hand wires - NEW SOLVER (55d823d), not default
+- change: `mapper_v3.py` (`mapper.py --solver v3 [--hand-wires N]`, `bench.py --solver v3 --hand-wires N`). A route = the strips a straight part lands in; one CP-SAT model holds routes, one-net-per-strip labels, connectivity as a parent/level tree over chosen jumpers (no flows), strip hole and casing capacity, the columns as placements under each route with v2's exact no-fit cliques, and holes covered by a casing body. A small second model picks holes and the assembly order; its cores return as nogoods (generalized by row shift and mirror). Row windows 20 → 36 → all. Hand wires (no casing, plugged by the operator after the robot, ≤ 8 rows) are tried only after robot-only, at most 1, 2, ... at a time. New instance p6_esp_two_leds (dashboard project 20261027-201828).
+- finding: p6 robot-only is proven INFEASIBLE on a 36-row window (404 s), which covers every row the stocked jumpers reach from the row-1 supply; with 1 hand wire it solves (0 robot jumpers in a 1-wire-only run, 27 s).
+- bench at 120 s, load 16-26 (cmp_v2, cmp_v3, cmp_v3_hand4):
+
+| instance | v2 | v3 robot-only | v3 + ≤4 hand wires |
+|---|---|---|---|
+| p1 | FEASIBLE 3.5 s, 1 j | FEASIBLE 4.8 s, 1 j | FEASIBLE 6.4 s, 1 j |
+| p2 | OPTIMAL 1.8 s | FEASIBLE 4.6 s | FEASIBLE 5.8 s |
+| p3 | INFEASIBLE 104.8 s | UNKNOWN 122 s | FEASIBLE 99.7 s, 4 hand |
+| p5 | INFEASIBLE 1.8 s | UNKNOWN 122 s | UNKNOWN 121.7 s |
+| p6 | UNKNOWN 121.8 s | UNKNOWN 122 s | FEASIBLE 42.6 s, 5 j + 1 hand |
+| parallel_leds_3 | INFEASIBLE 1.8 s | UNKNOWN 121 s | UNKNOWN 123 s |
+| led_circuit | FEASIBLE 2.6 s, 1 j | FEASIBLE 5.9 s, 1 j | FEASIBLE 5.7 s, 1 j |
+| parallel_resistors | OPTIMAL 1.5 s | FEASIBLE 5.7 s | FEASIBLE 5.7 s |
+| rc_low_pass | OPTIMAL 1.5 s | FEASIBLE 6.2 s | FEASIBLE 5.6 s |
+
+- open: v3 lacks v2's up-front refusal of a net with > 2 robot pins (p5, parallel_leds_3 lose their 1.8 s proof) and should then skip the robot-only phase when hand wires are allowed; a layout with 0 jumpers is OPTIMAL by definition; the robot-only phase and the 1-3 wire phases waste time on cases that need more wires (p3 99.7 s). Gate for the default not met yet.
