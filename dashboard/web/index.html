@@ -49,9 +49,9 @@
         <div id="editor" class="editor hidden">
           <div class="ed-title">Manual calibration</div>
           <div class="ed-items" id="ed-items">
-            <button data-item="base"><i class="sw sw-arm"></i>Robot base</button>
-            <button data-item="ls108g"><i class="sw sw-ls108g"></i>LS108G switch</button>
-            <button data-item="breadboard"><i class="sw sw-breadboard"></i>Breadboard</button>
+            <button data-item="base" title="Robot base"><i class="sw sw-arm"></i>Base</button>
+            <button data-item="ls108g" title="TP-Link LS108G switch"><i class="sw sw-ls108g"></i>LS108G</button>
+            <button data-item="breadboard" title="Breadboard"><i class="sw sw-breadboard"></i>Breadboard</button>
           </div>
           <div class="ed-src" id="ed-src"></div>
           <div class="ed-row">
@@ -67,11 +67,8 @@
           </div>
           <div class="ed-size">
             <label>Yaw <input type="number" step="any" data-k="yaw"></label><span>DEG</span>
-          </div>
-          <div class="ed-size cad-only" title="Pitch of the CAD grid: the switch's port row, the breadboard's columns (x) and rows (y)">
-            <label>Pitch <input type="number" step="any" data-k="px"></label>
-            <label id="ed-py">Y <input type="number" step="any" data-k="py"></label>
-            <span>MM</span>
+            <label class="cad-only" title="Pitch of the CAD grid: the switch's port row, the breadboard's columns (x) and rows (y), mm">Pitch <input type="number" step="any" data-k="px"></label>
+            <label id="ed-py" title="Breadboard row pitch, mm"><input type="number" step="any" data-k="py"></label>
           </div>
           <div class="ed-size">
             <span>Step</span>

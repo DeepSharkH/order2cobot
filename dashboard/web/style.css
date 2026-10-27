@@ -236,6 +236,25 @@ kbd { font: 400 10px var(--font); opacity: .6; margin-left: 4px; }
   border: 1px solid #3a3a3a; border-radius: 0; padding: 5px 7px;
 }
 .ed-hint { margin: 0; color: var(--grey); line-height: 1.5; }
+/* manual calibration: what is placed, its source, nudges, Δ vs saved */
+.editor { width: 368px; max-height: calc(100% - 28px); overflow-y: auto; gap: 8px; padding: 14px 16px; }
+.editor > * { flex-shrink: 0; }      /* scrolls when taller than the scene, rows keep their height */
+.ed-items { display: flex; gap: 5px; flex-wrap: wrap; }
+.ed-items button { display: flex; align-items: center; gap: 7px; padding: 6px 9px; }
+.ed-items button i { width: 9px; height: 9px; outline: 1px solid #3a3a3a; }
+.ed-items button.dirty::after { content: ''; width: 5px; height: 5px; border-radius: 50%; background: var(--brass); }
+.ed-src { color: var(--grey); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.editor .ed-size input { width: 68px; -moz-appearance: textfield; appearance: textfield; font-variant-numeric: tabular-nums; }
+.editor .ed-size input::-webkit-inner-spin-button, .editor .ed-size input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.editor .seg { margin-right: 0; }
+.editor .seg button, .ed-nudge button { padding: 5px 8px; }
+.ed-nudge { gap: 4px; }
+.ed-nudge button { min-width: 36px; }
+.ed-pose { color: var(--beige); font-size: 12px; font-variant-numeric: tabular-nums; }
+.ed-msg { color: var(--cream); min-height: 1em; white-space: pre-line; line-height: 1.45; }
+.ed-msg.err { color: var(--red); }
+.sw-ls108g { background: #fef5da; }
+.sw-breadboard { background: #6fb3a8; }
 
 /* ── tabs + port QA ────────────────────────────────────────────── */
 .tabs { display: flex; gap: 6px; }

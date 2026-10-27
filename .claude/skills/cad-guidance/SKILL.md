@@ -54,6 +54,12 @@ Units: the CLI prints base **mm** in `ensure`, **metres** in `predict`/`anchor` 
      is fine (the image fit handles it); the arm covering most of it is not: move it out of
      view and retry.
    - A failed gate never replaces a good registration (`--force` to override).
+   - Manual fallback, when the cameras cannot register it or the result is visibly off: in the
+     dashboard (3D Visualization tab, **Edit** or `E`), pick the part and drag / nudge / type its
+     box onto the real one in every camera feed (the feeds draw both parts' boxes); Save makes
+     it a `manual` registration (σ 1.5 mm / 0.5°). From numbers instead:
+     `python -m cadguide register <obj> --manual X Y YAW_DEG` (origin in base metres, standing
+     on the plank; `--z Z` to set the height). Like any new registration it drops the anchors.
 2. **First insertion** (no anchors in this epoch): target = `entry`, search radius =
    `budget` (expect 3–7 mm). Use the insertion skill's full method (touch references, spiral,
    engage, prove, seat) — the CAD only replaces the survey arithmetic.

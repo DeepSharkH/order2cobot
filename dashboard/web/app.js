@@ -547,66 +547,369 @@ function renderFuse(now = false) {
     : 'No camera selected.';
 }
 
-// ── base editor: x, y and yaw only (the base sits on the board plane) ───────
+// ── manual calibration ──────────────────────────────────────────────────────
+// The robot base (x, y, yaw: upright on the board plane at its calibrated height) and the CAD
+// targets (origin x, y, z in the base frame, yaw, pitch; tilted like the plank and, while "On
+// plank", at its height) are dragged with the gizmo, nudged by the step or typed in. While the
+// editor is open its unsaved poses go to the server (edit_preview), which draws them on the
+// feeds: line each box up with its part in every camera. Saving a CAD target makes the pose its
+// manual cadguide registration (set_cad_pose; its anchors are dropped).
 const gizmo = new TransformControls(camera, renderer.domElement);
-gizmo.addEventListener('dragging-changed', (e) => { controls.enabled = !e.value; });
+gizmo.addEventListener('dragging-changed', (e) => { controls.enabled = !e.value && !view.cam; });
 gizmo.setSize(0.8);
 scene.add(gizmo.getHelper());
 
+const ZUP = new THREE.Vector3(0, 0, 1);
+const R2D = 180 / Math.PI;
+const wrapPi = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+const yawOf = (q) => {          // atan2(R10, R00), as cadguide.model.yaw_of
+  const e = new THREE.Matrix4().makeRotationFromQuaternion(q).elements;
+  return Math.atan2(e[1], e[0]);
+};
+const rows = (m) => [0, 1, 2, 3].map((i) => [0, 4, 8, 12].map((j) => m.elements[i + j]));
+const sg = (v, d = 2) => `${v < -0.5 * 10 ** -d ? '−' : '+'}${Math.abs(v).toFixed(d)}`;
+const STEPS = [{ mm: 0.1, deg: 0.05, pitch: 0.001 }, { mm: 0.5, deg: 0.2, pitch: 0.005 }, { mm: 2, deg: 1, pitch: 0.02 }];
+const DEC = { x: 2, y: 2, z: 2, yaw: 3, px: 4, py: 4 };
+const ORIGIN = { ls108g: 'the case bottom centre', breadboard: 'the top face centre' };
+
+// the plank (state.cad.plank: z = a x + b y + c in the world) in the base frame as drawn now
+function plankInBase() {
+  const p = lastState?.cad?.plank;
+  if (!p) return null;
+  if (baseGroup.matrixAutoUpdate) baseGroup.updateMatrix();
+  const inv = baseGroup.matrix.clone().invert();
+  return { c: new THREE.Vector3(0, 0, p.c).applyMatrix4(inv),
+    n: new THREE.Vector3(-p.a, -p.b, 1).normalize().transformDirection(inv) };
+}
+
 const editor = {
   active: false,
-  open() {
+  sel: null,
+  items: {},          // base | ls108g | breadboard -> what is being placed and its saved pose
+  step: STEPS[1],
+  saving: null,
+  open(sel = this.sel || 'ls108g') {
+    if (!lastState) return;
     this.active = true;
     baseGroup.matrix.decompose(baseGroup.position, baseGroup.quaternion, baseGroup.scale);
     baseGroup.matrixAutoUpdate = true;
-    this.z = baseGroup.position.z;          // the base height is fixed (calibrated), only x, y, yaw move
-    gizmo.attach(baseGroup);
-    this.mode('translate');
+    // the base height is fixed (calibrated), only x, y, yaw move
+    const b = { x: baseGroup.position.x, y: baseGroup.position.y, yaw: yawOf(baseGroup.quaternion) };
+    this.items = { base: { kind: 'base', obj: baseGroup, z: baseGroup.position.z, saved: b, touched: false } };
+    for (const [name, m] of Object.entries(cad)) this.items[name] = this.cadItem(name, m);
+    document.querySelectorAll('#ed-items button').forEach((bt) => { bt.disabled = !this.items[bt.dataset.item]; });
     $('#editor').classList.remove('hidden');
     $('#b-edit').classList.add('on');
-    this.fields();
+    $('#btn-edit').classList.add('on');
+    this.msg('');
+    this.select(this.items[sel] ? sel : 'base');
+    this.preview(true);
+    this.beat = setInterval(() => this.preview(true), 1000);     // the server drops a silent preview
+  },
+  cadItem(name, m) {
+    const p = lastState.cad?.objects?.[name];
+    if (!p) return null;
+    const g = m.g;
+    const T = p.T ? mat4(p.T) : null;
+    if (T) T.decompose(g.position, g.quaternion, new THREE.Vector3());
+    else { g.position.set(-0.3, 0, 0); g.quaternion.identity(); }   // not registered: in front of the robot
+    g.matrixAutoUpdate = true;
+    // its rotation = tilt (base z onto the part's z) · Rz(psi), as cadguide places it on the plank
+    const n = ZUP.clone().applyQuaternion(g.quaternion);
+    const rz = new THREE.Quaternion().setFromUnitVectors(ZUP, n).invert().multiply(g.quaternion);
+    const it = { kind: 'cad', name, obj: g, m, info: p, n, psi: 2 * Math.atan2(rz.z, rz.w), yaw: yawOf(g.quaternion),
+      z: g.position.z, scale: [...(p.scale || [1, 1])], onPlank: false, touched: false,
+      saved: T && { T, scale: [...p.scale] } };
+    const pl = plankInBase();
+    if (!T) {
+      it.onPlank = !!pl;
+      this.build(it);
+    } else if (pl) {        // a saved pose that stands on the plank stays on it as it moves
+      it.onPlank = n.angleTo(pl.n) < 1e-3 && Math.abs(this.plankZ(it, g.quaternion, pl) - it.z) < 2e-4;
+    }
+    setCadScale(m, it.scale, p.scale_origin);
+    m.l.el.innerHTML = `${name} <small>editing</small>`;
+    return it;
   },
   close() {
     this.active = false;
+    clearInterval(this.beat);
+    clearTimeout(this.timer);
+    this.timer = null;
+    this.saving = null;
     gizmo.detach();
     baseGroup.matrixAutoUpdate = false;
+    for (const m of Object.values(cad)) { m.g.matrixAutoUpdate = false; m.key = ''; }
     $('#editor').classList.add('hidden');
     $('#b-edit').classList.remove('on');
+    $('#btn-edit').classList.remove('on');
+    send({ type: 'edit_preview' });
+    if (lastState) {             // back to the saved poses
+      baseGroup.matrix.copy(mat4(lastState.T_world_base));
+      applyCad(lastState.cad);
+    }
+  },
+  select(id) {
+    const it = this.items[id];
+    if (!it) return;
+    this.sel = id;
+    gizmo.attach(it.obj);
+    this.mode(gizmo.mode);
+    const isCad = it.kind === 'cad';
+    document.querySelectorAll('#editor .cad-only').forEach((e) => e.classList.toggle('hidden', !isCad));
+    $('#ed-py').classList.toggle('hidden', !isCad || !it.info.pitch_mm[1]);
+    $('#ed-items').querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.item === id));
+    if (isCad) {
+      const p = it.info;
+      $('#ed-src').textContent = p.kind ? `${p.kind} registration ${(p.stamp || '').slice(5, 16).replace('T', ' ')} · ${p.anchors} anchor${p.anchors === 1 ? '' : 's'}` : 'not registered';
+      $('#ed-hint').textContent = `X / Y / Z: ${ORIGIN[id] || 'the CAD origin'}, robot base frame; pitch in mm. Line the box up with the part in the camera feeds. Saving makes this its manual registration${p.anchors ? ` and drops its ${p.anchors} anchor${p.anchors > 1 ? 's' : ''}` : ''}.`;
+    } else {
+      $('#ed-src').textContent = `world frame · height ${fmt(it.z * 1000, 1)} mm`;
+      $('#ed-hint').textContent = 'Upright at its calibrated height; world origin is the board centre. '
+        + 'Line the drawn arm up with the real one in the point clouds and the fixed-cam overlay.';
+    }
+    this.fields();
   },
   mode(m) {
     gizmo.setMode(m);
     gizmo.showX = gizmo.showY = m === 'translate';     // turns about z only
-    gizmo.showZ = m === 'rotate';                      // stays on z = 0
+    gizmo.showZ = m === 'rotate';                      // z by the field, the nudge or the plank
     document.querySelectorAll('#editor [data-mode]').forEach((b) => b.classList.toggle('on', b.dataset.mode === m));
   },
-  values() {
-    const yaw = new THREE.Euler().setFromQuaternion(baseGroup.quaternion, 'ZYX').z;
-    return { x: baseGroup.position.x, y: baseGroup.position.y, yaw: (yaw * 180) / Math.PI };
+  // the part's rotation and height from its tilt, psi and z (or the plank)
+  build(it) {
+    if (it.kind === 'base') {
+      it.obj.position.z = it.z;
+      return;
+    }
+    const pl = it.onPlank ? plankInBase() : null;
+    if (pl) it.n.copy(pl.n);
+    const q = new THREE.Quaternion().setFromUnitVectors(ZUP, it.n).multiply(new THREE.Quaternion().setFromAxisAngle(ZUP, it.psi));
+    it.obj.quaternion.copy(q);
+    if (pl) it.z = this.plankZ(it, q, pl);
+    it.obj.position.z = it.z;
+    it.yaw = yawOf(q);
   },
-  fields() {
-    const v = this.values();
-    const shown = { x: v.x * 1000, y: v.y * 1000, yaw: v.yaw };
+  // origin z that puts the part's bottom centre on the plank (cadguide.register.from_manual)
+  plankZ(it, q, pl) {
+    const b = new THREE.Vector3(0, 0, it.info.bottom_z).applyQuaternion(q);
+    const fx = it.obj.position.x + b.x, fy = it.obj.position.y + b.y;
+    return pl.c.z - (pl.n.x * (fx - pl.c.x) + pl.n.y * (fy - pl.c.y)) / pl.n.z - b.z;
+  },
+  get(it, k) {        // shown values: mm, degrees
+    const o = it.obj;
+    if (k === 'x' || k === 'y' || k === 'z') return o.position[k] * 1000;
+    if (k === 'yaw') return yawOf(o.quaternion) * R2D;
+    const i = k === 'px' ? 0 : 1;
+    return it.kind === 'cad' && it.info.pitch_mm[i] ? it.info.pitch_mm[i] * it.scale[i] : null;
+  },
+  set(it, k, v) {
+    if (!Number.isFinite(v) || (it.kind === 'base' && !['x', 'y', 'yaw'].includes(k))) return;
+    const o = it.obj;
+    if (k === 'x' || k === 'y') o.position[k] = v / 1000;
+    else if (k === 'z') { it.z = v / 1000; it.onPlank = false; }
+    else if (k === 'yaw') {
+      const d = wrapPi(v / R2D - yawOf(o.quaternion));
+      if (it.kind === 'base') o.quaternion.setFromAxisAngle(ZUP, yawOf(o.quaternion) + d);
+      else it.psi += d;
+    } else {
+      const i = k === 'px' ? 0 : 1;
+      const s = it.info.pitch_mm[i] ? v / it.info.pitch_mm[i] : NaN;
+      if (!(Math.abs(s - 1) <= 0.05)) return;           // the server takes ±5 %
+      it.scale[i] = s;
+      setCadScale(it.m, it.scale, it.info.scale_origin);
+    }
+    this.build(it);
+    this.changed(it);
+  },
+  nudge(k, d) {
+    const it = this.items[this.sel];
+    if (!it) return;
+    const v = this.get(it, k);
+    if (v != null) this.set(it, k, v + d * (k === 'yaw' ? this.step.deg : k[0] === 'p' ? this.step.pitch : this.step.mm));
+  },
+  onGizmo() {
+    const it = this.items[this.sel];
+    if (!it) return;
+    if (it.kind === 'cad') it.psi += wrapPi(yawOf(it.obj.quaternion) - it.yaw);   // the turn about z
+    else it.obj.quaternion.setFromAxisAngle(ZUP, yawOf(it.obj.quaternion));
+    this.build(it);
+    this.changed(it);
+  },
+  togglePlank() {
+    const it = this.items[this.sel];
+    if (it?.kind !== 'cad') return;
+    if (!it.onPlank && !plankInBase()) { this.msg('No plank yet: python -m cadguide plank', true); return; }
+    it.onPlank = !it.onPlank;
+    this.build(it);
+    this.changed(it);
+  },
+  changed(it) {
+    it.touched = true;
+    this.fields();
+    this.preview();
+  },
+  isChanged(it) {
+    if (!it?.touched) return false;
+    if (!it.saved) return true;
+    const o = it.obj;
+    if (it.kind === 'base') {
+      return Math.abs(o.position.x - it.saved.x) > 1e-7 || Math.abs(o.position.y - it.saved.y) > 1e-7
+        || Math.abs(wrapPi(yawOf(o.quaternion) - it.saved.yaw)) > 1e-7;
+    }
+    o.updateMatrix();
+    const a = o.matrix.elements, b = it.saved.T.elements;
+    return a.some((v, i) => Math.abs(v - b[i]) > 1e-7) || it.scale.some((v, i) => Math.abs(v - it.saved.scale[i]) > 1e-9);
+  },
+  fields(all = false) {
+    const it = this.items[this.sel];
+    if (!it) return;
     document.querySelectorAll('#editor input[data-k]').forEach((i) => {
-      if (document.activeElement !== i) i.value = shown[i.dataset.k].toFixed(i.dataset.k === 'yaw' ? 1 : 0);
+      if (!all && document.activeElement === i) return;
+      const v = it.kind === 'base' && !['x', 'y', 'yaw'].includes(i.dataset.k) ? null : this.get(it, i.dataset.k);
+      i.value = v == null ? '' : v.toFixed(DEC[i.dataset.k]);
     });
+    $('#ed-plank').classList.toggle('on', !!it.onPlank);
+    $('#ed-items').querySelectorAll('button').forEach((b) => b.classList.toggle('dirty', this.isChanged(this.items[b.dataset.item])));
+    $('#ed-delta').textContent = this.delta(it);
   },
-  fromFields() {
-    const v = {};
-    document.querySelectorAll('#editor input[data-k]').forEach((i) => { v[i.dataset.k] = parseFloat(i.value) || 0; });
-    baseGroup.quaternion.setFromAxisAngle(new THREE.Vector3(0, 0, 1), (v.yaw * Math.PI) / 180);
-    baseGroup.position.set(v.x / 1000, v.y / 1000, this.z);
+  delta(it) {
+    if (!it.saved) return 'Not registered yet: place it, then save';
+    const o = it.obj;
+    let p, yaw, out;
+    if (it.kind === 'base') {
+      p = new THREE.Vector3(it.saved.x, it.saved.y, it.z);
+      yaw = it.saved.yaw;
+    } else {
+      p = new THREE.Vector3().setFromMatrixPosition(it.saved.T);
+      yaw = yawOf(new THREE.Quaternion().setFromRotationMatrix(it.saved.T));
+    }
+    const d = o.position.clone().sub(p).multiplyScalar(1000);
+    out = `Δ saved  x ${sg(d.x)}  y ${sg(d.y)}${it.kind === 'cad' ? `  z ${sg(d.z)}` : ''} mm  yaw ${sg(wrapPi(yawOf(o.quaternion) - yaw) * R2D, 3)}°`;
+    if (it.kind === 'cad' && it.scale.some((v, i) => Math.abs(v - it.saved.scale[i]) > 1e-9)) {
+      out += `  pitch ${it.scale.map((v, i) => sg((v / it.saved.scale[i] - 1) * 100, 3)).slice(0, it.info.pitch_mm[1] ? 2 : 1).join(' / ')} %`;
+    }
+    return out;
+  },
+  // the unsaved poses to the server, which draws them on the feeds (at most ~15 Hz)
+  preview(now = false) {
+    if (!this.active) return;
+    if (!now) {
+      this.timer ??= setTimeout(() => { this.timer = null; this.preview(true); }, 60);
+      return;
+    }
+    const out = { type: 'edit_preview', cad: {} };
+    const b = this.items.base;
+    if (this.isChanged(b)) out.base = { x: b.obj.position.x, y: b.obj.position.y, yaw_deg: yawOf(b.obj.quaternion) * R2D };
+    for (const it of Object.values(this.items)) {
+      if (it?.kind !== 'cad' || !this.isChanged(it)) continue;
+      it.obj.updateMatrix();
+      out.cad[it.name] = { T: rows(it.obj.matrix), scale: it.scale };
+    }
+    send(out);
+  },
+  revert() {
+    const it = this.items[this.sel];
+    if (!it) return;
+    if (it.kind === 'base') {
+      it.obj.position.set(it.saved.x, it.saved.y, it.z);
+      it.obj.quaternion.setFromAxisAngle(ZUP, it.saved.yaw);
+      it.touched = false;
+    } else this.items[it.name] = this.cadItem(it.name, it.m);   // the saved pose, as the server has it now
+    this.select(this.sel);
+    this.preview(true);
+  },
+  save() {
+    const todo = Object.values(this.items).filter((it) => this.isChanged(it));
+    if (!todo.length) { this.msg('Nothing changed'); return; }
+    if (ws?.readyState !== 1) { this.msg('Not connected', true); return; }
+    const drop = todo.filter((it) => it.kind === 'cad' && it.info.anchors);
+    if (drop.length && !confirm(`Saving makes the hand-placed pose the registration and drops the anchors of ${drop.map((it) => `${it.info.label} (${it.info.anchors})`).join(', ')}. Save?`)) return;
+    this.saving = { left: todo.length, msgs: [], ok: true };
+    for (const it of todo) {
+      if (it.kind === 'base') {
+        send({ type: 'set_base', x: it.obj.position.x, y: it.obj.position.y, yaw: yawOf(it.obj.quaternion) * R2D });
+      } else {
+        it.obj.updateMatrix();
+        send({ type: 'set_cad_pose', name: it.name, T: rows(it.obj.matrix), scale: it.scale });
+      }
+    }
+    this.msg('Saving…');
+  },
+  onSaved(m) {
+    const sv = this.saving;
+    if (!sv) return;
+    sv.left -= 1;
+    sv.msgs.push(m.message);
+    sv.ok &&= m.ok;
+    if (sv.left > 0) return;
+    this.saving = null;
+    this.msg(sv.msgs.join('\n'), !sv.ok);
+    if (sv.ok) setTimeout(() => { if (this.active && !this.saving) this.close(); }, 1500);
+  },
+  msg(text, err = false) {
+    const el = $('#ed-msg');
+    el.textContent = text;
+    el.classList.toggle('err', err);
   },
 };
+gizmo.addEventListener('objectChange', () => editor.onGizmo());
+$('#btn-edit').onclick = () => (editor.active ? editor.close() : editor.open());
+$('#ed-items').onclick = (e) => { const b = e.target.closest('button[data-item]'); if (b && !b.disabled) editor.select(b.dataset.item); };
 document.querySelectorAll('#editor [data-mode]').forEach((b) => { b.onclick = () => editor.mode(b.dataset.mode); });
-document.querySelectorAll('#editor input[data-k]').forEach((i) => { i.oninput = () => editor.fromFields(); });
-gizmo.addEventListener('objectChange', () => { baseGroup.position.z = editor.z; editor.fields(); });
+$('#ed-plank').onclick = () => editor.togglePlank();
+$('#ed-step').onclick = (e) => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  editor.step = STEPS[Number(b.dataset.step)];
+  document.querySelectorAll('#ed-step button').forEach((x) => x.classList.toggle('on', x === b));
+};
+$('#ed-nudge').onclick = (e) => { const b = e.target.closest('button[data-k]'); if (b) editor.nudge(b.dataset.k, Number(b.dataset.d)); };
+document.querySelectorAll('#editor input[data-k]').forEach((i) => {
+  i.oninput = () => { const it = editor.items[editor.sel]; if (it) editor.set(it, i.dataset.k, parseFloat(i.value)); };
+  i.onblur = () => editor.fields();
+  i.onkeydown = (e) => {           // ↑ / ↓ nudge the field by the step (shift: ×10)
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+    e.preventDefault();
+    editor.nudge(i.dataset.k, (e.key === 'ArrowUp' ? 1 : -1) * (e.shiftKey ? 10 : 1));
+    editor.fields(true);
+  };
+});
+$('#ed-revert').onclick = () => editor.revert();
 $('#ed-cancel').onclick = () => editor.close();
-$('#ed-save').onclick = () => { send({ type: 'set_base', ...editor.values() }); editor.close(); };
+$('#ed-save').onclick = () => editor.save();
+// keys: E opens it; then M / R gizmo mode, P on plank, arrows x / y, PgUp / PgDn z, [ / ] yaw
+// (shift: ×10 the step), Esc closes
+const NUDGE_KEYS = { ArrowLeft: ['x', -1], ArrowRight: ['x', 1], ArrowDown: ['y', -1], ArrowUp: ['y', 1],
+  PageDown: ['z', -1], PageUp: ['z', 1], '[': ['yaw', -1], ']': ['yaw', 1], '{': ['yaw', -1], '}': ['yaw', 1] };
 document.addEventListener('keydown', (e) => {
-  if (!editor.active || document.activeElement.tagName === 'INPUT') return;
-  if (e.key === 'm' || e.key === 'M') editor.mode('translate');
-  if (e.key === 'r' || e.key === 'R') editor.mode('rotate');
-  if (e.key === 'Escape') editor.close();
+  if (['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement.tagName) || e.ctrlKey || e.metaKey || e.altKey) return;
+  const k = e.key.toLowerCase();
+  if (!editor.active) {
+    if (k === 'e' && !$('#tab-calib').classList.contains('hidden')) editor.open();
+    return;
+  }
+  if (k === 'm') editor.mode('translate');
+  else if (k === 'r') editor.mode('rotate');
+  else if (k === 'p') editor.togglePlank();
+  else if (e.key === 'Escape') editor.close();
+  else if (NUDGE_KEYS[e.key]) {
+    e.preventDefault();
+    editor.nudge(NUDGE_KEYS[e.key][0], NUDGE_KEYS[e.key][1] * (e.shiftKey ? 10 : 1));
+  }
+});
+// click a part (or the arm, for the base) in the 3D view to select it
+const ray = new THREE.Raycaster();
+renderer.domElement.addEventListener('pointerdown', (e) => {
+  if (!editor.active || gizmo.dragging || gizmo.axis) return;
+  const r = renderer.domElement.getBoundingClientRect();
+  ray.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), camera);
+  const hits = [...Object.entries(cad).map(([n, m]) => [n, m.g]), ['base', robot.root]]
+    .filter(([n, o]) => editor.items[n] && o.visible)
+    .map(([n, o]) => [n, ray.intersectObject(o, true)[0]])
+    .filter(([, h]) => h)
+    .sort((a, b) => a[1].distance - b[1].distance);
+  if (hits.length) editor.select(hits[0][0]);
 });
 
 
@@ -810,6 +1113,7 @@ function connect() {
     if (typeof ev.data === 'string') {
       const m = JSON.parse(ev.data);
       if (m.type === 'state') applyState(m);
+      else if (m.type === 'saved') editor.onSaved(m);
       return;
     }
     const u = new Uint8Array(ev.data, 0, 2);

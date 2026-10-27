@@ -11,6 +11,8 @@
     survey: the gripper-camera port survey (porttest/port_survey.py -> data/ports.yaml,
             rays agree to ~0.1 mm): fit the 8 CAD port centres with yaw/tilt/translation
             and the row pitch free.
+    manual: x / y / yaw by hand (the dashboard editor, or register --manual), standing on
+            the plank like the cloud fit.
 """
 import io
 import time
