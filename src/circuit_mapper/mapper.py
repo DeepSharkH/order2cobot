@@ -34,7 +34,7 @@ else:
     from power import fixed_power_connections
 
 HERE = Path(__file__).parent
-SOLVERS = ("v2", "v1")  # v2: this file (10-27 overnight work); v1: mapper_v1.py (before it)
+SOLVERS = ("v2", "v1", "v3")  # v2: this file (10-27 overnight work); v1: mapper_v1.py (before it); v3: mapper_v3.py
 DEFAULT_CASINGS = HERE.parents[1] / "assets/models/component_casings/casings.json"
 # (row window, jumper budget) per stage. The window is a multiple of the first window's
 # rows, centred on the board (None: every row); a None budget allows any number of jumpers.
@@ -551,8 +551,9 @@ def main():
         "--solver",
         choices=SOLVERS,
         default="v2",
-        help="v2: this file; v1: mapper_v1.py, the old one",
+        help="v2: this file; v1: mapper_v1.py, the old one; v3: mapper_v3.py (topology, then geometry)",
     )
+    parser.add_argument("--hand-wires", type=int, default=0, help="v3 only: hand wires the operator may plug")
     args = parser.parse_args()
     if args.time_limit <= 0:
         parser.error("--time-limit must be positive")
@@ -561,6 +562,14 @@ def main():
             from .mapper_v1 import map_circuit as solve
         else:
             from mapper_v1 import map_circuit as solve
+    elif args.solver == "v3":
+        if __package__:
+            from .mapper_v3 import map_circuit as solve3
+        else:
+            from mapper_v3 import map_circuit as solve3
+
+        def solve(*a):
+            return solve3(*a, hand_wires=args.hand_wires)
     else:
         solve = map_circuit
     try:

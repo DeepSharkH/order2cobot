@@ -99,6 +99,12 @@ def worker(circuit_path, time_limit, out_path):
     sys.path.insert(0, str(MAPPER_DIR))
     import mapper  # noqa: PLC0415  (the worktree's src/circuit_mapper/mapper.py)
 
+    solver = os.environ.get("BENCH_SOLVER", "v2")
+    extra = {}
+    if solver == "v3":
+        import mapper_v3 as mapper  # noqa: PLC0415
+        extra = {"hand_wires": int(os.environ.get("BENCH_HAND_WIRES", "0"))}
+
     stats = _instrument_solver()
     read = lambda p: json.loads(Path(p).read_text())  # noqa: E731
     record = {}
@@ -109,6 +115,7 @@ def worker(circuit_path, time_limit, out_path):
             read(MAPPER_DIR / "example_components.json"),
             read(MAPPER_DIR / "board_connections.json"),
             time_limit,
+            **extra,
         )
         record.update(status=result.get("status", "?"), error=None, result=result)
     except Exception as error:  # noqa: BLE001  (every failure is a benchmark outcome)
@@ -210,7 +217,8 @@ def summarize(path, circuit, parts, board, record):
     )
     rows = [_row(h) for h in holes]
     out.update(
-        jumpers=len(result["jumpers"]),
+        jumpers=sum(1 for j in result["jumpers"] if not j.get("hand")),
+        hand_wires=sum(1 for j in result["jumpers"] if j.get("hand")),
         placements=len(result["placements"]),
         row_min=min(rows),
         row_max=max(rows),
@@ -275,18 +283,25 @@ def git_state():
     return {"commit": git("rev-parse", "--short", "HEAD"), "dirty": bool(git("status", "--porcelain", "--untracked-files=no", "--", "src"))}
 
 
+def jmp(r):
+    """Robot jumpers, plus hand wires as +Nh."""
+    if "jumpers" not in r:
+        return "-"
+    return f"{r['jumpers']}+{r['hand_wires']}h" if r.get("hand_wires") else str(r["jumpers"])
+
+
 def fmt_row(r):
     span = f"{r['row_min']}..{r['row_max']}" if "row_min" in r else "-"
     build = f"{r['build_s']:.1f}" if r.get("build_s") is not None else "-"
     note = r.get("error") or r.get("verify_error") or ""
     return (
         f"{r['name'][:28]:28} {r['status'][:10]:10} {r['wall_s']:7.1f} {build:>6} "
-        f"{str(r.get('solves', '-')):>3} {str(r.get('jumpers', '-')):>3} {str(r.get('placements', '-')):>3} "
+        f"{str(r.get('solves', '-')):>3} {jmp(r):>5} {str(r.get('placements', '-')):>3} "
         f"{span:>7} {'yes' if r['verified'] else 'no':3}  {note[:90]}"
     )
 
 
-HEADER = f"{'instance':28} {'status':10} {'wall_s':>7} {'build':>6} {'it':>3} {'jmp':>3} {'plc':>3} {'rows':>7} ver  note"
+HEADER = f"{'instance':28} {'status':10} {'wall_s':>7} {'build':>6} {'it':>3} {'jmp':>5} {'plc':>3} {'rows':>7} ver  note"
 
 
 def main():
@@ -297,6 +312,8 @@ def main():
     parser.add_argument("--only", help="comma-separated substrings; keep instances whose file name contains one")
     parser.add_argument("--lock", type=Path, default=LOCK, help="solver lock file")
     parser.add_argument("--hard-timeout", type=float, help="kill an instance after this many s (default 2*limit+120)")
+    parser.add_argument("--solver", choices=("v2", "v3"), default="v2", help="v2: mapper.py, v3: mapper_v3.py")
+    parser.add_argument("--hand-wires", type=int, default=0, help="v3: hand wires allowed (operator-plugged, no casing)")
     parser.add_argument("--_worker", type=Path, help=argparse.SUPPRESS)
     parser.add_argument("--_out", help=argparse.SUPPRESS)
     args = parser.parse_args()
@@ -305,6 +322,7 @@ def main():
     if args._worker:
         worker(args._worker, args.time_limit, args._out)
         return
+    os.environ["BENCH_SOLVER"], os.environ["BENCH_HAND_WIRES"] = args.solver, str(args.hand_wires)
 
     files = [f.resolve() for f in args.files] or sorted(
         p for pattern in DEFAULT_GLOBS for p in MAPPER_DIR.glob(pattern)
@@ -320,6 +338,8 @@ def main():
 
     meta = {
         "label": args.label,
+        "solver": args.solver,
+        "hand_wires_allowed": args.hand_wires,
         "time_limit_s": args.time_limit,
         "started": time.strftime("%Y-%m-%d %H:%M:%S"),
         "host": platform.node(),
