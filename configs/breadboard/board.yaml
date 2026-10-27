@@ -1,0 +1,50 @@
+# Measured board model of the real breadboard (breadboard task only), millimetres.
+# Measured by hand with calipers by the user on 2026-10-27 (pins in holes, centre = average of
+# near/far side). Cross-checked against the BusBoard BB830 datasheet p.2 (1:1 drawing) and
+# Fritzing breadboard2.svg. Unbranded 830-point board, 63 rows.
+#
+# Frame: origin = corner of edge S (long edge, a side) and edge W (short edge, row 1), on the
+# board top surface. x along the rows (W -> E), y across the columns (S -> N), z up.
+# The L fixture references edges S + W, so only a1's offsets from S and W are needed; the
+# j side and edge E are not references (their hand measurements do not close, see below).
+#
+# Decisions from the measurements:
+#   - channel e->f = 7.62 (3 pitches). a1<->j1 measured 27.32 (7.62 -> 27.94, 10.16 -> 30.48),
+#     so the solver's 10.16 (src/circuit_mapper/board_connections.json) is WRONG.
+#   - pitch kept at 2.54 (component standard). a1<->a63 measured ~158 vs 157.48: calipers on
+#     leaning pins; the agent's first touch check at a1 / a63 / j1 confirms the scale (TODO).
+#   - a part is fully seated when its casing touches the top (pin 6.5 = seated depth 6.5):
+#     insertion = guarded z down to casing contact, straight z only.
+# TODO(touch check): refine a1 and the pitch by guarded touches through the agent; expected
+# error before that <= ~0.6 mm, needed +-0.3 mm.
+stamp: '2026-10-27'
+source: hand calipers (user), datasheet BB830 cross-check
+size_mm: {length: 165.1, width: 55.74, height: 8.5}   # height = table -> top, incl. backing
+backing_mm: 0.5
+edges: {S: flat, N: flat, W: flat, E: flat}
+fixture_edges: [S, W]
+rows: 63
+columns: abcdefghij
+pitch_mm: 2.54
+a1_mm: [3.24, 12.49]          # x from edge W, y from edge S
+channel_mm: 7.62              # e -> f centre-centre
+# hole(col, row): x = a1.x + (row-1)*pitch
+#                 y = a1.y + k*pitch (a..e, k=0..4); a1.y + 4*pitch + channel + k*pitch (f..j)
+pin_length_mm: 6.5
+seat_depth_mm: 6.5
+rails:
+  detachable: true
+  split_mid: false
+  x_shift_mm: 1.27            # rail holes sit between two main-row holes (half pitch)
+  outer_S_to_edge_mm: 2.76
+  inner_S_to_row_a_mm: 6.43
+  modelled: false             # not used in the first demo; hand values do not close (0.76 mm)
+raw_measurements_mm:          # as measured, for traceability
+  a1_to_S: 12.49
+  a1_to_W: [3.25, 3.24]
+  j63_to_N: 12.75
+  j63_to_E: 3.25
+  e1_f1: 6.78
+  a1_a63: [158, 158]
+  a1_j1: 27.32
+  width: 55.74                # a + grid + j sum = 53.18: 2.56 (one pitch) unexplained, j side unused
