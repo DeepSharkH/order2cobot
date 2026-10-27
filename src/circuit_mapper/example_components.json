@@ -1,95 +1,188 @@
 {
   "schema_version": "1.0",
+  "description": "Actual stock: repeated user entries count as separate pieces. The manual connector is virtual, not physical stock. Electrical ratings not supplied are left unspecified.",
   "components": [
     {
-      "part_id": "resistor_220ohm_gap_0",
-      "name": "220 ohm resistor - 0 gap",
+      "part_id": "resistor_330ohm_gap_1",
+      "name": "330 ohm resistor - 1 gap",
       "type": "resistor",
       "parameters": {
-        "resistance_ohm": 220,
-        "power_rating_W": 0.25,
-        "tolerance_percent": 5
+        "resistance_ohm": 330
       },
       "pins": [
         "1",
         "2"
       ],
-      "pin_spacing": 1
+      "pin_spacing": 2,
+      "quantity": 1
     },
     {
-      "part_id": "resistor_220ohm_gap_1",
-      "name": "220 ohm resistor - 1 gap",
+      "part_id": "resistor_330ohm_gap_0",
+      "name": "330 ohm resistor - 0 gap",
       "type": "resistor",
       "parameters": {
-        "resistance_ohm": 220,
-        "power_rating_W": 0.25,
-        "tolerance_percent": 5
+        "resistance_ohm": 330
       },
       "pins": [
         "1",
         "2"
       ],
-      "pin_spacing": 2
+      "pin_spacing": 1,
+      "quantity": 1
     },
     {
-      "part_id": "resistor_1kohm_gap_0",
-      "name": "1 kohm resistor- 0 gap",
+      "part_id": "resistor_2kohm_gap_0",
+      "name": "2000 ohm resistor - 0 gap",
       "type": "resistor",
       "parameters": {
-        "resistance_ohm": 1000,
-        "power_rating_W": 0.25,
-        "tolerance_percent": 5
+        "resistance_ohm": 2000
       },
       "pins": [
         "1",
         "2"
       ],
-      "pin_spacing": 1
+      "pin_spacing": 1,
+      "quantity": 1
+    },
+    {
+      "part_id": "resistor_100ohm_gap_1",
+      "name": "100 ohm resistor - 1 gap",
+      "type": "resistor",
+      "parameters": {
+        "resistance_ohm": 100
+      },
+      "pins": [
+        "1",
+        "2"
+      ],
+      "pin_spacing": 2,
+      "quantity": 1
+    },
+    {
+      "part_id": "resistor_100ohm_gap_0",
+      "name": "100 ohm resistor - 0 gap",
+      "type": "resistor",
+      "parameters": {
+        "resistance_ohm": 100
+      },
+      "pins": [
+        "1",
+        "2"
+      ],
+      "pin_spacing": 1,
+      "quantity": 1
+    },
+    {
+      "part_id": "resistor_2kohm_gap_3",
+      "name": "2000 ohm resistor - 3 gap",
+      "type": "resistor",
+      "parameters": {
+        "resistance_ohm": 2000
+      },
+      "pins": [
+        "1",
+        "2"
+      ],
+      "pin_spacing": 4,
+      "quantity": 1
     },
     {
       "part_id": "resistor_1kohm_gap_1",
-      "name": "1 kohm resistor - 1 gap",
+      "name": "1000 ohm resistor - 1 gap",
       "type": "resistor",
       "parameters": {
-        "resistance_ohm": 1000,
-        "power_rating_W": 0.25,
-        "tolerance_percent": 5
+        "resistance_ohm": 1000
       },
       "pins": [
         "1",
         "2"
       ],
-      "pin_spacing": 2
+      "pin_spacing": 2,
+      "quantity": 1
     },
     {
-      "part_id": "resistor_10kohm_gap_0",
-      "name": "10 kohm resistor - 0 gap",
+      "part_id": "resistor_10kohm_gap_3",
+      "name": "10000 ohm resistor - 3 gap",
       "type": "resistor",
       "parameters": {
-        "resistance_ohm": 10000,
-        "power_rating_W": 0.25,
-        "tolerance_percent": 5
+        "resistance_ohm": 10000
       },
       "pins": [
         "1",
         "2"
       ],
-      "pin_spacing": 1
+      "pin_spacing": 4,
+      "quantity": 1
     },
     {
       "part_id": "resistor_10kohm_gap_1",
-      "name": "10 kohm resistor - 1 gap",
+      "name": "10000 ohm resistor - 1 gap",
       "type": "resistor",
       "parameters": {
-        "resistance_ohm": 10000,
-        "power_rating_W": 0.25,
-        "tolerance_percent": 5
+        "resistance_ohm": 10000
       },
       "pins": [
         "1",
         "2"
       ],
-      "pin_spacing": 2
+      "pin_spacing": 2,
+      "quantity": 1
+    },
+    {
+      "part_id": "resistor_1kohm_gap_3",
+      "name": "1000 ohm resistor - 3 gap",
+      "type": "resistor",
+      "parameters": {
+        "resistance_ohm": 1000
+      },
+      "pins": [
+        "1",
+        "2"
+      ],
+      "pin_spacing": 4,
+      "quantity": 2
+    },
+    {
+      "part_id": "led_green_gap_3",
+      "name": "Green LED - 3 gap",
+      "type": "led",
+      "parameters": {
+        "color": "green"
+      },
+      "pins": [
+        "anode",
+        "cathode"
+      ],
+      "pin_spacing": 4,
+      "quantity": 1
+    },
+    {
+      "part_id": "led_red_gap_3",
+      "name": "Red LED - 3 gap",
+      "type": "led",
+      "parameters": {
+        "color": "red"
+      },
+      "pins": [
+        "anode",
+        "cathode"
+      ],
+      "pin_spacing": 4,
+      "quantity": 1
+    },
+    {
+      "part_id": "led_yellow_gap_0",
+      "name": "Yellow LED - 0 gap",
+      "type": "led",
+      "parameters": {
+        "color": "yellow"
+      },
+      "pins": [
+        "anode",
+        "cathode"
+      ],
+      "pin_spacing": 1,
+      "quantity": 1
     },
     {
       "part_id": "capacitor_ceramic_100nf",
@@ -97,284 +190,14 @@
       "type": "capacitor",
       "parameters": {
         "capacitance_F": 1e-07,
-        "voltage_rating_V": 50,
         "polarized": false
       },
       "pins": [
         "1",
         "2"
       ],
-      "pin_spacing": 1
-    },
-    {
-      "part_id": "capacitor_electrolytic_10uf",
-      "name": "10 uF electrolytic capacitor",
-      "type": "capacitor",
-      "parameters": {
-        "capacitance_F": 1e-05,
-        "voltage_rating_V": 25,
-        "polarized": true
-      },
-      "pins": [
-        "positive",
-        "negative"
-      ],
-      "pin_spacing": 1
-    },
-    {
-      "part_id": "led_red_gap_0",
-      "name": "Red LED - 0 gap",
-      "type": "led",
-      "parameters": {
-        "color": "red"
-      },
-      "pins": [
-        "anode",
-        "cathode"
-      ],
-      "pin_spacing": 1
-    },
-    {
-      "part_id": "led_red_gap_1",
-      "name": "Red LED - 1 gap",
-      "type": "led",
-      "parameters": {
-        "color": "red"
-      },
-      "pins": [
-        "anode",
-        "cathode"
-      ],
-      "pin_spacing": 2
-    },
-    {
-      "part_id": "led_green_gap_0",
-      "name": "Green LED - 0 gap",
-      "type": "led",
-      "parameters": {
-        "color": "green"
-      },
-      "pins": [
-        "anode",
-        "cathode"
-      ],
-      "pin_spacing": 1
-    },
-    {
-      "part_id": "led_green_gap_1",
-      "name": "Green LED - 1 gap",
-      "type": "led",
-      "parameters": {
-        "color": "green"
-      },
-      "pins": [
-        "anode",
-        "cathode"
-      ],
-      "pin_spacing": 2
-    },
-    {
-      "part_id": "led_blue_gap_0",
-      "name": "Blue LED - 0 gap",
-      "type": "led",
-      "parameters": {
-        "color": "blue"
-      },
-      "pins": [
-        "anode",
-        "cathode"
-      ],
-      "pin_spacing": 1
-    },
-    {
-      "part_id": "led_blue_gap_1",
-      "name": "Blue LED - 1 gap",
-      "type": "led",
-      "parameters": {
-        "color": "blue"
-      },
-      "pins": [
-        "anode",
-        "cathode"
-      ],
-      "pin_spacing": 2
-    },
-    {
-      "part_id": "led_rgb_common_cathode_gap_0",
-      "name": "RGB LED with common cathode - 0 gap",
-      "type": "rgb_led",
-      "parameters": {
-        "common_terminal": "cathode"
-      },
-      "pins": [
-        "red_anode",
-        "green_anode",
-        "blue_anode",
-        "common_cathode"
-      ],
-      "pin_spacing": 1
-    },
-    {
-      "part_id": "led_rgb_common_cathode_gap_1",
-      "name": "RGB LED with common cathode - 1 gap",
-      "type": "rgb_led",
-      "parameters": {
-        "common_terminal": "cathode"
-      },
-      "pins": [
-        "red_anode",
-        "green_anode",
-        "blue_anode",
-        "common_cathode"
-      ],
-      "pin_spacing": 2
-    },
-    {
-      "part_id": "switch_spst",
-      "name": "SPST on/off switch",
-      "type": "switch",
-      "parameters": {
-        "contact_form": "SPST",
-        "momentary": false
-      },
-      "pins": [
-        "1",
-        "2"
-      ],
-      "contact_states": [
-        {
-          "state": "open",
-          "connected_pin_groups": []
-        },
-        {
-          "state": "closed",
-          "connected_pin_groups": [
-            [
-              "1",
-              "2"
-            ]
-          ]
-        }
-      ],
-      "pin_spacing": 1
-    },
-    {
-      "part_id": "pushbutton_normally_open",
-      "name": "Two-terminal normally-open pushbutton",
-      "type": "switch",
-      "parameters": {
-        "contact_form": "SPST",
-        "momentary": true
-      },
-      "pins": [
-        "1",
-        "2"
-      ],
-      "contact_states": [
-        {
-          "state": "released",
-          "connected_pin_groups": []
-        },
-        {
-          "state": "pressed",
-          "connected_pin_groups": [
-            [
-              "1",
-              "2"
-            ]
-          ]
-        }
-      ],
-      "pin_spacing": 1
-    },
-    {
-      "part_id": "switch_spdt",
-      "name": "SPDT selector switch",
-      "type": "switch",
-      "parameters": {
-        "contact_form": "SPDT",
-        "momentary": false
-      },
-      "pins": [
-        "common",
-        "throw_1",
-        "throw_2"
-      ],
-      "contact_states": [
-        {
-          "state": "position_1",
-          "connected_pin_groups": [
-            [
-              "common",
-              "throw_1"
-            ]
-          ]
-        },
-        {
-          "state": "position_2",
-          "connected_pin_groups": [
-            [
-              "common",
-              "throw_2"
-            ]
-          ]
-        }
-      ],
-      "pin_spacing": 1
-    },
-    {
-      "part_id": "transistor_npn_generic",
-      "name": "Generic NPN bipolar transistor",
-      "type": "bjt",
-      "parameters": {
-        "polarity": "NPN"
-      },
-      "pins": [
-        "base",
-        "collector",
-        "emitter"
-      ],
-      "pin_spacing": 1
-    },
-    {
-      "part_id": "transistor_pnp_generic",
-      "name": "Generic PNP bipolar transistor",
-      "type": "bjt",
-      "parameters": {
-        "polarity": "PNP"
-      },
-      "pins": [
-        "base",
-        "collector",
-        "emitter"
-      ],
-      "pin_spacing": 1
-    },
-    {
-      "part_id": "potentiometer_10kohm",
-      "name": "10 kohm potentiometer",
-      "type": "potentiometer",
-      "parameters": {
-        "resistance_ohm": 10000,
-        "taper": "linear"
-      },
-      "pins": [
-        "end_1",
-        "wiper",
-        "end_2"
-      ],
-      "pin_spacing": 1
-    },
-    {
-      "part_id": "diode_generic",
-      "name": "Generic signal diode",
-      "type": "diode",
-      "parameters": {},
-      "pins": [
-        "anode",
-        "cathode"
-      ],
-      "pin_spacing": 1
+      "pin_spacing": 1,
+      "quantity": 2
     },
     {
       "part_id": "jumper_rigid_1_pitch",
@@ -388,13 +211,14 @@
         "1",
         "2"
       ],
+      "pin_spacing": 1,
+      "quantity": 1,
       "connected_pin_groups": [
         [
           "1",
           "2"
         ]
-      ],
-      "pin_spacing": 1
+      ]
     },
     {
       "part_id": "jumper_rigid_2_pitch",
@@ -408,13 +232,14 @@
         "1",
         "2"
       ],
+      "pin_spacing": 2,
+      "quantity": 2,
       "connected_pin_groups": [
         [
           "1",
           "2"
         ]
-      ],
-      "pin_spacing": 2
+      ]
     },
     {
       "part_id": "jumper_rigid_3_pitch",
@@ -428,13 +253,14 @@
         "1",
         "2"
       ],
+      "pin_spacing": 3,
+      "quantity": 1,
       "connected_pin_groups": [
         [
           "1",
           "2"
         ]
-      ],
-      "pin_spacing": 3
+      ]
     },
     {
       "part_id": "jumper_rigid_4_pitch",
@@ -448,17 +274,18 @@
         "1",
         "2"
       ],
+      "pin_spacing": 4,
+      "quantity": 1,
       "connected_pin_groups": [
         [
           "1",
           "2"
         ]
-      ],
-      "pin_spacing": 4
+      ]
     },
     {
       "part_id": "power_connector_2pin",
-      "name": "Two-pin DC power connector",
+      "name": "Virtual hand-wired power/signal connection",
       "type": "connector",
       "parameters": {},
       "pins": [

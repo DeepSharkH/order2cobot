@@ -1,0 +1,55 @@
+{
+  "schema_version": "1.0",
+  "circuit_id": "rc_low_pass",
+  "description": "Passive RC low-pass filter: J_IN feeds R1; C1 connects the output to ground. J_OUT exposes the filtered signal. Nominal unloaded cutoff is approximately 159 Hz.",
+  "components": [
+    {
+      "id": "J_IN",
+      "part_id": "power_connector_2pin"
+    },
+    {
+      "id": "J_OUT",
+      "part_id": "power_connector_2pin"
+    },
+    {
+      "id": "R1",
+      "part_id": "resistor_10kohm_gap_0"
+    },
+    {
+      "id": "C1",
+      "part_id": "capacitor_ceramic_100nf"
+    }
+  ],
+  "nets": [
+    {
+      "id": "INPUT",
+      "pins": [
+        "J_IN.positive",
+        "R1.1"
+      ]
+    },
+    {
+      "id": "OUTPUT",
+      "pins": [
+        "R1.2",
+        "C1.1",
+        "J_OUT.positive"
+      ]
+    },
+    {
+      "id": "GND",
+      "pins": [
+        "J_IN.negative",
+        "J_OUT.negative",
+        "C1.2"
+      ]
+    }
+  ],
+  "unconnected_pins": [],
+  "assumptions": [
+    "The inventory two-pin connectors serve as signal connectors: positive is signal and negative is ground.",
+    "The external signal source has low output impedance and the output measurement has high input impedance relative to 10 kohm.",
+    "R1 is 10 kohm and C1 is 100 nF. This passive filter needs no separate power supply."
+  ],
+  "unresolved_questions": []
+}

@@ -1,0 +1,136 @@
+{
+  "schema_version": "1.0",
+  "path_base": "repository_root",
+  "components": {
+    "resistor_330ohm_gap_1": {
+      "casing_id": "resistor_s2",
+      "model_files": [
+        "assets/models/component_casings/casing_resistor_s2_half1.stl",
+        "assets/models/component_casings/casing_resistor_s2_half2.stl"
+      ]
+    },
+    "resistor_330ohm_gap_0": {
+      "casing_id": "resistor_s1",
+      "model_files": [
+        "assets/models/component_casings/casing_resistor_s1_half1.stl",
+        "assets/models/component_casings/casing_resistor_s1_half2.stl"
+      ]
+    },
+    "resistor_2kohm_gap_0": {
+      "casing_id": "resistor_s1",
+      "model_files": [
+        "assets/models/component_casings/casing_resistor_s1_half1.stl",
+        "assets/models/component_casings/casing_resistor_s1_half2.stl"
+      ]
+    },
+    "resistor_100ohm_gap_1": {
+      "casing_id": "resistor_s2",
+      "model_files": [
+        "assets/models/component_casings/casing_resistor_s2_half1.stl",
+        "assets/models/component_casings/casing_resistor_s2_half2.stl"
+      ]
+    },
+    "resistor_100ohm_gap_0": {
+      "casing_id": "resistor_s1",
+      "model_files": [
+        "assets/models/component_casings/casing_resistor_s1_half1.stl",
+        "assets/models/component_casings/casing_resistor_s1_half2.stl"
+      ]
+    },
+    "resistor_2kohm_gap_3": {
+      "casing_id": "resistor_s4",
+      "model_files": [
+        "assets/models/component_casings/casing_resistor_s4_half1.stl",
+        "assets/models/component_casings/casing_resistor_s4_half2.stl"
+      ]
+    },
+    "resistor_1kohm_gap_1": {
+      "casing_id": "resistor_s2",
+      "model_files": [
+        "assets/models/component_casings/casing_resistor_s2_half1.stl",
+        "assets/models/component_casings/casing_resistor_s2_half2.stl"
+      ]
+    },
+    "resistor_10kohm_gap_3": {
+      "casing_id": "resistor_s4",
+      "model_files": [
+        "assets/models/component_casings/casing_resistor_s4_half1.stl",
+        "assets/models/component_casings/casing_resistor_s4_half2.stl"
+      ]
+    },
+    "resistor_10kohm_gap_1": {
+      "casing_id": "resistor_s2",
+      "model_files": [
+        "assets/models/component_casings/casing_resistor_s2_half1.stl",
+        "assets/models/component_casings/casing_resistor_s2_half2.stl"
+      ]
+    },
+    "resistor_1kohm_gap_3": {
+      "casing_id": "resistor_s4",
+      "model_files": [
+        "assets/models/component_casings/casing_resistor_s4_half1.stl",
+        "assets/models/component_casings/casing_resistor_s4_half2.stl"
+      ]
+    },
+    "led_green_gap_3": {
+      "casing_id": "led_s4",
+      "model_files": [
+        "assets/models/component_casings/casing_led_s4_half1.stl",
+        "assets/models/component_casings/casing_led_s4_half2.stl"
+      ]
+    },
+    "led_red_gap_3": {
+      "casing_id": "led_s4",
+      "model_files": [
+        "assets/models/component_casings/casing_led_s4_half1.stl",
+        "assets/models/component_casings/casing_led_s4_half2.stl"
+      ]
+    },
+    "led_yellow_gap_0": {
+      "casing_id": "led_s1",
+      "model_files": [
+        "assets/models/component_casings/casing_led_s1_half1.stl",
+        "assets/models/component_casings/casing_led_s1_half2.stl"
+      ]
+    },
+    "capacitor_ceramic_100nf": {
+      "casing_id": "capacitor_ceramic_s1",
+      "model_files": [
+        "assets/models/component_casings/casing_capacitor_ceramic_s1_half1.stl",
+        "assets/models/component_casings/casing_capacitor_ceramic_s1_half2.stl"
+      ]
+    },
+    "jumper_rigid_1_pitch": {
+      "casing_id": "jumper_s1",
+      "model_files": [
+        "assets/models/component_casings/casing_jumper_s1_half1.stl",
+        "assets/models/component_casings/casing_jumper_s1_half2.stl"
+      ]
+    },
+    "jumper_rigid_2_pitch": {
+      "casing_id": "jumper_s2",
+      "model_files": [
+        "assets/models/component_casings/casing_jumper_s2_half1.stl",
+        "assets/models/component_casings/casing_jumper_s2_half2.stl"
+      ]
+    },
+    "jumper_rigid_3_pitch": {
+      "casing_id": "jumper_s3",
+      "model_files": [
+        "assets/models/component_casings/casing_jumper_s3_half1.stl",
+        "assets/models/component_casings/casing_jumper_s3_half2.stl"
+      ]
+    },
+    "jumper_rigid_4_pitch": {
+      "casing_id": "jumper_s4",
+      "model_files": [
+        "assets/models/component_casings/casing_jumper_s4_half1.stl",
+        "assets/models/component_casings/casing_jumper_s4_half2.stl"
+      ]
+    },
+    "power_connector_2pin": {
+      "casing_id": null,
+      "model_files": []
+    }
+  }
+}

@@ -5,15 +5,16 @@
   "components": [
     {
       "id": "J_POWER",
-      "part_id": "power_connector_2pin"
+      "part_id": "power_connector_2pin",
+      "role": "power_supply"
     },
     {
       "id": "R1",
-      "part_id": "resistor_1kohm_gap_0"
+      "part_id": "resistor_1kohm_gap_1"
     },
     {
       "id": "D1",
-      "part_id": "led_red_gap_0"
+      "part_id": "led_red_gap_3"
     }
   ],
   "nets": [

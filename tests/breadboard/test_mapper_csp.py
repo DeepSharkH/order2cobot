@@ -17,7 +17,7 @@ import mapper  # noqa: E402
 def small_case():
     board = mapper.read_json(ROOT / "board_connections.json")
     board["conductive_groups"] = board["conductive_groups"][:4]
-    inventory = mapper.read_json(ROOT / "example_components.json")
+    inventory = mapper.read_json(Path(__file__).parent / "fixtures/mapper_inventory.json")
     circuit = {
         "circuit_id": "parallel_resistors",
         "components": [
@@ -65,7 +65,7 @@ def six_pin_case():
     """Net A has six pins but a strip only five holes: exactly one jumper is needed."""
     board = mapper.read_json(ROOT / "board_connections.json")
     board["conductive_groups"] = board["conductive_groups"][:16]
-    inventory = mapper.read_json(ROOT / "example_components.json")
+    inventory = mapper.read_json(Path(__file__).parent / "fixtures/mapper_inventory.json")
     connectors = [{"id": f"J{i}", "part_id": "power_connector_2pin"} for i in (1, 2, 3)]
     circuit = {
         "circuit_id": "six_pin_net",
@@ -173,14 +173,14 @@ def test_first_window_is_centred(monkeypatch):
     """Two 14 mm casings give the 12-row minimum: rows 26-37 of 63, 25 spare above, 26 below."""
     models = record_models(monkeypatch)
     board = mapper.read_json(ROOT / "board_connections.json")
-    inventory = mapper.read_json(ROOT / "example_components.json")
-    circuit = mapper.read_json(ROOT / "bench/circuits/p1_red_led_1k_series.json")
+    inventory = mapper.read_json(Path(__file__).parent / "fixtures/mapper_inventory.json")
+    circuit = mapper.read_json(ROOT / "bench/circuits/p2_rc_low_pass_filter.json")
     result = mapper.map_circuit(circuit, inventory, board, time_limit=20)
     window = set(range(26, 38))
     assert result["status"] == "OPTIMAL" and used_rows(result) <= window
     # Candidates, not just the answer, stay inside: 12 rows of 10 holes per manual pin.
     manual = [v.name for v in models[0].proto.variables if v.name.startswith("manual_")]
-    assert len(manual) == 2 * 12 * 10
+    assert len(manual) == 4 * 12 * 10
     assert {int(name.rsplit("_", 1)[1][1:]) for name in manual} == window
 
 
@@ -316,7 +316,7 @@ def window_candidates(model, part_ids, rows):
     """Candidates of the mapper's form in rows: one owner per part, then one per wire
     (shortest and longest jumper)."""
     board = mapper.read_json(ROOT / "board_connections.json")
-    inventory = mapper.read_json(ROOT / "example_components.json")["components"]
+    inventory = mapper.read_json(Path(__file__).parent / "fixtures/mapper_inventory.json")["components"]
     parts = {p["part_id"]: p for p in inventory}
     casings = mapper.read_json(mapper.DEFAULT_CASINGS)
     gripper = mapper.read_json(ROOT / "gripper.json")
@@ -373,8 +373,8 @@ def test_part_collisions_are_eager(monkeypatch):
     """Two parts and no wires: the cliques leave the lazy loop nothing, so one solve."""
     models = record_models(monkeypatch)
     board = mapper.read_json(ROOT / "board_connections.json")
-    inventory = mapper.read_json(ROOT / "example_components.json")
-    circuit = mapper.read_json(ROOT / "bench/circuits/p1_red_led_1k_series.json")
+    inventory = mapper.read_json(Path(__file__).parent / "fixtures/mapper_inventory.json")
+    circuit = mapper.read_json(ROOT / "bench/circuits/p2_rc_low_pass_filter.json")
     result = mapper.map_circuit(circuit, inventory, board, time_limit=20)
     assert result["status"] == "OPTIMAL" and len(models) == 1
 
@@ -385,7 +385,8 @@ def test_cli_solver_switch(solver):
     import subprocess
 
     proc = subprocess.run(
-        [sys.executable, str(ROOT / "mapper.py"), str(ROOT / "examples/pnp_transistor_switch.json"), "--solver", solver],
+        [sys.executable, str(ROOT / "mapper.py"), str(Path(__file__).parent / "fixtures/unsupported_switch.json"), "--inventory",
+         str(Path(__file__).parent / "fixtures/mapper_inventory.json"), "--solver", solver],
         capture_output=True, text=True, timeout=60,
     )
     assert proc.returncode == 1 and "Missing supported casing geometry" in proc.stderr

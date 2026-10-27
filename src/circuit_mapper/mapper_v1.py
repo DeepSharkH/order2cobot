@@ -12,8 +12,12 @@ from ortools.sat.python import cp_model
 
 if __package__:
     from .geometry_v1 import casing_for, constrain_assembly, placement_geometry, verify_assembly
+    from .inventory import checked_parts, limit_jumpers
+    from .power import fixed_power_connections
 else:
     from geometry_v1 import casing_for, constrain_assembly, placement_geometry, verify_assembly
+    from inventory import checked_parts, limit_jumpers
+    from power import fixed_power_connections
 
 HERE = Path(__file__).parent
 DEFAULT_CASINGS = HERE.parents[1] / "assets/models/component_casings/casings.json"
@@ -68,7 +72,7 @@ def map_circuit(circuit, inventory, board, time_limit=30, casings=None, gripper=
         or min(gripper["opening_per_finger_mm"], gripper["safety_margin_mm"]) < 0
     ):
         raise ValueError("Invalid gripper dimensions or margin")
-    parts = {part["part_id"]: part for part in inventory["components"]}
+    parts = checked_parts(circuit, inventory)
     instances = {c["id"]: parts[c["part_id"]] for c in circuit["components"]}
     if any(cid.startswith("jumper:") for cid in instances):
         raise ValueError("The instance ID prefix jumper: is reserved for generated wires")
@@ -114,6 +118,7 @@ def map_circuit(circuit, inventory, board, time_limit=30, casings=None, gripper=
     used_parts.update({pid: p for pid, p in parts.items() if p["type"] == "jumper"})
     shapes = {pid: casing_for(part, casings, pitch) for pid, part in used_parts.items()}
     positions, groups = board_geometry(board)
+    fixed_power = fixed_power_connections(circuit, manual_pins, positions, groups, pin_net)
     group_count = len(board["conductive_groups"])
     model = cp_model.CpModel()
     # Each conductive strip can belong to only one net (-1 means unused).
@@ -162,7 +167,8 @@ def map_circuit(circuit, inventory, board, time_limit=30, casings=None, gripper=
     for pin in sorted(manual_pins):
         n = pin_net[pin]
         options = []
-        for hole, g in groups.items():
+        for hole in [fixed_power[pin]] if pin in fixed_power else groups:
+            g = groups[hole]
             chosen = model.new_bool_var(f"manual_{pin}_{hole}")
             options.append((chosen, hole))
             occupancy[hole].append(chosen)
@@ -205,6 +211,7 @@ def map_circuit(circuit, inventory, board, time_limit=30, casings=None, gripper=
             edges[a, b].append(chosen)
             model.add(labels[a] == labels[b]).only_enforce_if(chosen)
             model.add(labels[a] >= 0).only_enforce_if(chosen)
+    limit_jumpers(model, wires, parts)
     for occupants in occupancy.values():
         model.add_at_most_one(occupants)
     owner_count = len(physical) + len(wires)

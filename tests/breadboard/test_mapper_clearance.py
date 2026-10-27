@@ -70,7 +70,7 @@ def test_permanent_overlap_and_mutual_blocking():
 def test_parallel_resistors_and_missing_connector_geometry():
     board = mapper.read_json(ROOT / "board_connections.json")
     board["conductive_groups"] = board["conductive_groups"][:4]
-    inventory = mapper.read_json(ROOT / "example_components.json")
+    inventory = mapper.read_json(Path(__file__).parent / "fixtures/mapper_inventory.json")
     circuit = {
         "circuit_id": "parallel_resistors",
         "components": [
@@ -87,14 +87,14 @@ def test_parallel_resistors_and_missing_connector_geometry():
         if part["part_id"] == "power_connector_2pin":
             part.pop("placement_mode", None)
     with pytest.raises(ValueError, match="Missing supported casing geometry.*power_connector"):
-        mapper.map_circuit(mapper.read_json(ROOT / "examples/led_circuit.json"), inventory, board)
+        mapper.map_circuit(mapper.read_json(Path(__file__).parent / "fixtures/led_circuit.json"), inventory, board)
 
 
 def test_manual_power_pins_have_no_body_and_remain_connected():
     board = mapper.read_json(ROOT / "board_connections.json")
     board["conductive_groups"] = board["conductive_groups"][:6]
-    inventory = mapper.read_json(ROOT / "example_components.json")
-    circuit = mapper.read_json(ROOT / "examples/led_circuit.json")
+    inventory = mapper.read_json(Path(__file__).parent / "fixtures/mapper_inventory.json")
+    circuit = mapper.read_json(Path(__file__).parent / "fixtures/led_circuit.json")
     result = mapper.map_circuit(circuit, inventory, board, time_limit=15)
     assert set(result["manual_connections"]) == {"J_POWER.positive", "J_POWER.negative"}
     assert "J_POWER" not in result["assembly_order"]

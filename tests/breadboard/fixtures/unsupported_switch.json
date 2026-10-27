@@ -1,0 +1,22 @@
+{
+  "components": [
+    {
+      "id": "SW1",
+      "part_id": "pushbutton_normally_open"
+    }
+  ],
+  "nets": [
+    {
+      "id": "N0",
+      "pins": [
+        "SW1.1"
+      ]
+    },
+    {
+      "id": "N1",
+      "pins": [
+        "SW1.2"
+      ]
+    }
+  ]
+}

@@ -7,8 +7,7 @@ uv run python src/circuit_mapper/mapper.py src/circuit_mapper/examples/led_circu
 ```
 
 Power/signal connector pins are manual connections, not robot-placed parts.
-The LED and RC examples use these virtual input/output connections. The
-transistor example still requires casing geometry for its pushbutton. Missing
+The LED and RC examples use these virtual input/output connections. Missing
 geometry for a robot-placed part produces an explicit error; it is never
 silently treated as having zero size. The parallel-resistor example is also
 available as a small geometry demonstration.
@@ -19,7 +18,7 @@ seconds by default, including model construction), `--solver`, and `--output`.
 `--solver v2` (default) is this solver, from the 10-27 overnight work
 (bench/LOG.md, a second or less for the circuits without jumpers). `--solver v1`
 runs `mapper_v1.py` + `geometry_v1.py`, the solver before it (e0702f9), kept
-unchanged to compare against; both read the same board, parts, casings and
+for comparison, with the same fixed-power rule applied; both read the same board, parts, casings and
 gripper. v1 adds one collision cut per solve (~7 s each on the Jetson), so it is
 luck-dependent: one LED took 4 solves (27 s) on the old 64-row board file and
 does not finish in 120 s on the real 63-row board. The dashboard's Circuit
@@ -37,6 +36,26 @@ pin an independent manual connection point. The inventory's
 but no connector body, pin-spacing constraint, finger clearance, or robot
 assembly step is generated. Add the external wiring by hand after robot
 assembly. Accessibility and clearance for this manual wiring are not verified.
+
+## Fixed power supply
+
+A component with `"role": "power_supply"` has its manual `positive` pin fixed to
+**C1** and `negative` pin fixed to **H1**. The existing instance name `J_POWER`
+also implies that role when no explicit role is supplied. These holes are
+reserved by normal occupancy constraints; other pins/jumpers can still use the
+remaining holes of the A1–E1 and F1–J1 strips. The supply adds no body or robot
+assembly step.
+
+Only one supply is supported by this convention. Its pins must be manual and
+belong to distinct nets, and the board must contain the two separate strips.
+Signal connectors such as J_IN/J_OUT are not anchored merely because their
+inventory part is `power_connector_2pin`. An explicit `role: "signal"` also
+prevents the legacy J_POWER name from implying power.
+
+For powered circuits, v2 starts its search window at row 1 and expands downward.
+Circuits without a supply retain the centered search windows. This reduces
+supply-placement choices but may require more jumpers; it is not a guarantee
+of faster solving. Inventory quantities and part availability are unchanged.
 
 ## Geometry and motion assumptions
 
@@ -97,8 +116,8 @@ The search runs in stages (`STAGES` in `mapper.py`), each a row window and a
 jumper budget: in the first window no jumpers (a model with no wire variables
 at all), then at most 1, 2 and 4; then at most 4 in a window twice as tall;
 then any number on the whole board. The first window spans 1.5 times the robot
-parts' casing length per board half (12 to 24 rows). Windows are centred on the
-board, so layouts stay compact and off the board ends; candidates outside the
+parts' casing length per board half (12 to 24 rows). Windows start at row 1 for powered circuits and are otherwise centred on the
+board; candidates outside the
 window are never built. Each stage gets an equal share of the time left, so a
 stage that finishes early leaves more to the later ones. A stage that is proven
 infeasible or runs out of its share hands over to the next, and every collision
@@ -136,3 +155,16 @@ occupy the same space at different times; they do not need to avoid one another.
 They must avoid the permanent bodies of all earlier installed parts. Every
 part uses the exact inventory variant selected by the circuit; variant choice
 is not automatic.
+
+## Current inventory
+
+`example_components.json` contains the actual 21 physical pieces (18 variants).
+`quantity` limits each variant per assembly, including automatically routed jumpers.
+Omitted quantities mean unlimited availability; the virtual manual connector has no stock limit.
+The LED, RC low-pass and parallel-resistor examples use this inventory. Transistor
+examples have been removed. Historical solver tests use a separate fixture catalog;
+older benchmark circuits may require parts outside the current inventory.
+
+`component_models.json` maps each current inventory `part_id` to its solver
+`casing_id` and the two STL half files. Paths are relative to the repository root.
+The virtual manual connector has `casing_id: null` and no model files.

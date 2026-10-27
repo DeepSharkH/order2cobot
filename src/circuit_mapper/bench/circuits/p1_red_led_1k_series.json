@@ -5,7 +5,8 @@
   "components": [
     {
       "id": "J_POWER",
-      "part_id": "power_connector_2pin"
+      "part_id": "power_connector_2pin",
+      "role": "power_supply"
     },
     {
       "id": "R1",

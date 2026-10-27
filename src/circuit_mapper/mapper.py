@@ -17,6 +17,8 @@ if __package__:
         placement_geometry,
         verify_assembly,
     )
+    from .inventory import checked_parts, limit_jumpers
+    from .power import fixed_power_connections
 else:
     from geometry import (
         casing_for,
@@ -25,6 +27,8 @@ else:
         placement_geometry,
         verify_assembly,
     )
+    from inventory import checked_parts, limit_jumpers
+    from power import fixed_power_connections
 
 HERE = Path(__file__).parent
 SOLVERS = ("v2", "v1")  # v2: this file (10-27 overnight work); v1: mapper_v1.py (before it)
@@ -94,7 +98,7 @@ def map_circuit(circuit, inventory, board, time_limit=30, casings=None, gripper=
         or min(gripper["opening_per_finger_mm"], gripper["safety_margin_mm"]) < 0
     ):
         raise ValueError("Invalid gripper dimensions or margin")
-    parts = {part["part_id"]: part for part in inventory["components"]}
+    parts = checked_parts(circuit, inventory)
     instances = {c["id"]: parts[c["part_id"]] for c in circuit["components"]}
     if any(cid.startswith("jumper:") for cid in instances):
         raise ValueError("The instance ID prefix jumper: is reserved for generated wires")
@@ -140,6 +144,7 @@ def map_circuit(circuit, inventory, board, time_limit=30, casings=None, gripper=
     used_parts.update({pid: p for pid, p in parts.items() if p["type"] == "jumper"})
     shapes = {pid: casing_for(part, casings, pitch) for pid, part in used_parts.items()}
     positions, groups = board_geometry(board)
+    fixed_power = fixed_power_connections(circuit, manual_pins, positions, groups, pin_net)
     group_count = len(board["conductive_groups"])
     margin = gripper["safety_margin_mm"]
     jumper_parts = [part for part in parts.values() if part["type"] == "jumper"]
@@ -205,7 +210,7 @@ def map_circuit(circuit, inventory, board, time_limit=30, casings=None, gripper=
         for pin in sorted(manual_pins):
             n = pin_net[pin]
             options = []
-            for hole in inside:
+            for hole in [fixed_power[pin]] if pin in fixed_power else inside:
                 g = groups[hole]
                 chosen = model.new_bool_var(f"manual_{pin}_{hole}")
                 options.append((chosen, hole))
@@ -243,6 +248,7 @@ def map_circuit(circuit, inventory, board, time_limit=30, casings=None, gripper=
                 edges[a, b].append(chosen)
                 model.add(labels[a] == labels[b]).only_enforce_if(chosen)
                 model.add(labels[a] >= 0).only_enforce_if(chosen)
+        limit_jumpers(model, wires, parts)
         if budget is not None and wires:
             model.add(sum(chosen for chosen, _, _ in wires) <= budget)
         for occupants in occupancy.values():
@@ -304,12 +310,9 @@ def map_circuit(circuit, inventory, board, time_limit=30, casings=None, gripper=
     first = min(max(ceil(1.5 * length / pitch), FIRST_WINDOW_ROWS[0]), FIRST_WINDOW_ROWS[1])
 
     def window(width):
-        """The holes in width times the first window's rows around the board middle.
-
-        Centring keeps layouts off the board ends, so no shift is needed afterwards.
-        """
+        """Widen from row 1 for fixed power; otherwise stay centered on the board."""
         size = len(rows) if width is None else min(width * first, len(rows))
-        start = (len(rows) - size) // 2
+        start = 0 if fixed_power else (len(rows) - size) // 2
         kept = set(rows[start : start + size])
         return {hole: xy for hole, xy in positions.items() if xy[1] in kept}
 
@@ -461,7 +464,10 @@ def main():
     parser.add_argument("--casings", type=Path, default=DEFAULT_CASINGS)
     parser.add_argument("--gripper", type=Path, default=HERE / "gripper.json")
     parser.add_argument(
-        "--solver", choices=SOLVERS, default="v2", help="v2: this file; v1: mapper_v1.py, the old one"
+        "--solver",
+        choices=SOLVERS,
+        default="v2",
+        help="v2: this file; v1: mapper_v1.py, the old one",
     )
     args = parser.parse_args()
     if args.time_limit <= 0:
