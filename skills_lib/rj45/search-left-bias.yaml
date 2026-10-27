@@ -1,0 +1,9 @@
+id: search-left-bias
+title: "the opening is found ~1.2 mm left of the computed target"
+applies_to: ["insert_step", "configs/products/ls108g.yaml"]
+symptom: null
+cause: "port-1 offset (left pass + 32.48 mm) is from 10-25 with the old tip model; the switch also yaws"
+fix: "update port1_from_left_pass_x from the last seated/engaged positions (both 10-26 runs: candidate 1.2-1.8 mm left)"
+status: "proposed"
+validated_by: []
+stamp: "2026-10-26"

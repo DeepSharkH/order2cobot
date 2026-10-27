@@ -1,0 +1,9 @@
+id: bridge-edit-cost
+title: "every program edit costs ~9 s"
+applies_to: ["all robot steps"]
+symptom: null
+cause: "program_update_node goes through the pendant editor, waits for PolyScope X to save, then re-loads (9.0 s, independent of script size); a new bridge session costs 4-5 s"
+fix: "upload the skill program once per session (porttest/skill_b.py), one play per step (~2.2 s), one long-lived Python process per run"
+status: "validated"
+validated_by: ["20261026-100643_rj45-port1-B"]
+stamp: "2026-10-26"

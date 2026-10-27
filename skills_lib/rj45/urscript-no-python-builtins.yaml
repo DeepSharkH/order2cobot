@@ -1,0 +1,9 @@
+id: urscript-no-python-builtins
+title: "URScript is not Python"
+applies_to: ["any URScript"]
+symptom: null
+cause: "abs() raised compile_error_name_not_found; fabs, min, max, len, round, range, print, str/int/float, for loops and ** do not exist in PolyScope X 10.14"
+fix: "norm(x), size(x)/x.length(), floor(x+0.5), while loops, pow(); run porttest/urscript_lint.py on every script (URExec.run and SkillB.upload do)"
+status: "validated"
+validated_by: ["20261025-184457_rj45-port1"]
+stamp: "2026-10-26"

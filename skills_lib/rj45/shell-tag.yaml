@@ -1,0 +1,9 @@
+id: shell-tag
+title: "the shell ArUco tag (grip check)"
+applies_to: ["grip_check_step"]
+symptom: null
+cause: "tag size was assumed 15 mm (it is 12 mm): positions 25 % off and a false 13 mm conflict; a small planar tag has two pose solutions; the tag fell off once (weak tape)"
+fix: "ArUco DICT_4X4_50 id 0, 12 mm; average 20 frames; resolve the flip with the flange-axis prior; after re-gluing re-record tag_centre/tag_normal in configs/grip.yaml without regripping"
+status: "validated"
+validated_by: ["20261025-184457_rj45-port1"]
+stamp: "2026-10-26"

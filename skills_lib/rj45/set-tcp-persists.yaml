@@ -1,0 +1,9 @@
+id: set-tcp-persists
+title: "set_tcp survives the program"
+applies_to: ["any URScript", "shared controller"]
+symptom: null
+cause: "after a program the controller keeps our plug-tip TCP: bridge pose/IK and other users' programs use it"
+fix: "every program ends with set_tcp(p[0,0,0,0,0,0]) (URExec.run and the skill program epilogue do)"
+status: "validated"
+validated_by: ["20261025-191456_rj45-port2"]
+stamp: "2026-10-26"
