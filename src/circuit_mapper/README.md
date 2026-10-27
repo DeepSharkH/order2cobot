@@ -66,10 +66,15 @@ physical verification are still necessary before executing a layout.
 
 1. Enumerate straight-line pin placements in all four directions and rigid
    jumper options. Enforce hole occupancy and circuit net connectivity.
+   Exclude every collision with a robot-placed part up front: for each
+   placement and each other part, at most one of that placement and the part's
+   placements it collides with (the part picks exactly one, so this is a
+   clique). The colliding centre offsets come from the same collision test, per
+   pair of casing shapes.
 2. Solve a candidate layout, then check permanent footprints and swept finger
    rectangles for the selected placements.
-3. For overlapping bodies or mutually blocking grips, forbid that placement
-   pair. If inserting A would hit an installed B, A goes before B: these
+3. For overlapping bodies or mutually blocking grips (left: two jumpers), forbid
+   that placement pair. If inserting A would hit an installed B, A goes before B: these
    requirements are sorted topologically (among the steps ready to insert:
    jumpers, then slim casings, then LEDs, each by row). A requirement cycle
    (three or more parts) forbids that combination of placements.
@@ -92,8 +97,9 @@ budget on, flow also runs only to a higher strip potential, so it cannot
 circulate around one. Jumpers that no net needs (two parallel paths) are
 dropped before the layout is checked.
 
-Pair constraints are added as needed instead of constructing millions of
-unused combinations. Each solve is a pure feasibility problem and stops at its
+Jumper pairs and order cycles are added as needed instead of constructing
+millions of unused combinations; a stage that runs out of time while posting
+the cliques leaves the rest to these checks. Each solve is a pure feasibility problem and stops at its
 first candidate to leave time for collision checking. `OPTIMAL` means every
 smaller jumper count was proven infeasible on the whole board (the collision
 constraints are necessary conditions, so the proof holds for the physical

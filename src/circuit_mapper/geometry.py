@@ -1,5 +1,6 @@
 """Conservative 2D casing and finger envelopes; dimensions are millimeters."""
 
+from collections import defaultdict
 from graphlib import CycleError, TopologicalSorter
 from heapq import heappop, heappush
 from itertools import combinations
@@ -94,6 +95,81 @@ def relation(a, b, margin):
     if a_first and b_first:
         return "forbidden"
     return "a_first" if a_first else "b_first" if b_first else "independent"
+
+
+def pose(shape):
+    """The boxes around the centre, and the centre, in µm: all that relation() reads.
+
+    A casing that is symmetric under a half turn has one kind at 0 and 180 degrees.
+    """
+    x, y = (round(v * 1000) for v in shape["center_mm"])
+
+    def around(box):
+        return tuple(round(v * 1000) - c for v, c in zip(box, (x, y, x, y), strict=True))
+
+    return (around(shape["body"]), tuple(sorted(map(around, shape["fingers"])))), (x, y)
+
+
+def no_fit_cliques(candidates, parts, margin, rules):
+    """Yield cliques of candidates that relation() forbids together.
+
+    Owners below parts are parts that pick exactly one candidate. For each candidate x and
+    each such part B after x's own (any part, for a wire): x and every candidate of B that
+    x forbids. B picks one, so this is a clique. Wire-wire pairs are left to the lazy cuts.
+    relation() reads only boxes, so rules caches it by both kinds and the centre offset.
+    """
+    poses = [pose(c["shape"]) for c in candidates]
+    cells = defaultdict(lambda: defaultdict(list))  # (part, kind): centre: literals
+    kinds, xs, ys = defaultdict(set), defaultdict(set), defaultdict(set)
+    for c, (kind, (x, y)) in zip(candidates, poses, strict=True):
+        xs[kind].add(x)
+        ys[kind].add(y)
+        if c["owner"] < parts:
+            cells[c["owner"], kind][x, y].append(c["chosen"])
+            kinds[c["owner"]].add(kind)
+    # Farthest box edge from the centre, per kind: farther apart, nothing overlaps.
+    reach = {
+        k: [max(abs(v) for box in (k[0], *k[1]) for v in box[axis::2]) for axis in (0, 1)]
+        for k in xs
+    }
+    offsets = {}
+
+    def forbidden(ka, kb):
+        """Centre offsets from ka to kb that relation() forbids (scale-free, so in µm)."""
+        if (ka, kb) not in offsets:
+            far = [reach[ka][axis] + reach[kb][axis] + margin * 1000 for axis in (0, 1)]
+            dxs = {xb - xa for xa in xs[ka] for xb in xs[kb] if abs(xb - xa) < far[0]}
+            dys = {yb - ya for ya in ys[ka] for yb in ys[kb] if abs(yb - ya) < far[1]}
+            offsets[ka, kb] = []
+            for dx in dxs:
+                for dy in dys:
+                    key = ka, kb, dx, dy
+                    if key not in rules:
+                        rules[key] = relation(shift(ka, 0, 0), shift(kb, dx, dy), margin * 1000)
+                    if rules[key] == "forbidden":
+                        offsets[ka, kb].append((dx, dy))
+        return offsets[ka, kb]
+
+    for c, (ka, (x, y)) in zip(candidates, poses, strict=True):
+        own = c["owner"]
+        for part in range(own + 1 if own < parts else 0, parts):
+            clique = [c["chosen"]]
+            for kb in kinds[part]:
+                cell = cells[part, kb]
+                for dx, dy in forbidden(ka, kb):
+                    clique += cell.get((x + dx, y + dy), ())
+            if len(clique) > 1:
+                yield clique
+
+
+def shift(kind, dx, dy):
+    """A shape of this kind centred at dx, dy (µm)."""
+    body, fingers = kind
+
+    def move(box):
+        return box[0] + dx, box[1] + dy, box[2] + dx, box[3] + dy
+
+    return {"body": move(body), "fingers": [move(f) for f in fingers]}
 
 
 def constrain_assembly(model, selected, known, margin, priority=None):

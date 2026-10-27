@@ -10,9 +10,21 @@ from time import monotonic
 from ortools.sat.python import cp_model
 
 if __package__:
-    from .geometry import casing_for, constrain_assembly, placement_geometry, verify_assembly
+    from .geometry import (
+        casing_for,
+        constrain_assembly,
+        no_fit_cliques,
+        placement_geometry,
+        verify_assembly,
+    )
 else:
-    from geometry import casing_for, constrain_assembly, placement_geometry, verify_assembly
+    from geometry import (
+        casing_for,
+        constrain_assembly,
+        no_fit_cliques,
+        placement_geometry,
+        verify_assembly,
+    )
 
 HERE = Path(__file__).parent
 DEFAULT_CASINGS = HERE.parents[1] / "assets/models/component_casings/casings.json"
@@ -133,6 +145,7 @@ def map_circuit(circuit, inventory, board, time_limit=30, casings=None, gripper=
     if any(len(part["pins"]) != 2 for part in jumper_parts):
         raise ValueError("Routing requires two-pin jumper parts")
     shape_cache = {}
+    rules = {}  # relation() by kinds and centre offset, for every stage
 
     def shape(part, holes):
         key = part["part_id"], holes
@@ -142,7 +155,7 @@ def map_circuit(circuit, inventory, board, time_limit=30, casings=None, gripper=
             )
         return shape_cache[key]
 
-    def build(budget, inside):
+    def build(budget, inside, until):
         """One stage's model: at most budget jumpers (None: any number, 0: no wire variables),
         with every part, wire and manual pin in the holes of inside."""
         model = cp_model.CpModel()
@@ -233,6 +246,12 @@ def map_circuit(circuit, inventory, board, time_limit=30, casings=None, gripper=
             model.add(sum(chosen for chosen, _, _ in wires) <= budget)
         for occupants in occupancy.values():
             model.add_at_most_one(occupants)
+        # Collisions with a part are excluded up front; only wire pairs and cycles stay lazy.
+        # The lazy cuts are exact anyway, so posting stops when the stage's time is up.
+        for clique in no_fit_cliques(candidates, len(physical), margin, rules):
+            if monotonic() > until:
+                break
+            model.add_at_most_one(clique)
 
         # Send abstract flow from each net's first pin to all its pins.
         # Flow can cross strips only on installed jumpers carrying that net.
@@ -311,7 +330,7 @@ def map_circuit(circuit, inventory, board, time_limit=30, casings=None, gripper=
             continue
         stage_end = now + (deadline - now) / (len(STAGES) - stage)
         inside = window(width)
-        model, labels, candidates, choices, manual_choices, wires = build(budget, inside)
+        model, labels, candidates, choices, manual_choices, wires = build(budget, inside, stage_end)
         by_key = {step_key(c): c for c in candidates}
         known = set()
         for keys in checked:

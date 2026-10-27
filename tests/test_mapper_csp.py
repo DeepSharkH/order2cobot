@@ -1,6 +1,7 @@
 """Solver-side checks of the CP-SAT mapper (parameters, search behaviour)."""
 
 import json
+import random
 import sys
 from pathlib import Path
 
@@ -309,3 +310,70 @@ def test_replay_finds_wires_by_holes(monkeypatch):
     first, (replayed,) = checked[0], replays
     assert any(step["id"].startswith("jumper:") for step in first)
     assert sorted(s["holes"] for s in replayed) == sorted(s["holes"] for s in first)
+
+
+def window_candidates(model, part_ids, rows):
+    """Candidates of the mapper's form in rows: one owner per part, then one per wire
+    (shortest and longest jumper)."""
+    board = mapper.read_json(ROOT / "board_connections.json")
+    inventory = mapper.read_json(ROOT / "example_components.json")["components"]
+    parts = {p["part_id"]: p for p in inventory}
+    casings = mapper.read_json(mapper.DEFAULT_CASINGS)
+    gripper = mapper.read_json(ROOT / "gripper.json")
+    pitch = board["geometry"]["hole_pitch_mm"]
+    positions, _ = mapper.board_geometry(board)
+    inside = {hole: xy for hole, xy in positions.items() if int(hole[1:]) in rows}
+    candidates = []
+    for owner, part_id in enumerate(part_ids + ["jumper_rigid_1_pitch", "jumper_rigid_4_pitch"]):
+        part = parts[part_id]
+        casing = geometry.casing_for(part, casings, pitch)
+        for holes in mapper.placements(part, inside):
+            wire = part["type"] == "jumper"
+            candidates.append(
+                {
+                    "owner": len(part_ids) + len(candidates) if wire else owner,
+                    "chosen": model.new_bool_var(f"c{len(candidates)}"),
+                    "shape": geometry.placement_geometry(holes, positions, casing, gripper, pitch),
+                }
+            )
+    return candidates
+
+
+@pytest.mark.parametrize("margin", [0, 0.3])
+def test_no_fit_cliques_are_relation(margin):
+    """Randomized: each clique holds x and exactly the candidates of one part that relation()
+    forbids with x. Pairs of parts are covered from the lower owner, wires against every part."""
+    rng = random.Random(6)
+    model = cp_model.CpModel()
+    parts = ["resistor_220ohm_gap_0", "led_red_gap_0", "led_red_gap_0", "transistor_npn_generic"]
+    parts.append("led_rgb_common_cathode_gap_0")
+    candidates = window_candidates(model, parts, range(26, 34))
+    owners = {c["chosen"].index: c["owner"] for c in candidates}
+    by_part = [[c for c in candidates if c["owner"] == part] for part in range(len(parts))]
+    found = {}
+    for x, *rest in geometry.no_fit_cliques(candidates, len(parts), margin, {}):
+        (part,) = {owners[b.index] for b in rest}
+        assert (x.index, part) not in found
+        found[x.index, part] = {b.index for b in rest}
+    pairs = 0
+    for x in rng.sample(candidates, 250):
+        own = x["owner"]
+        for part in range(own + 1 if own < len(parts) else 0, len(parts)):
+            pairs += len(by_part[part])
+            expected = {
+                b["chosen"].index
+                for b in by_part[part]
+                if geometry.relation(x["shape"], b["shape"], margin) == "forbidden"
+            }
+            assert found.get((x["chosen"].index, part), set()) == expected
+    assert pairs > 10**5 and len(found) > 1000
+
+
+def test_part_collisions_are_eager(monkeypatch):
+    """Two parts and no wires: the cliques leave the lazy loop nothing, so one solve."""
+    models = record_models(monkeypatch)
+    board = mapper.read_json(ROOT / "board_connections.json")
+    inventory = mapper.read_json(ROOT / "example_components.json")
+    circuit = mapper.read_json(ROOT / "bench/circuits/p1_red_led_1k_series.json")
+    result = mapper.map_circuit(circuit, inventory, board, time_limit=20)
+    assert result["status"] == "OPTIMAL" and len(models) == 1
