@@ -57,7 +57,8 @@ WINDOWS = (20, 36, None)  # rows of the topology windows, widest last (None: the
 WORKERS = 8
 ROBOT_SHARE = 0.25         # of a window's time, for layouts without hand wires (when they are allowed)
 HAND_SHARE = 0.5           # of what is left, for each next hand-wire count
-ROBOT_CAP_S = 12.0         # robot-only layouts that exist show up fast; past this, try hand wires
+ROBOT_CAP_S = 8.0          # robot-only layouts that exist show up fast; past this, try hand wires
+FAST_CAP_S = 4.0           # the jumper-free model first: most small circuits need none
 IMPROVE_S = 5.0            # improving stops after this many seconds without a better topology
 COLUMNS = os.environ.get('V3_COLUMNS', '1') == '1'   # columns in the topology model
 DEBUG = bool(os.environ.get("V3_DEBUG"))
@@ -175,7 +176,7 @@ def map_circuit(circuit, inventory, board, time_limit=30, casings=None, gripper=
     for e in elements:
         e["routes"] = routes_of[e["part"]["part_id"]]
     # hand wires (opt-in): no casing, plugged by the operator after the robot, between any two
-    # strips at most HAND_REACH rows apart; their holes are picked with the columns
+    # strips at most HAND_REACH rows apart (a wire bends); holes picked with the columns
     hand_routes = {(a, b): [] for a in B.strips for b in B.strips if a < b and abs(B.row[a] - B.row[b]) <= HAND_REACH}
     for k in range(hand_wires):
         elements.append({"id": f"hand:{k}", "part": None, "pins": None, "hand": True, "routes": hand_routes})
@@ -260,8 +261,33 @@ def map_circuit(circuit, inventory, board, time_limit=30, casings=None, gripper=
         capacity = strip_capacity(list(used_parts.values()), positions, groups,
                                   lambda part, holes: shape(part["part_id"], holes), margin)
 
-    patterns = []        # geometric cores: [(casing, frozenset of (left, row offset))], normalized
-    exact = []           # cores with hand pins: [(element routes, hand strips)]
+    # ── how many hand wires the strips force (v2's capacity bound) ──────────
+    # A strip holds at most `capacity` robot casings. A net on s strips joined by j robot jumpers
+    # and h hand wires has s = 1 + j + h, room for capacity * s casing pins, and the jumpers
+    # take 2j of it: k robot pins fit only if k <= capacity * (1 + h) (with capacity 2).
+    robot_pins = defaultdict(int)
+    for cid, part in physical.items():
+        for pin in part["pins"]:
+            robot_pins[pin_net[f"{cid}.{pin}"]] += 1
+    joins_net = any(len({pin_net[f"{cid}.{pin}"] for pin in part["pins"]}) < len(part["pins"])
+                    for cid, part in physical.items())
+    need_hands = 0
+    if capacity is not None and capacity <= 2 and not joins_net:
+        need_hands = sum(max(0, -(-(k - capacity) // capacity)) for k in robot_pins.values())
+    crowded = [n for n, k in robot_pins.items() if capacity and k > capacity]
+    if need_hands and not hand_wires:
+        raise ValueError(
+            "No mapping returned: INFEASIBLE. "
+            + ", ".join(f"net {nets[n]['id']} has {robot_pins[n]} robot-placed pins" for n in crowded)
+            + f"; at most {capacity} casings fit in one 5-hole strip, and every rigid jumper fills the room it"
+            " adds, so no number of jumpers connects more than 2. Give each net at most 2 robot-placed parts"
+            " (join the rest with hand-wired links), or allow hand wires.")
+    if need_hands > hand_wires:
+        raise ValueError(f"No mapping returned: INFEASIBLE. These nets need at least {need_hands} hand wires; "
+                         f"{hand_wires} are allowed.")
+
+    patterns = []        # geometric cores: normalized (casing, strips) keys, valid in every model
+    exact = []           # other cores: [((element id, route), ...), ((hand pin, strip), ...)]
 
     def window_rows(size):
         if size is None or size >= len(B.rows):
@@ -269,76 +295,132 @@ def map_circuit(circuit, inventory, board, time_limit=30, casings=None, gripper=
         start = 0 if fixed_power else (len(B.rows) - size) // 2
         return set(B.rows[start:start + size])
 
-    stats = {"rounds": 0, "nogoods": 0, "windows": 0, "phase": None}
-    t_start, layout, proven = monotonic(), None, True       # proven: every attempt so far ended in a proof
+    stats = {"rounds": 0, "nogoods": 0, "models": 0, "phase": None}
 
-    def attempt(model, deadline):
+    def build(els, rows):
+        stats["models"] += 1
+        model = Topology(B, rows, els, casing_of, nets, pin_net, manual_pins, fixed_power, capacity, conflicts_of,
+                         shape if COLUMNS else None, margin)
+        for pattern in patterns:
+            model.forbid_pattern(pattern)
+        index = {e["id"]: i for i, e in enumerate(els)}
+        for routes, hands in exact:
+            if all(eid in index for eid, _ in routes):
+                model.forbid_exact([(index[eid], r) for eid, r in routes], hands)
+        return model
+
+    def attempt(model, els, deadline, improve=IMPROVE_S, hint=None):
         """Topology and geometry until a layout, a proof that none exists, or the deadline:
-        ("found", layout, bound) | ("infeasible", None, None) | ("unknown", None, None)."""
+        ("found", (layout, chosen, pins_at, bound)) | ("infeasible", None) | ("unknown", None)."""
         while True:
             left = min(deadline, t_end) - monotonic()
             if left <= 0:
-                return "unknown", None, None
-            status, solution = model.solve(left)
+                return "unknown", None
+            status, solution = model.solve(left, improve, hint)
             stats["rounds"] += 1
             if status != "found":
-                return status, None, None
+                return status, None
             chosen, pins_at, bound = solution
-            layout, core = geometry(elements, chosen, pins_at, fixed_power, B, shape, margin, t_end)
+            layout, core = geometry(els, chosen, pins_at, fixed_power, B, shape, margin, t_end)
             if layout is not None:
-                return "found", layout, bound
+                return "found", (layout, chosen, pins_at, bound)
             stats["nogoods"] += 1
             picked = [(i, r) for i, r in chosen if i in core]
             hands = [(p, g) for p, g in pins_at.items() if p in core]
             if DEBUG:
-                print("core", [(elements[i]["id"], [B.holes[g][0] for g in r]) for i, r in picked],
+                print("core", [(els[i]["id"], [B.holes[g][0] for g in r]) for i, r in picked],
                       {p: B.holes[g][0] for p, g in hands}, file=sys.stderr)
-            keys = [geo(casing_of[elements[i]["part"]["part_id"]], r) for i, r in picked if elements[i]["part"]]
+            keys = [geo(casing_of[els[i]["part"]["part_id"]], r) for i, r in picked if els[i]["part"]]
             if hands or not picked or len(set(keys)) < len(picked):
-                exact.append((picked, hands))
+                exact.append(([(els[i]["id"], r) for i, r in picked], hands))
                 model.forbid_exact(picked, hands)
             else:
                 pattern = normalize(keys)
                 patterns.append(pattern)
                 model.forbid_pattern(pattern)
 
-    # Per window: robot-placed parts and jumpers only, for a share of the time; then, if allowed,
-    # at most 1, 2, ... hand wires, the first count that gives a layout. A wider window comes
-    # next only after a proof or a timeout.
-    phases = range(hand_wires + 1)
-    for w, size in enumerate(WINDOWS):
-        rows = window_rows(size)
-        full = len(rows) == len(B.rows)
-        stats["windows"] += 1
-        model = Topology(B, rows, elements, casing_of, nets, pin_net, manual_pins, fixed_power, capacity, conflicts_of,
-                         shape if COLUMNS else None, margin)
-        for pattern in patterns:
-            model.forbid_pattern(pattern)
-        for routes, hands in exact:
-            model.forbid_exact(routes, hands)
-        for count in phases:
-            model.allow_hands(count)
-            left = t_end - monotonic()
-            later = len(WINDOWS) - w - 1
-            share = (ROBOT_SHARE if count == 0 else HAND_SHARE) if count < len(phases) - 1 else 1.0
-            deadline = monotonic() + left * share / (1 + later * 0.5)
-            if count == 0 and hand_wires:
-                deadline = min(deadline, monotonic() + ROBOT_CAP_S)
-            status, layout, bound = attempt(model, deadline)
-            stats["phase"] = "robot" if count == 0 else f"hand<={count}"
-            proven = proven and status == "infeasible"
-            if layout is not None:
+    def hands_in(els, chosen):
+        return sum(1 for i, _ in chosen if not els[i]["part"])
+
+    found = None         # (els, layout, chosen, pins_at, bound, optimal)
+    # 1. no jumpers, no hand wires: the easy circuits, on a small model
+    parts_only = [e for e in elements if e["pins"] is not None]
+    if not need_hands:
+        model = build(parts_only, window_rows(WINDOWS[0]))
+        model.allow_hands(0)
+        status, sol = attempt(model, parts_only, monotonic() + FAST_CAP_S, improve=1.0)
+        stats["phase"] = "no jumpers"
+        if status == "found":
+            found = (parts_only, *sol, True)         # 0 jumpers: nothing has fewer
+    # 2. robot jumpers, no hand wires
+    robot = [e for e in elements if e["part"]]
+    if found is None and not need_hands:
+        for size in WINDOWS:
+            rows = window_rows(size)
+            model = build(robot, rows)
+            model.allow_hands(0)
+            budget = t_end - monotonic()
+            deadline = monotonic() + (min(budget * ROBOT_SHARE, ROBOT_CAP_S) if hand_wires else budget / 2)
+            if size is None:
+                deadline = t_end if not hand_wires else deadline
+            status, sol = attempt(model, robot, deadline)
+            stats["phase"] = "robot"
+            if status == "found":
+                # OPTIMAL: on the whole board the topology bound proves the jumper count minimal
+                found = (robot, *sol, len(rows) == len(B.rows) and sol[3] >= 0)
                 break
-        if layout is not None:
-            break
-        if monotonic() >= t_end:
-            break
-    if layout is None:
-        if proven:
-            raise ValueError("No mapping returned: INFEASIBLE. No layout satisfies the part, wiring, and "
-                             "assembly constraints" + (" even with hand wires." if hand_wires else "."))
-        raise ValueError("No mapping returned: UNKNOWN. No verified layout found within the search limit; "
-                         "not proof of infeasibility.")
+            if status == "unknown" or monotonic() >= t_end:
+                break
+        if found is None and not hand_wires:
+            raise ValueError("No mapping returned: " + ("INFEASIBLE. No layout satisfies the part, wiring, and "
+                             "assembly constraints." if status == "infeasible" else "UNKNOWN. No verified layout "
+                             "found within the search limit; not proof of infeasibility."))
+    # 3. hand wires: a first layout with up to all of them, then fewer, one at a time, from the best
+    if found is None:
+        model = build(elements, window_rows(WINDOWS[0]))
+        model.allow_hands(hand_wires)
+        status, sol = attempt(model, elements, t_end, improve=0.0)
+        stats["phase"] = "hand"
+        if status != "found":
+            model = build(elements, window_rows(None))
+            model.allow_hands(hand_wires)
+            status, sol = attempt(model, elements, t_end, improve=0.0)
+        if status != "found":
+            raise ValueError("No mapping returned: " + ("INFEASIBLE. No layout, even with hand wires."
+                             if status == "infeasible" else "UNKNOWN. No verified layout found within the search "
+                             "limit, even with hand wires; not proof of infeasibility."))
+        # Fewer wires, lowest count first, each try hinted from the best layout so far. `proven`:
+        # fewer are impossible (the capacity bound, or a proof below); the robot-only step already
+        # failed, so the first count tried is 1.
+        best, proven = sol, need_hands
+        cap = max(need_hands, 1)
+        while cap < hands_in(elements, best[1]) and monotonic() < t_end:
+            model.allow_hands(cap)
+            left = t_end - monotonic()
+            status, sol = attempt(model, elements, monotonic() + left * HAND_SHARE, improve=0.0,
+                                  hint=(best[1], best[2]))
+            if status == "found":
+                best = sol
+                break
+            if status == "infeasible" and proven == cap:
+                proven = cap + 1
+            cap += 1
+        # then the fewest robot jumpers with that many hand wires
+        h = hands_in(elements, best[1])
+
+        def robot_jumpers(chosen):
+            return sum(1 for i, _ in chosen if elements[i]["part"] and elements[i]["pins"] is None)
+
+        if robot_jumpers(best[1]) and monotonic() < t_end:
+            model.allow_hands(h)
+            status, sol = attempt(model, elements, t_end, improve=IMPROVE_S, hint=(best[1], best[2]))
+            if status == "found" and hands_in(elements, sol[1]) <= h and robot_jumpers(sol[1]) < robot_jumpers(best[1]):
+                best = sol
+        jumpers_used = robot_jumpers(best[1])
+        found = (elements, *best, h <= proven and jumpers_used == 0)
+    els, layout, chosen, pins_at, bound, optimal = found
+    elements = els
+
 
     # ── the result, in v2's format ──────────────────────────────────────────
     placed, pin_to_hole, manual_connections = layout
@@ -382,8 +464,8 @@ def map_circuit(circuit, inventory, board, time_limit=30, casings=None, gripper=
         "circuit_id": circuit["circuit_id"],
         "board_id": board["board_id"],
         # OPTIMAL: on the whole board, no layout has fewer jumpers
-        # OPTIMAL: the whole board, no hand wires, and no layout has fewer jumpers
-        "status": "OPTIMAL" if full and bound >= 0 and stats["phase"] == "robot" else "FEASIBLE",
+        # OPTIMAL: no layout has fewer hand wires, nor (with as many) fewer robot jumpers
+        "status": "OPTIMAL" if optimal else "FEASIBLE",
         "geometry_model": "2d_casing_and_opening_fingers",
         "gripper": gripper,
         "placements": [
@@ -562,7 +644,8 @@ class Topology:
                 m.add_max_equality(used, pins_in[g])
                 m.add(top >= B.row[g]).only_enforce_if(used)
                 m.add(low <= B.row[g]).only_enforce_if(used)
-        m.minimize(HAND_COST * self.hands + JUMPER_COST * self.jumpers + (top if fixed_power else top - low))
+        self.objective = HAND_COST * self.hands + JUMPER_COST * self.jumpers + (top if fixed_power else top - low)
+        m.minimize(self.objective)
         self.hinted = [*y.values(), *man.values()]
         self.hand_cap = m.new_int_var(0, max(len(pieces), 1), "hand_cap")    # set per attempt
         m.add(self.hands <= self.hand_cap)
@@ -579,22 +662,35 @@ class Topology:
         dom = self.m.proto.variables[self.hand_cap.index].domain
         dom[0] = dom[1] = count
 
-    def solve(self, seconds, improve=IMPROVE_S):
-        """The first layout, then a few seconds to improve it from there."""
+    def solve(self, seconds, improve=IMPROVE_S, hint=None):
+        """The first layout (near hint=(routes, hand strips) if given), then improve it until
+        `improve` seconds pass without a better one (0: no improving)."""
         s, m = self.solver, self.m
         t0 = monotonic()
         s.parameters.max_time_in_seconds = seconds
         s.parameters.stop_after_first_solution = True
         m.clear_hints()
+        if not improve:
+            m.clear_objective()         # a plain feasibility search finds a first layout sooner
+        if hint:
+            routes, pins_at = hint
+            on = {(i, r) for i, r in routes}
+            for key, lit in self.y.items():
+                m.add_hint(lit, key in on)
+            for (pin, g), lit in self.manual.items():
+                m.add_hint(lit, pins_at.get(pin) == g)
         status = s.solve(m)
+        if not improve:
+            m.minimize(self.objective)
         if status == cp_model.INFEASIBLE:
             return "infeasible", None
         if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
             return "unknown", None
-        best = self._read(status)
+        best = self._read(status if improve else cp_model.FEASIBLE)
         left = seconds - (monotonic() - t0)
-        if status == cp_model.FEASIBLE and left > 0.5:
+        if status == cp_model.FEASIBLE and improve > 0 and left > 0.5:
             # improve from the first layout until the deadline, or until STALL_S pass without a better one
+            m.clear_hints()
             for v in self.hinted:
                 m.add_hint(v, s.value(v))
             s.parameters.stop_after_first_solution = False
