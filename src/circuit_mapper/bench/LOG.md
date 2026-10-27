@@ -19,3 +19,14 @@
   - p3/p4/p5/parallel_leds_5 still UNKNOWN (45/25/13/6 solves). K = 0 is proven INFEASIBLE in 2-5 s (pl5 22 s). At K = 1, p3/p4 layouts carry 1 jumper, but the point cuts never converge. pl5 now returns at 121.7 s (was 134.7). Others unchanged.
 - why kept: the gate passes, and the P1 thresholds are now met (p1/led ≤ 6 s, parallel_resistors ≤ 4 s). P2's own "p3 and p4 solve" is not met, which is P5/P6's job.
 - surprising: with nonzero flow alone, the any-K stage picked 100-180 wires in circulating cycles; the potential brought that down to 1-5. Potentials (even a direction bool replacing `flow != 0`) made K = 1 rounds 1.5-2× slower, so they start at K = 3 (a cycle needs 3 wires). Fixed cumulative slices gave p5's unprovable K = 1 stage 45 s, hence equal shares. p2_try_fast is an intermediate run without potentials.
+
+## P3 row window, centred, widening - KEPT (bdad767)
+- change: `STAGES` pairs each budget with a row window centred on the board: K 0, 1, 2, 4 in the first window (1.5× casing length per board half, 12-24 rows), K ≤ 4 in twice that, then any K on the whole board. Candidates outside the window are never built. Only whole-board INFEASIBLE proofs raise the OPTIMAL bound.
+- diagonal (window widens with K), not nested: the nested K-major schedule (18 stages) cut every slice to about 7.5 s. p3-p5 never converged in it, and pl5 could not refute K = 0 at 48 or 64 rows in 7 s. The diagonal keeps 6 stages, and each stage's search space contains the previous one's.
+- bench p3 vs p2. Fast instances are the median of 3 runs (p3, p3_rep2, p3_rep3) at load 16-21, against 14-16 for p2:
+  - p1 4.1 → 1.6 s; p2 2.2 → 1.4 s; led_circuit 3.5 → 2.4 s (it 3-16); parallel_resistors 1.6 → 1.3 s; rc_low_pass 2.1 → 1.4 s
+  - all OPTIMAL with 0 jumpers and ver = yes. Every layout lies inside the 12-row window (rows 27-38 of 64) and spans 2-3 rows (27..29 to 33..35).
+  - p3/p4/p5/parallel_leds_5 still UNKNOWN (106/85/34/7 solves, against 45/25/13/6). Rounds cost 2-3× less, but point cuts still do not converge (p3 at K = 1 in 17 rows: 39 rounds in 30 s). Others unchanged.
+- pl5: its 24-row K ≤ 4 stage gets a first candidate after 1.5 s, where 48 or 64 rows give none in 30 s. But that stage only starts about 50 s into the run, after the K = 1 and 2 stages, which cannot be proven infeasible.
+- why kept: the gate passes, and the fast instances are 1.2-2.6× faster with compact, centred layouts.
+- trade-off: on the 64-row board, a layout with jumpers is now FEASIBLE, never OPTIMAL. A whole-board K = 0 proof would cost 2-6 s for p3-p5, and could not be completed in 7 s for pl5.
