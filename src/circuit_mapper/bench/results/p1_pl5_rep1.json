@@ -1,0 +1,40 @@
+{
+ "meta": {
+  "label": "p1_pl5_rep1",
+  "time_limit_s": 120.0,
+  "started": "2026-10-27 02:40:07",
+  "host": "tegra-ubuntu",
+  "cpus": 12,
+  "load_avg_at_start": [
+   14.6,
+   14.8,
+   13.88
+  ],
+  "commit": "fcb6009",
+  "dirty": true,
+  "finished": "2026-10-27 02:42:10",
+  "load_avg_at_end": [
+   17.25,
+   15.7,
+   14.33
+  ]
+ },
+ "instances": [
+  {
+   "file": "circuits/parallel_leds_5.json",
+   "name": "parallel_leds_5",
+   "circuit_id": "parallel_leds_5",
+   "robot_parts": 10,
+   "manual_parts": 1,
+   "nets": 7,
+   "status": "UNKNOWN",
+   "error": "ValueError: No mapping returned: UNKNOWN. No verified layout found within the search limit; not proof of infeasibility.",
+   "solve_wall_s": 122.43,
+   "build_s": 1.851,
+   "solves": 6,
+   "solver_s": 119.952,
+   "wall_s": 123.762,
+   "verified": false
+  }
+ ]
+}

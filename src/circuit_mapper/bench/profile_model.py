@@ -224,7 +224,7 @@ def profiled_solve(self, model, solution_callback=None):
         STATE["t_first_solve"] = now
         STATE["inventory_round1"] = model_inventory(model)
     if STATE["workers"]:
-        self.parameters.num_search_workers = STATE["workers"]
+        self.parameters.num_workers = STATE["workers"]
     for name, value in STATE["params"]:
         current = getattr(self.parameters, name)
         if isinstance(current, bool):
@@ -322,7 +322,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("circuit", type=Path)
     parser.add_argument("--time-limit", type=float, default=120)
-    parser.add_argument("--workers", type=int, default=None, help="override num_search_workers")
+    parser.add_argument("--workers", type=int, default=None, help="override num_workers")
     parser.add_argument("--json", type=Path, help="write the full stats here")
     parser.add_argument("--log-dir", type=Path, help="write each round's CP-SAT log here")
     parser.add_argument("--label", default=None)

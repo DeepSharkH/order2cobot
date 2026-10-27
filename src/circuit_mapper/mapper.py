@@ -232,7 +232,11 @@ def map_circuit(circuit, inventory, board, time_limit=30, casings=None, gripper=
 
     model.minimize(sum(chosen for chosen, _, _ in wires))
     solver = cp_model.CpSolver()
-    solver.parameters.num_search_workers = 8
+    # Keep at least 4 workers: 1 has no feasibility-jump and never found a layout.
+    solver.parameters.num_workers = 8
+    # Presolve reruns every lazy round and probing dominated it.
+    solver.parameters.cp_model_probing_level = 0
+    solver.parameters.max_presolve_iterations = 1
     solver.parameters.stop_after_first_solution = True
     deadline = monotonic() + time_limit
     known = set()
