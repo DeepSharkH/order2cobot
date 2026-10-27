@@ -185,6 +185,20 @@
       "quantity": 1
     },
     {
+      "part_id": "led_blue_gap_0",
+      "name": "Blue LED - 0 gap",
+      "type": "led",
+      "parameters": {
+        "color": "blue"
+      },
+      "pins": [
+        "anode",
+        "cathode"
+      ],
+      "pin_spacing": 1,
+      "quantity": 1
+    },
+    {
       "part_id": "capacitor_ceramic_100nf",
       "name": "100 nF ceramic capacitor",
       "type": "capacitor",

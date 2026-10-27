@@ -93,6 +93,13 @@
         "assets/models/component_casings/casing_led_s1_half2.stl"
       ]
     },
+    "led_blue_gap_0": {
+      "casing_id": "led_s1",
+      "model_files": [
+        "assets/models/component_casings/casing_led_s1_half1.stl",
+        "assets/models/component_casings/casing_led_s1_half2.stl"
+      ]
+    },
     "capacitor_ceramic_100nf": {
       "casing_id": "capacitor_ceramic_s1",
       "model_files": [
