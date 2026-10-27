@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from ortools.sat.python import cp_model
 
-ROOT = Path(__file__).parents[1] / "src/circuit_mapper"
+ROOT = Path(__file__).parents[2] / "src/circuit_mapper"
 sys.path.insert(0, str(ROOT))
 import geometry  # noqa: E402
 import mapper  # noqa: E402
@@ -48,18 +48,15 @@ def test_opening_requires_order_and_wrong_order_is_rejected():
     assert geometry.relation(shape_at(24, 0, 0, 0), shape_at(14, 10, 6.5, 0), 0) == "independent"
     model = cp_model.CpModel()
     present = [model.new_bool_var(str(i)) for i in range(2)]
-    orders = [model.new_int_var(0, 1, f"order{i}") for i in range(2)]
     selected = [
         {"id": str(i), "owner": i, "chosen": present[i], "shape": shape}
         for i, shape in enumerate([a, b])
     ]
-    for p in present:
-        model.add(p == 1)
-    geometry.constrain_assembly(model, selected, orders, set(), 0)
-    solver = cp_model.CpSolver()
-    assert solver.solve(model) == cp_model.OPTIMAL
-    assert solver.value(orders[1]) < solver.value(orders[0])
-    geometry.verify_assembly(list(reversed(selected)), 0)
+    # An order requirement is no cut: the topological order puts B first.
+    order = geometry.constrain_assembly(model, selected, set(), 0)
+    assert not model.proto.constraints
+    assert order == list(reversed(selected))
+    geometry.verify_assembly(order, 0)
     with pytest.raises(ValueError, match="collision"):
         geometry.verify_assembly(selected, 0)
 

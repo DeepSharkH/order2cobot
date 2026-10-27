@@ -176,7 +176,7 @@ def main() -> None:
     )
     ap.add_argument("scene", type=Path, help="a folder from scripts/capture_scene.py")
     ap.add_argument("--object", default="protoboard", help="name in --objects")
-    ap.add_argument("--objects", type=Path, default=Path("configs/objects.yaml"))
+    ap.add_argument("--objects", type=Path, default=Path("configs/wire/objects.yaml"))
     ap.add_argument(
         "--images", choices=("auto", "always", "never"), help="override the object's image-fit mode"
     )

@@ -28,7 +28,7 @@ from scipy.spatial import cKDTree
 
 from agents.vision.board_grid import PITCH, BoardGrid
 from agents.vision.scene import depth_to_cloud
-from scripts.wire_from_cloud import fit_plane
+from agents.vision.plane import fit_plane
 
 Array = npt.NDArray[Any]
 CASINGS = Path("assets/models/component_casings/casings.json")

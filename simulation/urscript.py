@@ -1,6 +1,6 @@
 """URScript for the simulated controller: compiled to Python, run against SimRobot.
 
-Covers what the skills send (porttest/urlib.py LIB, porttest/skill_b.py dispatcher and the
+Covers what the skills send (urcore/urlib.py + porttest/urlib.py LIB, porttest/skill_b.py dispatcher and the
 step scripts): def/while/if/elif/else/end, return/break/continue/halt, global/local, pose
 literals p[...], keyword arguments, and the built-ins in BUILTINS below. Every statement is
 preceded by _L(line), which records the executing URScript line for the viewer, honours
@@ -25,7 +25,7 @@ from scipy.spatial.transform import Rotation as R
 
 from simulation.robot import DT, ProgramStopped, T_to_vec, vec_to_T
 
-URSCRIPT_BUILTINS = set((Path(__file__).resolve().parent.parent / 'porttest' / 'urscript_builtins.txt').read_text().split())
+URSCRIPT_BUILTINS = set((Path(__file__).resolve().parent.parent / 'urcore' / 'urscript_builtins.txt').read_text().split())
 RENAME = {k for k in keyword.kwlist if k not in ('and', 'or', 'not', 'True', 'False', 'if', 'elif', 'else', 'while',
                                                   'def', 'return', 'break', 'continue', 'global')} | {'None'}
 TOKEN = re.compile(r'\s*(?:(?P<num>(?:\d+\.\d*|\.\d+|\d+)(?:[eE][-+]?\d+)?)|(?P<str>"[^"]*"|\'[^\']*\')'

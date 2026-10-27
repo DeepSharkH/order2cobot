@@ -14,7 +14,18 @@ silently treated as having zero size. The parallel-resistor example is also
 available as a small geometry demonstration.
 
 Options: `--inventory`, `--board`, `--casings`, `--gripper`, `--time-limit` (30
-seconds by default, excluding initial model construction), and `--output`.
+seconds by default, including model construction), `--solver`, and `--output`.
+
+`--solver v2` (default) is this solver, from the 10-27 overnight work
+(bench/LOG.md, a second or less for the circuits without jumpers). `--solver v1`
+runs `mapper_v1.py` + `geometry_v1.py`, the solver before it (e0702f9), kept
+unchanged to compare against; both read the same board, parts, casings and
+gripper. v1 adds one collision cut per solve (~7 s each on the Jetson), so it is
+luck-dependent: one LED took 4 solves (27 s) on the old 64-row board file and
+does not finish in 120 s on the real 63-row board. The dashboard's Circuit
+Assembly tab picks the solver per request (`circuit.solver` in
+configs/calib_dashboard.yaml is the default) and can solve a design again with
+the other one.
 Without `--output`, JSON is printed to stdout. The old `--clearance` option
 has been replaced by the millimeter-based geometry model.
 
@@ -66,22 +77,48 @@ physical verification are still necessary before executing a layout.
 
 1. Enumerate straight-line pin placements in all four directions and rigid
    jumper options. Enforce hole occupancy and circuit net connectivity.
+   Exclude every collision with a robot-placed part up front: for each
+   placement and each other part, at most one of that placement and the part's
+   placements it collides with (the part picks exactly one, so this is a
+   clique). The colliding centre offsets come from the same collision test, per
+   pair of casing shapes.
 2. Solve a candidate layout, then check permanent footprints and swept finger
    rectangles for the selected placements.
-3. For overlapping bodies or mutually blocking grips, forbid that placement
-   pair. If inserting A would hit an installed B, require A before B.
-4. Solve again with these conditional constraints. Cyclic order requirements
-   force another layout. Return only after independently checking the final
-   assembly order and electrical connectivity.
+3. For overlapping bodies or mutually blocking grips (left: two jumpers), forbid
+   that placement pair. If inserting A would hit an installed B, A goes before B: these
+   requirements are sorted topologically (among the steps ready to insert:
+   jumpers, then slim casings, then LEDs, each by row). A requirement cycle
+   (three or more parts) forbids that combination of placements.
+4. Solve again with these constraints until a layout needs no new one. Return
+   only after independently checking the final assembly order and electrical
+   connectivity.
 
-Pair constraints are added as needed instead of constructing millions of
-unused combinations. Each solve stops at its first feasible candidate to leave
-time for collision checking. The objective favors fewer jumpers but returned
-`FEASIBLE` layouts are not guaranteed to minimize them. `OPTIMAL` means the
-objective was proven optimal for the model; a valid solution of the relaxed
-model also meets the physical constraints after verification. `UNKNOWN` means
-no verified assembly was found before the search ended, not infeasibility.
-`INFEASIBLE` means the accumulated necessary constraints admit no layout.
+The search runs in stages (`STAGES` in `mapper.py`), each a row window and a
+jumper budget: in the first window no jumpers (a model with no wire variables
+at all), then at most 1, 2 and 4; then at most 4 in a window twice as tall;
+then any number on the whole board. The first window spans 1.5 times the robot
+parts' casing length per board half (12 to 24 rows). Windows are centred on the
+board, so layouts stay compact and off the board ends; candidates outside the
+window are never built. Each stage gets an equal share of the time left, so a
+stage that finishes early leaves more to the later ones. A stage that is proven
+infeasible or runs out of its share hands over to the next, and every collision
+constraint found so far carries over. An installed jumper must carry
+flow of its strip's net, so none dangles. A loop takes three jumpers; from that
+budget on, flow also runs only to a higher strip potential, so it cannot
+circulate around one. Jumpers that no net needs (two parallel paths) are
+dropped before the layout is checked.
+
+Jumper pairs and order cycles are added as needed instead of constructing
+millions of unused combinations; a stage that runs out of time while posting
+the cliques leaves the rest to these checks. Each solve is a pure feasibility problem and stops at its
+first candidate to leave time for collision checking. `OPTIMAL` means every
+smaller jumper count was proven infeasible on the whole board (the collision
+constraints are necessary conditions, so the proof holds for the physical
+problem; a window proves nothing about the rows outside it);
+`FEASIBLE` means a smaller count was not ruled out on the whole board.
+`UNKNOWN` means no verified assembly was found before the search ended, not
+infeasibility. `INFEASIBLE` means the accumulated necessary constraints admit
+no layout with any number of jumpers.
 
 ## Output
 

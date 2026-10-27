@@ -16,7 +16,7 @@ size per casing; frame: x along the leads, exits at z = 0).
 
 ## What is on the board (seen 2026-10-26, scene `data/scenes/20261026_122658_wire_example`)
 
-- The full board is two half breadboards end to end (`configs/objects.yaml` `protoboard`,
+- The full board is two half breadboards end to end (`configs/wire/objects.yaml` `protoboard`,
   166 x 56 x 9.5 mm), printed number labels along it, letters A–E | F–J across, red/blue
   rail lines on both long edges.
 - The "wire" is the **original jumper casing** (`Jumper casing - 5 mm pitch`): white block
@@ -42,7 +42,7 @@ check 109.7 mm"). Tell the board type from the detections (S3.3), not from this 
 ## The hole grid (from the CAD; `agents/vision/board_grid.py`)
 
 The board's holes are **not** a generic lattice: they come from the half-breadboard STEP
-(`configs/objects.yaml` `protoboard.model`), two copies end to end. Pins can only ever be at
+(`configs/wire/objects.yaml` `protoboard.model`), two copies end to end. Pins can only ever be at
 these 800 points, so every position in this skill is one of them.
 
 - 600 terminal holes (per half: 30 numbers x rows A–E | F–J) and 200 rail holes (per half:
@@ -156,7 +156,7 @@ unchanged", "pin straight") and flip it to `verified`/`false` once you know. Num
   orientation fixed, its u/v are these up to sign.)
 - **Pins TCP:** midpoint of the casing's two exits at the casing bottom (z = 0 of
   `casings.json`), x along pin 1 → pin 2, z along the casing up. It is stored in
-  `configs/grip_wire.yaml` (`tcp_pins`, 6D, flange frame). `configs/grip.yaml` stays the RJ45
+  `configs/wire/grip_wire.yaml` (`tcp_pins`, 6D, flange frame). `configs/switch/grip_rj45.yaml` stays the RJ45
   plug model: do not overwrite it.
 - Bridge-level poses (`move_checked`, IK) are **flange** poses in base. Inside a URScript step
   the preamble calls `set_tcp(tcp_pins)`, so `get_actual_tcp_pose()` and `movel` targets are
@@ -201,14 +201,14 @@ the PID. Phases: 1 approach, 2 contact, 3 search, 4 engage, 5 wiggle, 6 seat, 7 
 
 ### S2 Code (no robot motion): once only, skip if already done
 1. Own bridge client name and program in `URExec` (e.g. `protoboard-wire` / `protoboard_wire`).
-2. **`configs/grip_wire.yaml`**: `tcp_pins`, `casing` (name from `casings.json` or
+2. **`configs/wire/grip_wire.yaml`**: `tcp_pins`, `casing` (name from `casings.json` or
    `jumper_orig_5mm`), `grasp_z` (finger centre above the casing bottom), `finger` box
    (width, thickness, length below the flange), `collision_points` (fingertips, casing
    bottom corners, wire loop top), `stamp`, `source`. `move_checked` reads its clearance
    points from it while a casing is held.
 3. **Pin map tool** `agents/vision/pins.py` + CLI `scripts/pin_map.py <scene> [--targets H1:A20,H1:A22]`
    (S3). Build it on `agents/vision/board_grid.py` (the grid, `fit`, `snap`, `placements`;
-   do not fit a free lattice) and reuse `scripts/wire_from_cloud.py` (`fit_plane`,
+   do not fit a free lattice) and reuse `agents/vision/plane.py` (`fit_plane`,
    `plane_view`, `board_rails`, `objects_on_board`) and `agents/vision/scene.py`. What it adds
    is the hole detector (dark square blobs in the rectified close-up) and the casing finder.
    Output `pinmap.json` with: board plane, grid fit (correction, rms, matched share,
@@ -454,10 +454,10 @@ changed). Report the run dir path.
 
 ## Reference URScript
 
-Reuse `porttest/urlib.py` (`contact_l`, `spiral_from`, `release`, `guarded_axial`, `pull_out`,
+Reuse `urcore/urlib.py` (`contact_l`, `spiral_from`, `release`, `guarded_axial`, `pull_out`,
 `seat_z`, `tel`). Downward insertion: `n = [0, 0, -1]` exactly (selection vectors are 0/1),
-`a`/`b` = board u/v flattened to xy. `engage`, `seat_compliant` and `wiggle_test` exist but
-float x/y in force mode: not for pins in the board (principle 8).
+`a`/`b` = board u/v flattened to xy. `wiggle_test` (urcore) and `engage`, `seat_compliant`
+(porttest/urlib.py) exist but float x/y in force mode: not for pins in the board (principle 8).
 
 `seat_z` (in `urlib.LIB`, linted):
 

@@ -8,7 +8,7 @@ import sys
 import numpy as np
 from scipy.spatial.transform import Rotation as R
 
-from porttest.geometry import urpose
+from urcore.urexec import urpose
 from porttest.locate import X, camera, flange
 from porttest.urexec import URExec, call
 

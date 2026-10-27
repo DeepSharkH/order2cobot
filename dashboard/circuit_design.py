@@ -47,6 +47,7 @@ MAPPER_DIR = ROOT / 'src' / 'circuit_mapper'
 DESIGNS = ROOT / 'data' / 'circuit_designs'
 STAGES = ('request', 'clarify', 'netlist', 'solve', 'assembly', 'review')
 PHASES = ('pick', 'move', 'insert', 'verify')
+SOLVERS = ('v2', 'v1')     # mapper.py --solver: v2 the 10-27 solver, v1 the one before (mapper_v1.py)
 
 
 def _read(path):
@@ -210,6 +211,11 @@ class Design:
         self.dir.mkdir(parents=True, exist_ok=True)
         with open(self.dir / 'events.jsonl', 'a') as f:
             f.write(json.dumps(ev) + '\n')
+        self.wake()
+
+    def wake(self):
+        """Wake the followers. Always a fresh event after: a set one never blocks again, and follow()
+        would spin without yielding (the server hung on a design's second request)."""
         self.changed.set()
         self.changed = asyncio.Event()
 
@@ -245,7 +251,8 @@ class CircuitDesigner:
         self.parts = self.inventory['components']
         self.casings = ap.load_casings()
         self.gripper = ap.load_gripper()
-        self.time_limit = float(cfg.get('solver_time_limit', 120))     # the Jetson needs ~30 s for one LED
+        self.time_limit = float(cfg.get('solver_time_limit', 120))     # v1 needs ~30 s for one LED on the Jetson
+        self.solver = cfg.get('solver', 'v2')       # v2: mapper.py (10-27); v1: mapper_v1.py, kept to compare
         self.model = cfg.get('model')
         self.exe = shutil.which('claude') or os.path.expanduser('~/.local/bin/claude')
         self.system = system_prompt(self.parts, self.casings)
@@ -315,7 +322,7 @@ class CircuitDesigner:
         return out
 
     # ── solver ──────────────────────────────────────────────────────────────
-    async def _solve(self, d, circuit):
+    async def _solve(self, d, circuit, solver):
         """src/circuit_mapper/mapper.py: layout, casing and fingertip clearance, verified assembly_order."""
         cpath, mpath = d.dir / 'circuit.json', d.dir / 'mapping.json'
         cpath.write_text(json.dumps(circuit, indent=2) + '\n')
@@ -326,7 +333,7 @@ class CircuitDesigner:
             py = [shutil.which('uv') or os.path.expanduser('~/.local/bin/uv'), 'run', '--no-project', '--with', 'ortools', 'python']
         proc = await asyncio.create_subprocess_exec(
             *py, str(MAPPER_DIR / 'mapper.py'), str(cpath), '--output', str(mpath), '--time-limit', f'{self.time_limit:g}',
-            cwd=str(ROOT), stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
+            '--solver', solver, cwd=str(ROOT), stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
         try:
             out, _ = await proc.communicate()
         finally:
@@ -339,7 +346,8 @@ class CircuitDesigner:
         return None, lines[-1] if lines else f'mapper exited with {proc.returncode}'
 
     # ── a turn: the user's message to the next stop (questions, review, error) ──
-    async def turn(self, d, text):
+    async def turn(self, d, text, solver=None):
+        solver = solver if solver in SOLVERS else self.solver
         d.emit('user', text=text)
         first = self._state(d, 'request') != 'done'
         if first:
@@ -365,7 +373,7 @@ class CircuitDesigner:
                         d.emit('questions', questions=qs)
                     d.stage('clarify', 'wait', f"{len(qs)} question{'s' * (len(qs) != 1)} for you" if qs else 'waiting for you')
                     return
-                feedback = await self._solve_and_plan(d, out)
+                feedback = await self._solve_and_plan(d, out, solver)
                 if feedback is None:
                     return
                 out = await self._agent(d, feedback, self.schema, 'netlist')
@@ -390,7 +398,7 @@ class CircuitDesigner:
         st = [e['state'] for e in d.events if e['t'] == 'stage' and e['stage'] == stage]
         return st[-1] if st else 'pending'
 
-    async def _solve_and_plan(self, d, out):
+    async def _solve_and_plan(self, d, out, solver):
         """Circuit -> mapper -> its assembly plan. Returns feedback for the agent if the mapper refused."""
         circuit = out['circuit']
         d.stage('clarify', 'done', 'specification settled')
@@ -398,20 +406,27 @@ class CircuitDesigner:
         d.emit('circuit', circuit=circuit)
         d.emit('agent', text=out.get('message', ''))
         d.stage('netlist', 'done', f"{len(circuit['components'])} parts · {len(circuit['nets'])} nets")
-        d.stage('solve', 'active', f'CP-SAT · {self.time_limit:g} s budget', started=time.time(), budget=self.time_limit)
-        t0 = time.time()
-        mapping, err = await self._solve(d, circuit)
-        secs = time.time() - t0
-        if not mapping:
-            d.emit('trace', stage='solve', text=f'solver: {err}')
-            d.stage('solve', 'failed', _clip(err, 70))
+        err = await self._layout(d, circuit, solver)
+        if err:
             d.stage('netlist', 'active', 'revising after the solver error')
             return (f'The layout solver returned: "{err}". If the circuit JSON is wrong, fix it and answer with action '
                     '"circuit". If the circuit cannot be placed (a part without a casing, no layout in time, no room), '
                     'explain it in one sentence and answer with action "ask", offering what can be changed.')
-        d.emit('mapping', mapping=mapping, seconds=round(secs, 1))
+        return None
+
+    async def _layout(self, d, circuit, solver):
+        """Solver and assembly plan for this circuit; the solver's error, or None."""
+        d.stage('solve', 'active', f'CP-SAT {solver} · {self.time_limit:g} s budget', started=time.time(), budget=self.time_limit)
+        t0 = time.time()
+        mapping, err = await self._solve(d, circuit, solver)
+        secs = time.time() - t0
+        if not mapping:
+            d.emit('trace', stage='solve', text=f'solver {solver}: {err}')
+            d.stage('solve', 'failed', _clip(f'{solver}: {err}', 70))
+            return err
+        d.emit('mapping', mapping=mapping, seconds=round(secs, 1), solver=solver)
         nj = len(mapping['jumpers'])
-        d.stage('solve', 'done', f"{mapping['status']} · {nj} jumper{'s' * (nj != 1)} · {secs:.0f} s")
+        d.stage('solve', 'done', f"{solver} · {mapping['status']} · {nj} jumper{'s' * (nj != 1)} · {secs:.0f} s")
         steps = ap.steps(circuit, mapping, self.parts, self.board, self.casings)
         for st in steps:
             why = []
@@ -429,6 +444,28 @@ class CircuitDesigner:
         d.stage('assembly', 'done', f"{len(steps)} steps · " + ('no collisions' if not nc else f"{nc} collision{'s' * (nc != 1)}"))
         d.stage('review', 'wait', 'start assembly or restart')
         return None
+
+    async def resolve(self, d, solver):
+        """The same circuit through a solver again, no agent turn: to compare v1 and v2."""
+        d.emit('user', text=f'Solve the layout again with solver {solver}.')
+        try:
+            err = await self._layout(d, d.circuit, solver)
+            if err:
+                d.emit('error', text=f'Solver {solver}: {err}')
+                d.stage('review', 'wait', 'solve again, or restart')
+        except asyncio.CancelledError:
+            d.emit('error', text='Stopped.')
+            for s in STAGES:
+                if self._state(d, s) == 'active':
+                    d.stage(s, 'failed', 'stopped')
+            raise
+        except Exception as e:      # noqa: BLE001  the browser shows it
+            d.emit('error', text=str(e))
+            for s in STAGES:
+                if self._state(d, s) == 'active':
+                    d.stage(s, 'failed', _clip(str(e), 60))
+        finally:
+            d.emit('turn_end')
 
     # ── hand-off and progress of the assembly pipeline ───────────────────────
     def start(self, d):
@@ -528,8 +565,22 @@ def routes(cfg=None):
         if d.phase != 'design':
             return web.json_response({'ok': False, 'reason': 'the layout is locked: start assembly or restart'}, status=409)
         start = len(d.events)
-        d.task = asyncio.create_task(cd.turn(d, text))
-        d.task.add_done_callback(lambda _: d.changed.set())     # wakes the followers once it is over
+        d.task = asyncio.create_task(cd.turn(d, text, body.get('solver')))
+        d.task.add_done_callback(lambda _: d.wake())     # wakes the followers once it is over
+        return await stream(request, d, start)
+
+    async def solve(request):
+        d = design_or_404(request)
+        solver = (await request.json()).get('solver')
+        if solver not in SOLVERS:
+            return web.json_response({'ok': False, 'reason': f'solver must be one of {", ".join(SOLVERS)}'}, status=400)
+        if d.running:
+            return web.json_response({'ok': False, 'reason': 'the agent is still working'}, status=409)
+        if d.phase == 'handoff' or not d.circuit:
+            return web.json_response({'ok': False, 'reason': 'nothing to solve' if not d.circuit else 'the layout is locked: start assembly or restart'}, status=409)
+        start = len(d.events)
+        d.task = asyncio.create_task(cd.resolve(d, solver))
+        d.task.add_done_callback(lambda _: d.wake())
         return await stream(request, d, start)
 
     async def latest(_request):
@@ -537,7 +588,7 @@ def routes(cfg=None):
         return web.json_response({'id': ids[-1] if ids else None})
 
     async def static(_request):
-        return web.json_response({'board': cd.board, 'parts': cd.parts, 'gripper': cd.gripper})
+        return web.json_response({'board': cd.board, 'parts': cd.parts, 'gripper': cd.gripper, 'solver': cd.solver})
 
     async def events(request):
         d = design_or_404(request)
@@ -567,5 +618,5 @@ def routes(cfg=None):
 
     return [web.post('/api/circuit', post), web.get('/api/circuit/static', static), web.get('/api/circuit/latest', latest),
             web.get('/api/circuit/{id}/events', events), web.post('/api/circuit/{id}/stop', stop),
-            web.post('/api/circuit/{id}/start', start),
+            web.post('/api/circuit/{id}/start', start), web.post('/api/circuit/{id}/solve', solve),
             web.get('/api/circuit/{id}/run', run_get), web.post('/api/circuit/{id}/run', run_post)]

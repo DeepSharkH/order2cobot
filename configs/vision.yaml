@@ -1,4 +1,4 @@
-# Workstation perception for the breadboard wire task (scripts/wire_from_cloud.py).
+# Workstation perception for the breadboard wire task (agents/vision/plane.py, agents/vision/pins.py, scripts/capture_scene.py, cadguide).
 # The fixed D435 is read through the calibration dashboard, which owns the camera.
 dashboard_url: http://127.0.0.1:8090
 camera: 0                      # 0 = fixed D435 (calibrated extrinsics), 1 = gripper cam

@@ -1,7 +1,7 @@
 """The protoboard's holes from its CAD: labels, connected nets, 3D positions, and the discrete
 placements a casing's pins can take.
 
-The model (configs/objects.yaml `protoboard.model`) is one half breadboard; `instances` copies
+The model (configs/wire/objects.yaml `protoboard.model`) is one half breadboard; `instances` copies
 end to end along u make the board, as in agents/vision/icp.object_footprint. Each hole is a
 square funnel: 1.7 mm wide at the top (z = 9.5 mm), 0.7 mm from z = 9.0 mm down to its floor at
 z = 2.5 mm. Its centre is the mean of its four corners at z = 9.0 mm.
@@ -148,7 +148,7 @@ class BoardGrid:
 
     @classmethod
     def from_spec(cls, spec: Any, instances: int | None = None, **orientation: Any) -> "BoardGrid":
-        """From an `ObjectSpec` (configs/objects.yaml) whose `model` is the half-board STEP."""
+        """From an `ObjectSpec` (configs/wire/objects.yaml) whose `model` is the half-board STEP."""
         if not spec.model:
             raise ValueError(f"{spec.name}: no CAD model, so no holes")
         return cls(spec.model, spec.size[0], instances or spec.instances or 1, **orientation)

@@ -107,7 +107,7 @@ close it with `done`. Log **every assumption you rely on**
 ## Conventions
 
 - Bridge-level poses (`move_checked`, IK) are **flange** poses in base. Inside a URScript step
-  the preamble calls `set_tcp(<tip from grip.yaml>)`, so `get_actual_tcp_pose()` and `movel`
+  the preamble calls `set_tcp(<tip from grip_rj45.yaml>)`, so `get_actual_tcp_pose()` and `movel`
   targets are **plug-tip** poses. Never mix them in one expression.
 - **`set_tcp` persists after the program ends** (seen 2026-10-25): the bridge's
   `robot_get_pose`/IK then use the tip TCP, and so would **anyone else's program** on the
@@ -145,13 +145,13 @@ first (phases: 1 approach, 2 contact, 3 search, 4 engage, 5 wiggle, 6 seat, 7 ba
 
 ### S2 Code fixes (no robot motion) — only once, skip if already done
 1. **Own bridge client name** in `URExec` (e.g. `rj45-skill`), not `order2cobot-calib`.
-2. **`configs/grip.yaml`** = the tool model: `tcp_tip` (flange→tip, 6D), `tag_to_tip` (from S3),
+2. **`configs/switch/grip_rj45.yaml`** = the tool model: `tcp_tip` (flange→tip, 6D), `tag_to_tip` (from S3),
    `collision_points` (tip, shell rear, cable exit, in flange frame), `stamp`, `source`.
    `move_checked` must read its clearance points from it (today they are hard-coded for the
    old grip) and the URScript preamble must `set_tcp` from `tcp_tip`.
 3. **Add the primitives in "Reference URScript"** below to `urlib.LIB`
-   (`slide_until_advance`, `spiral_search`, `wiggle_test`, `seat_compliant`), and keep
-   `insert_fm`/`grid_search` but do not use them.
+   (`slide_until_advance`, `spiral_search`, `wiggle_test`, `seat_compliant`); the old
+   `insert_fm`/`grid_search` are archived (archive/porttest_legacy/urlib_legacy.py).
 4. Validate: run each new primitive once **in free air** 20 mm in front of the face (expected:
    no contact, "not found", program ends cleanly). Before its first real run, print the
    generated script for the operator to glance at (the no-sim safety gate; log it as setup).
@@ -162,8 +162,8 @@ first (phases: 1 approach, 2 contact, 3 search, 4 engage, 5 wiggle, 6 seat, 7 ba
   < 10° from a flange axis, the other > 10° worse).
 - **First run (no `tag_to_tip` yet):** derive the tip in the flange frame from the
   gripper-cam image (as `plug_axis.py` did) and refine it with S5's touches; store
-  `tag_to_tip` = inverse(tag pose) · tip pose in `grip.yaml`.
-- **Later runs:** tip = tag pose · `tag_to_tip`. If it moved > 1 mm or > 2° vs `grip.yaml`
+  `tag_to_tip` = inverse(tag pose) · tip pose in `grip_rj45.yaml`.
+- **Later runs:** tip = tag pose · `tag_to_tip`. If it moved > 1 mm or > 2° vs `grip_rj45.yaml`
   → grip changed: update `tcp_tip` + collision points, log `observed` + `interpretation`.
 - Note: the tag normal sits ~6–7° off flange +y (glue or grip tilt) — use the transform,
   not the axis assumption.
@@ -212,7 +212,7 @@ and find out which is wrong. Touch formula (`configs/products/ls108g.yaml`, afte
 **port z = top_pass_z − port1_below_top_pass_z**. Search radius 1.5 mm.
 
 ### S7 Insert (one URScript program per stage, results via textmsg)
-1. `move_checked` to 15 mm in front of the target (flange pose from `grip.yaml`).
+1. `move_checked` to 15 mm in front of the target (flange pose from `grip_rj45.yaml`).
 2. **Search** — `spiral_search` at **4 N**, pitch 0.4 mm, radius 1.5 mm (routine) / 3 mm,
    2 mm/s. Reference = the **measured local face y** (not "where contact happened"): going
    past the face on approach is a candidate, not "no face".

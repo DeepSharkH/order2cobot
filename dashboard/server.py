@@ -35,7 +35,7 @@ PUT /api/experiments/{run}/tags, POST|DELETE /api/experiments/{run}/comments[/{i
     tags and comments on a run, kept in <run>/notes.json
 
 GET /api/objects[/{name}], POST /api/objects/{name}/locate   bounding box of a configured
-    object (configs/objects.yaml, e.g. the protoboard) in the live clouds (objects.py)
+    object (configs/wire/objects.yaml, e.g. the protoboard) in the live clouds (objects.py)
 
 GET /api/frame/0|1|2   latest full-resolution colour frame (PNG) of the fixed / gripper / ToF cam (ToF: IR intensity)
 GET /api/depth/0|1|2   its aligned depth (.npy float32, metres, 0 = no reading; ToF: height in Nova's frame)
@@ -263,7 +263,7 @@ class App:
         else:
             self.robot = Robot(cfg['robot'])
         self.qa = PortQA(cfg.get('qa', {}))
-        self.objects = objects.ObjectFinder(self, ROOT / cfg.get('objects_file', 'configs/objects.yaml'),
+        self.objects = objects.ObjectFinder(self, ROOT / cfg.get('objects_file', 'configs/wire/objects.yaml'),
                                             ROOT / cfg.get('objects_dir', 'data/objects'))
         if mirror:
             hz = cfg.get('mirror_hz', 2.0)

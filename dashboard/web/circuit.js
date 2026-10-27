@@ -46,7 +46,7 @@ let showCasings = true;
 let playTimer = null;
 
 function fresh() {
-  return { id: null, n: 0, stages: {}, circuit: null, mapping: null, assembly: null,
+  return { id: null, n: 0, stages: {}, circuit: null, mapping: null, solver: null, assembly: null,
     phase: 'design', running: false, stream: null, run: null, step: 0, view: 'design', activeStage: null, workStart: null };
 }
 
@@ -255,7 +255,7 @@ function apply(ev) {
     case 'error': addError(ev); break;
     case 'questions': addQuestions(ev); break;
     case 'circuit': D.circuit = ev.circuit; addCircuit(ev); break;
-    case 'mapping': D.mapping = ev.mapping; D.solveSecs = ev.seconds; renderWork(); break;
+    case 'mapping': D.mapping = ev.mapping; D.solveSecs = ev.seconds; D.solver = ev.solver || 'v1'; renderWork(); break;
     case 'assembly': D.assembly = ev; D.step = ev.sequence.length; renderWork(); break;
     case 'stage':
       D.stages[ev.stage] = ev;
@@ -307,7 +307,7 @@ async function sendText(text) {
   try {
     const r = await fetch('/api/circuit', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: ac.signal,
-      body: JSON.stringify({ text, design: D.id }),
+      body: JSON.stringify({ text, design: D.id, solver: $('#ca-solver').value }),
     });
     if (!r.ok) {
       const j = await r.json().catch(() => ({}));
@@ -620,10 +620,10 @@ function renderWork() {
   const has = !!D.mapping;
   $('#ca-design').classList.toggle('has-layout', has);
   updateInput();
-  if (!has) { renderActions(); return; }
+  if (!has) { renderActions(); renderCheck(); return; }
   $('#ca-title').textContent = D.circuit.circuit_id.replace(/_/g, ' ');
   const m = D.mapping, nj = m.jumpers.length;
-  $('#ca-sub').textContent = `${m.status === 'OPTIMAL' ? 'Optimal' : 'Feasible'} layout · ${D.circuit.components.length} parts · ${nj} jumper${nj === 1 ? '' : 's'}`;
+  $('#ca-sub').textContent = `Solver ${D.solver} · ${m.status === 'OPTIMAL' ? 'Optimal' : 'Feasible'} layout · ${D.circuit.components.length} parts · ${nj} jumper${nj === 1 ? '' : 's'}`;
   const k = D.assembly ? D.step : Infinity;
   drawBoard($('#ca-svg'), { view: viewMode, casings: showCasings && !!D.assembly, badges: !!D.assembly && k >= D.assembly.sequence.length, state: planState(k) });
   renderParts();
@@ -761,6 +761,10 @@ function renderActions() {
   acts.classList.toggle('hidden', !D.mapping);
   start.disabled = !((D.phase === 'review' && !D.running) || D.phase === 'handoff');
   start.textContent = D.phase === 'handoff' ? 'Open the build' : D.assembly ? 'Start assembly' : 'Planning…';
+  const re = $('#ca-resolve');
+  re.textContent = `Solve with ${otherSolver()}`;
+  re.classList.toggle('hidden', D.phase === 'handoff');
+  re.disabled = D.running || !D.circuit;
 }
 
 // hover: name the item, dim the nets it does not touch
@@ -890,6 +894,22 @@ $('#ca-text').onkeydown = (e) => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('#ca-form').requestSubmit(); }
 };
 $('#ca-restart').onclick = restart;
+// v1 or v2 on the same circuit: the layout and insertion order are replaced, the conversation stays
+function otherSolver() { return D.solver === 'v1' ? 'v2' : 'v1'; }
+$('#ca-resolve').onclick = async () => {
+  if (D.running || !D.id) return;
+  busy(true);
+  try {
+    const r = await fetch(`/api/circuit/${D.id}/solve`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ solver: otherSolver() }) });
+    if (r.ok) await readStream(r);
+    else addError({ text: (await r.json().catch(() => ({}))).reason || `HTTP ${r.status}` });
+  } catch (e) { addError({ text: String(e) }); }
+  busy(false);
+};
+// the solver for new requests, remembered per browser (default: the server's `circuit.solver`)
+try { $('#ca-solver').value = localStorage.getItem('circuitSolver') || 'v2'; } catch { /* storage blocked */ }
+$('#ca-solver').onchange = () => { try { localStorage.setItem('circuitSolver', $('#ca-solver').value); } catch { /* storage blocked */ } };
 $('#tabs').addEventListener('click', (e) => { if (e.target.closest('button')?.dataset.tab === 'circuit') address(); });
 $('#ca-start').onclick = async () => {
   if (D.phase === 'handoff') { await pollRun(); showView('run'); return; }
@@ -931,6 +951,7 @@ hover($('#ca-runsvg'), null);
 
 (async () => {
   stat = await (await fetch('/api/circuit/static')).json();
+  try { if (!localStorage.getItem('circuitSolver') && stat.solver) $('#ca-solver').value = stat.solver; } catch { /* storage blocked */ }
   partById = Object.fromEntries(stat.parts.map((p) => [p.part_id, p]));
   renderRail();
   renderWork();

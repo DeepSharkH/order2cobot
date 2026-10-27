@@ -89,7 +89,7 @@ def main() -> None:
     ap.add_argument("located", type=Path, help="a locate_object result (scripts/locate_object.py)")
     ap.add_argument("--scene", type=Path, help="draw the holes into this scene's camera frames")
     ap.add_argument("--out", type=Path, help="output folder (default: <located dir>/board_grid)")
-    ap.add_argument("--objects", type=Path, default=Path("configs/objects.yaml"))
+    ap.add_argument("--objects", type=Path, default=Path("configs/wire/objects.yaml"))
     ap.add_argument("--flip-u", action="store_true", help="number 1 / half H1 at the box's +u end")
     ap.add_argument("--flip-v", action="store_true", help="row A on the box's +v side")
     ap.add_argument("--rail-plus", choices=("outer", "inner"), default="outer")

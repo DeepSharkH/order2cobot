@@ -3,7 +3,7 @@
 
 The prompt is the positional argument, or is read from --prompt-file, or from stdin:
 
-    uv run scripts/run_agent.py "Summarise what agents/robot/bridge.py does"
+    uv run scripts/run_agent.py "Summarise what urcore/urexec.py does"
     uv run scripts/run_agent.py --prompt-file prompts/review.txt --name review
     echo "List the configs" | uv run scripts/run_agent.py --model claude-sonnet-5-5
 

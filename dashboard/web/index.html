@@ -177,7 +177,7 @@
       <div class="section-head"><h2>Detection</h2></div>
       <div class="cards">
         <div class="card dark" id="obj-c-find">
-          <div class="card-head"><div><h3>Find</h3><p>configs/objects.yaml · both depth clouds</p></div><span class="chip quiet" id="obj-chip"></span></div>
+          <div class="card-head"><div><h3>Find</h3><p>configs/wire/objects.yaml · both depth clouds</p></div><span class="chip quiet" id="obj-chip"></span></div>
           <div class="rows">
             <b>Object</b><span><select id="obj-sel"></select></span>
             <b>Image fit</b><span><select id="obj-img" title="Refine on the camera frames: auto = only when the cloud fit is not precise enough">
@@ -224,11 +224,15 @@
         <div class="ca-log" id="ca-log"></div>
         <form class="ca-in" id="ca-form">
           <textarea id="ca-text" rows="2"></textarea>
+          <select id="ca-solver" title="Layout solver. v2: the 10-27 solver (fast); v1: the one before, kept to compare">
+            <option value="v2">Solver v2</option><option value="v1">Solver v1 (old)</option>
+          </select>
           <button id="ca-send" class="primary" type="submit">Send</button>
         </form>
         <div class="ca-check hidden" id="ca-check"></div>
         <div class="ca-actions hidden" id="ca-actions">
           <button id="ca-restart" title="Discard this design and start over">Restart</button>
+          <button id="ca-resolve" title="Lay out the same circuit again with the other solver, to compare">Solve with v1</button>
           <button id="ca-start" class="primary" disabled>Start assembly</button>
         </div>
       </section>

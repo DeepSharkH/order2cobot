@@ -1,5 +1,5 @@
 # Tool model while a protoboard casing is held (skill protoboard-wire), flange frame, metres.
-# configs/grip.yaml stays the RJ45 plug model. Re-measure after every grasp (S4): tcp_pins is
+# configs/switch/grip_rj45.yaml stays the RJ45 plug model. Re-measure after every grasp (S4): tcp_pins is
 # inv(T_base_flange) . T_base_pins with the pins at the holes measured just before the grasp.
 stamp: '2026-10-26T19:50'
 source: >-

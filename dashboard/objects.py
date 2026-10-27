@@ -1,4 +1,4 @@
-"""Objects in the scene: locate a configured object (configs/objects.yaml, e.g. the
+"""Objects in the scene: locate a configured object (configs/wire/objects.yaml, e.g. the
 protoboard) in the live clouds of both cameras and keep its world bounding box.
 
 The search itself is agents/vision/locate.py: template search on a height map, an edge fit

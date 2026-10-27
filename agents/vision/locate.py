@@ -90,7 +90,7 @@ def load_objects(path: str | Path) -> dict[str, ObjectSpec]:
         L, W, H = (v / 1000 for v in o.pop("size_mm"))
         plate = o.pop("plate_z_mm", None)
         if o.get("model") and not Path(o["model"]).is_absolute():  # relative to the repository root
-            o["model"] = str(Path(path).resolve().parent.parent / o["model"])
+            o["model"] = str(Path(__file__).resolve().parents[2] / o["model"])
         specs[name] = ObjectSpec(
             name=name,
             label=o.pop("label", name),

@@ -12,8 +12,8 @@ import cv2
 import numpy as np
 import yaml
 
-from porttest import dash, ports
-from porttest.geometry import urpose
+from porttest import ports
+from urcore.urexec import urpose
 from porttest.locate import camera, flange
 from porttest.urexec import URExec
 

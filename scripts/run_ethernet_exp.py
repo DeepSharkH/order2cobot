@@ -7,7 +7,7 @@ The prompt is the positional argument, or is read from --prompt-file, or from st
     uv run scripts/run_ethernet_exp.py --name rj45_port1 "/rj45-insert seat port 1"
     uv run scripts/run_ethernet_exp.py --prompt-file prompts/rj45.txt --name rj45_port1
 
-Nothing is asked during the run. configs/agents/ethernet_exp.yaml runs the CLI in the
+Nothing is asked during the run. configs/switch/ethernet_exp.yaml runs the CLI in the
 rj45-port-qa worktree with the skill's commands allowed up front (all Bash and edits, minus a
 deny list, no MCP servers), and tells the agent that no operator is available.
 
@@ -39,7 +39,7 @@ from agents.claude_cli.session import read_prompt, run_and_record
 from agents.core import ConfigError, Settings
 from agents.core.config import read_yaml
 
-DEFAULT_CONFIG = Path("configs/agents/ethernet_exp.yaml")
+DEFAULT_CONFIG = Path("configs/switch/ethernet_exp.yaml")
 DEFAULT_VISION = Path("configs/vision.yaml")
 DEFAULT_RESULTS = Path("results")
 
