@@ -24,9 +24,9 @@ row1_end_x_mm: -353.51      # row-1 end face (closest to the robot)
 yaw_deg: 0.139              # long axis vs base x
 top_tilt_deg: 0.865         # mostly along x: 0.6 mm over 65 mm (tape / backing)
 top_z_mm: 13.1              # from the scene (plate +4.6 in base + 8.5 board), not touched
-# tip z at the top contacts = -14.4 with fingertip_z 0.2545, so the real fingertip is ~0.282 m
-# below the flange; written to configs/breadboard/gripper.yaml (0.2821, touch_locate --set-fingertip).
-fingertip_z_est_m: 0.2821
+# tip z at the top contacts = -14.4 with fingertip_z 0.2545, so the real fingertip is ~0.227 m
+# below the flange (27.5 mm SHORTER than the CAD); in configs/breadboard/gripper.yaml (0.2269).
+fingertip_z_est_m: 0.2269
 holes_mm:                   # centres, from the row-1 end: row r x = -356.75 - (r - 1) * 2.54
   row1_x: -356.75           # end face - 3.24 (board.yaml a1 -> end)
   a_y: -23.94               # far edge - 12.49

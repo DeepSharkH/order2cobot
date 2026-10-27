@@ -154,10 +154,11 @@ def top_from_scene():
 
 
 def fingertip_from_top(C, used):
-    """The real flange -> fingertip length: the tip touched the top at z_c with TCP `used`, so the
-    tip is (top - z_c) longer than modelled."""
+    """The real flange -> fingertip length. The flange was at z_c + used when the tip touched the
+    top, so the real length is (z_c + used) - top: a contact BELOW the scene's top means the tip
+    is SHORTER than modelled (sign got wrong once, 10-27: 0.2821 instead of 0.2270)."""
     zc = np.mean([C[k][2] for k in ('top1', 'top2', 'top3') if k in C])
-    return used + (top_from_scene() - zc)
+    return used - (top_from_scene() - zc)
 
 
 def update_gripper(est, run, tol=0.001):
