@@ -1,0 +1,36 @@
+/* The board drawing (board.js), scoped to svg.bd so any page can use it; the same rules as the
+   .ca-board ones in style.css, with fallbacks for pages without the dashboard's colours. */
+
+svg.bd { display: block; overflow: visible; }
+svg.bd .ax { font: 8.5px var(--font, system-ui, sans-serif); fill: var(--ink, #111); opacity: .5; }
+svg.bd .lbl { font: 700 9px var(--font, system-ui, sans-serif); fill: var(--ink, #111); paint-order: stroke;
+  stroke: var(--cream, #fef5da); stroke-width: 3px; pointer-events: none; }
+svg.bd .pinmark { font: 700 12px var(--font, system-ui, sans-serif); fill: #fff; pointer-events: none; }
+svg.bd .mark { font: 900 10px var(--font, system-ui, sans-serif); pointer-events: none; }
+svg.bd .pwrmark { font: 900 13px var(--font, system-ui, sans-serif); fill: #fff; pointer-events: none; }
+svg.bd .item { cursor: default; transition: opacity .15s; }
+svg.bd .dim { opacity: .14; }
+svg.bd .ghost { opacity: .13; }
+svg.bd .lbl.ghost { opacity: .25; }
+svg.bd .cas { fill: none; stroke: #111; stroke-opacity: .38; stroke-width: 1; stroke-dasharray: 3 2; }
+svg.bd .cas.ghost { opacity: 0; }
+svg.bd .cas.over { stroke: var(--red, #d2483c); stroke-opacity: .95; stroke-width: 1.6; stroke-dasharray: none;
+  fill: var(--red, #d2483c); fill-opacity: .1; }
+svg.bd .cas.failed, svg.bd .item.failed .body { stroke: var(--red, #d2483c); stroke-width: 2; }
+svg.bd .finger { fill: var(--brass, #c9a15d); fill-opacity: .55; stroke: #111; stroke-width: 1; }
+svg.bd .cas-now { fill: none; stroke: #111; stroke-width: 2; }
+svg.bd .badge rect { fill: #111; }
+svg.bd .badge text { font: 900 9px var(--font, system-ui, sans-serif); fill: var(--cream, #fef5da); }
+svg.bd .badge.now rect { fill: var(--red, #d2483c); }
+svg.bd .empty { font: 700 10px var(--font, system-ui, sans-serif); letter-spacing: .26em; text-transform: uppercase;
+  fill: var(--ink, #111); opacity: .55; }
+
+/* the simple circuit picture (drawSchematic) */
+svg.sch { display: block; }
+svg.sch .sym-wire { stroke: var(--ink, #111); stroke-width: 2.5; }
+svg.sch .sym-body { fill: var(--paper, #fff); stroke: var(--ink, #111); stroke-width: 2.5; }
+svg.sch .sym-line { stroke: var(--ink, #111); stroke-width: 2.5; stroke-linejoin: round; }
+svg.sch .sym-plate { stroke: var(--ink, #111); stroke-width: 3.5; }
+svg.sch .sym-ray { fill: none; stroke: var(--ink, #111); stroke-width: 1.6; }
+svg.sch .sym-pm { font: 900 15px var(--font, system-ui, sans-serif); fill: #fff; }
+svg.sch .sym-lbl { font: 700 14px var(--font, system-ui, sans-serif); fill: var(--ink, #111); }

@@ -80,7 +80,15 @@ button {
   border: 1px solid #3a3a3a; border-radius: 0; padding: 7px 11px;
 }
 button:hover { border-color: var(--cream); }
-button.on, button.toggle.on { background: var(--cream); color: var(--ink); border-color: var(--cream); }
+button.on { background: var(--cream); color: var(--ink); border-color: var(--cream); }
+/* on/off switches: a box that holds an X while on, never a filled button like an action */
+button.toggle { display: inline-flex; align-items: center; gap: 8px; background: transparent; color: var(--grey); }
+button.toggle::before { content: ''; flex: none; width: 11px; height: 11px; border: 1.5px solid currentColor; }
+button.toggle.on { background: transparent; color: var(--cream); border-color: #3a3a3a; }
+button.toggle.on::before {
+  background: linear-gradient(45deg, transparent 42%, currentColor 42%, currentColor 58%, transparent 58%),
+    linear-gradient(-45deg, transparent 42%, currentColor 42%, currentColor 58%, transparent 58%);
+}
 button:disabled { cursor: default; }
 button.primary { background: var(--cream); color: var(--ink); border-color: var(--cream); }
 .seg { display: inline-flex; align-items: center; gap: 6px; margin-right: 12px; }
@@ -88,6 +96,9 @@ button.primary { background: var(--cream); color: var(--ink); border-color: var(
 .seg .off { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--red); }
 .legend { display: flex; gap: 18px; font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--grey); padding-bottom: 3px; }
 .legend span { display: inline-flex; align-items: center; gap: 7px; }
+.legend.quiet { position: absolute; top: 10px; right: 12px; z-index: 2; pointer-events: none; gap: 12px; font-size: 9.5px; letter-spacing: .12em; opacity: .55; }
+.legend.quiet .sw { width: 7px; height: 7px; }
+#view-seg button .sw { width: 8px; height: 8px; margin-right: 7px; vertical-align: 1px; }
 .sw { width: 9px; height: 9px; display: inline-block; }
 .sw-arm { background: var(--white); }
 .sw-air { background: var(--cream); }
@@ -113,6 +124,9 @@ button.primary { background: var(--cream); color: var(--ink); border-color: var(
 .feeds { flex: 1; min-height: 0; display: flex; gap: var(--gap); }
 .feed { position: relative; background: #000; overflow: hidden; height: 100%; aspect-ratio: var(--ar, 4 / 3); flex: 0 1 auto; min-width: 0; }
 .feed img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.feed .zoom { width: 100%; height: 100%; transform-origin: 0 0; }
+.feed.zoomed { cursor: grab; }
+.feed.zoomed:active { cursor: grabbing; }
 .feed canvas.ovl { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .feed .cap {
   position: absolute; left: 0; bottom: 0;
@@ -255,6 +269,7 @@ kbd { font: 400 10px var(--font); opacity: .6; margin-left: 4px; }
 .ed-msg.err { color: var(--red); }
 .sw-ls108g { background: #fef5da; }
 .sw-breadboard { background: #6fb3a8; }
+.sw-rack { background: #5b8fe0; }
 
 /* ── tabs + port QA ────────────────────────────────────────────── */
 .tabs { display: flex; gap: 6px; }
@@ -266,17 +281,30 @@ kbd { font: 400 10px var(--font); opacity: .6; margin-left: 4px; }
 .switch3d { position: relative; flex: 1; min-height: 0; margin: 0 -20px; overflow: hidden; }
 .switch3d canvas { display: block; position: absolute; inset: 0; }
 .linkbar { display: flex; align-items: flex-end; gap: 26px; flex-wrap: wrap; }
-.linkbar .v { font-size: 46px; font-weight: 900; line-height: 1.02; text-transform: uppercase; letter-spacing: -.01em; }
+.qa-head { align-items: center; justify-content: space-between; }
+.linkbar .v { font-size: 30px; font-weight: 900; line-height: 1.02; text-transform: uppercase; letter-spacing: -.01em; }
 .linkbar .v.alert { color: var(--red); }
 .linkbar .k { font-size: 11px; font-weight: 700; letter-spacing: .18em; text-transform: uppercase; color: var(--grey); }
 .linkbar .m { font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: var(--beige); padding-bottom: 6px; }
 .ports { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 10px; }
+/* Port Q&A: the ports as a list of lights in the right panel */
+.port-list { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 14px; }
+.prow { display: flex; align-items: center; gap: 10px; padding: 8px 10px; text-align: left; background: transparent; color: var(--white); }
+.prow i { flex: none; width: 10px; height: 10px; border-radius: 50%; background: #4a4a4a; }
+.prow span { font-weight: 700; letter-spacing: .06em; text-transform: uppercase; font-size: 12px; }
+.prow em { margin-left: auto; font-style: normal; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--grey); }
+.prow.pass i { background: #4cc46a; box-shadow: 0 0 8px rgba(76, 196, 106, .6); }
+.prow.fail i { background: var(--red); box-shadow: 0 0 8px rgba(210, 72, 60, .6); }
+.prow.fail em { color: var(--red); }
+.prow.testing i { background: var(--brass); animation: prow-blink 1s ease-in-out infinite; }
+.prow.sel { border-color: var(--cream); }
+@keyframes prow-blink { 50% { opacity: .3; } }
 .port {
   display: flex; flex-direction: column; gap: 5px; align-items: stretch; text-align: left; min-width: 0;
   padding: 8px 10px 10px; letter-spacing: normal; text-transform: none;
   font: 400 12px var(--font); color: var(--white); background: transparent; border: 1px solid #3a3a3a;
 }
-.port .num { font-size: 28px; font-weight: 900; line-height: 1; }
+.port .num { font-size: 24px; font-weight: 900; line-height: 1; }
 .port .st2 { font-size: 10px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
 .port .det { font-size: 10px; letter-spacing: .04em; text-transform: uppercase; opacity: .8; margin-top: auto; }
 .port.pass { background: var(--cream); color: var(--ink); border-color: var(--cream); }
@@ -380,7 +408,9 @@ button.exp-t:hover { color: var(--cream); }
 /* ── cameras tab: the feeds alone, filling the page ───────────── */
 .cams-layout { display: flex; }
 .cams-layout .cams { flex: 1; min-width: 0; }
-.cams-layout .feeds { justify-content: center; }
+.cams-layout .feeds { justify-content: center; align-items: center; }
+/* Camera Feeds: one row, every tile the shape of its frame (widths in proportion), no black bars */
+.cams-layout .feed { height: auto; flex: var(--arn, 1.33) 1 0; aspect-ratio: var(--ar, 4 / 3); }
 /* objects tab */
 .card .rows select { font: inherit; font-size: 12px; background: transparent; color: inherit; border: 1px solid #3a3a3a; padding: 2px 6px; }
 .card.dark .rows select option { background: var(--bg); }
@@ -395,12 +425,15 @@ button.exp-t:hover { color: var(--cream); }
 .fuse td.n { text-align: right; padding-left: 12px; white-space: nowrap; }
 .fuse tr.off { opacity: .45; }
 .fuse label { display: flex; align-items: center; gap: 7px; cursor: pointer; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
-.fuse input { margin: 0; accent-color: var(--ink); }
-.fuse .bar { display: block; height: 4px; margin-top: 5px; background: rgba(17, 17, 17, .12); }
+.fuse input { margin: 0; accent-color: var(--cream); }
+.fuse .bar { display: block; height: 4px; margin-top: 5px; background: rgba(254, 245, 218, .12); }
 .fuse .bar i { display: block; height: 100%; }
-.card button.toggle.on { background: var(--ink); color: var(--cream); border-color: var(--ink); }
+.card:not(.dark) button.toggle { color: rgba(17, 17, 17, .55); }
+.card:not(.dark) button.toggle.on { color: var(--ink); border-color: var(--ink); }
 
 /* ── circuit assembly tab ──────────────────────────────────────── */
+.proj-tab { flex: 1; min-height: 0; display: flex; }
+.proj-tab iframe { flex: 1; border: 0; background: var(--bg); }
 .ca { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 22px; padding: 22px 40px 18px; }
 
 /* progress rail: one line of stages, one line of status */

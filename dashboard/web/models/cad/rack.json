@@ -1,0 +1,11 @@
+{
+ "name": "casing_rack",
+ "source": "assets/models/component_casings/All_Casings_Holder_Print.stl",
+ "units": "mm",
+ "frame": "origin = centre of the footprint on the table; x along the long side, z up",
+ "size": [
+  142.16,
+  82.5,
+  9.0
+ ]
+}

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>UR3e 3D Visualization</title>
+  <title>Hestia</title>
   <link rel="preload" href="vendor/fonts/open-sauce-one-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="vendor/fonts/open-sauce-one-latin-900-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="style.css">
@@ -13,45 +13,42 @@
 </head>
 <body>
   <header class="top">
-    <div class="kicker">order2cobot</div>
+    <div class="kicker">Hestia</div>
     <nav class="tabs" id="tabs">
-      <button data-tab="calib" class="on">3D Visualization</button>
-      <button data-tab="qa">Port QA</button>
-      <button data-tab="cams">Cameras</button>
-      <button data-tab="obj">Objects</button>
-      <button data-tab="circuit">Circuit Assembly</button>
-      <button data-tab="exp">Experiments</button>
-      <button data-tab="sim">Simulation</button>
+      <button data-tab="projects" class="on">Projects</button>
+      <button data-tab="calib">3D Environment</button>
+      <button data-tab="qa">Port Q&amp;A</button>
+      <button data-tab="cams">Camera Feeds</button>
     </nav>
-    <div class="status" id="status"></div>
+    <div class="status hidden" id="status"></div>
   </header>
 
-  <main class="layout" id="tab-calib">
+  <main class="layout hidden" id="tab-calib">
     <section class="section scene">
       <div class="section-head">
-        <h2>Scene</h2>
-        <div class="legend" id="scene-legend">
-          <span><i class="sw sw-arm"></i>UR3e</span>
-          <span><i class="sw sw-board"></i>CAD targets</span>
+        <div class="seg" id="view-seg">
+          <button data-view="free" class="on" title="Orbit freely (0)">Free</button>
         </div>
         <div class="tools">
-          <div class="seg" id="view-seg"><span class="lbl">View</span>
-            <button data-view="free" class="on" title="Orbit freely (0)">Free</button>
-          </div>
           <button id="btn-edit" title="Manual calibration: place the robot base, the switch and the breadboard by hand (E)">Edit</button>
           <button id="btn-cloud" class="toggle on" title="Depth clouds of the placed cameras">Cloud</button>
-          <button id="btn-cad" class="toggle on" title="CAD models (switch, breadboard) at their registered / anchored poses, semi-transparent">CAD</button>
-          <button id="btn-ovl" class="toggle on" title="Draw detections, the calibrated robot/board and the CAD targets' boxes onto the feeds">Overlays</button>
-          <button id="btn-view" title="Reset the view">Reset</button>
+          <button id="btn-cad" class="toggle on" title="CAD models (switch, breadboard) at their registered / anchored poses, semi-transparent">Models</button>
+          <button id="btn-ovl" class="toggle on hidden" title="Draw detections, the calibrated robot/board and the CAD targets' boxes onto the feeds">Overlays</button>
+          <button id="btn-view" class="hidden" title="Reset the view">Reset</button>
         </div>
       </div>
       <div id="viewport" class="viewport">
+        <div class="legend quiet" id="scene-legend">
+          <span><i class="sw sw-arm"></i>UR3e</span>
+          <span><i class="sw sw-board"></i>CAD targets</span>
+        </div>
         <div id="editor" class="editor hidden">
           <div class="ed-title">Manual calibration</div>
           <div class="ed-items" id="ed-items">
             <button data-item="base" title="Robot base"><i class="sw sw-arm"></i>Base</button>
             <button data-item="ls108g" title="TP-Link LS108G switch"><i class="sw sw-ls108g"></i>LS108G</button>
             <button data-item="breadboard" title="Breadboard"><i class="sw sw-breadboard"></i>Breadboard</button>
+            <button data-item="rack" title="Casing rack"><i class="sw sw-rack"></i>Rack</button>
           </div>
           <div class="ed-src" id="ed-src"></div>
           <div class="ed-row">
@@ -103,43 +100,30 @@
     </section>
 
     <section class="section side">
-      <div class="section-head"><h2>Robot</h2></div>
       <div class="cards" id="cards"></div>
     </section>
   </main>
 
   <main class="layout hidden" id="tab-qa">
     <section class="section scene">
-      <div class="section-head">
-        <h2>Switch</h2>
-        <div class="legend">
-          <span><i class="sw sw-pass"></i>Pass</span>
-          <span><i class="sw sw-fail"></i>Fail</span>
-          <span><i class="sw sw-untested"></i>Untested</span>
-        </div>
+      <div class="section-head qa-head">
+        <div class="linkbar" id="qa-link"></div>
         <div class="tools">
-          <button id="qa-insert" class="primary" title="Wait for the link to come up and hold at full speed">Check insert</button>
-          <button id="qa-extract" title="Wait for the link to drop">Check extract</button>
+          <button id="qa-insert" class="primary hidden" title="Wait for the link to come up and hold at full speed">Check insert</button>
+          <button id="qa-extract" class="hidden" title="Wait for the link to drop">Check extract</button>
           <button id="qa-reset-port">Reset port</button>
           <button id="qa-reset-all">Reset all</button>
-          <button id="qa-view" title="Reset the view">View</button>
         </div>
       </div>
       <div class="switch-panel">
-        <div class="linkbar" id="qa-link"></div>
         <div class="switch3d" id="qa-3d"></div>
-        <div class="ports" id="qa-ports"></div>
       </div>
     </section>
-    <section class="section cams" id="qa-cams">
-      <div class="section-head"><h2>Cameras</h2></div>
-    </section>
+    <section class="section cams" id="qa-cams"></section>
     <section class="section side">
-      <div class="section-head"><h2>Port QA</h2></div>
+      <div class="port-list" id="qa-ports"></div>
       <div class="cards" id="qa-cards">
-        <div class="card dark" id="qa-c-link"></div>
-        <div class="card" id="qa-c-port"></div>
-        <div class="card" id="qa-c-run"></div>
+        <div class="card dark hidden" id="qa-c-port"></div>
       </div>
     </section>
   </main>
@@ -191,6 +175,8 @@
       </div>
     </section>
   </main>
+
+  <main class="proj-tab" id="tab-projects"><iframe id="projects-frame" title="Projects"></iframe></main>
 
   <main class="ca hidden" id="tab-circuit">
     <div class="ca-top">
@@ -281,10 +267,6 @@
   <!-- filled by simulation/web/sim_tab.js on first open -->
   <main class="layout hidden" id="tab-sim"></main>
 
-  <footer class="foot">
-    <span>Fixed D435 · Gripper Gemini 335Lg · UR3e via AI Agent Bridge</span>
-    <span class="clock" id="clock">--:--:--</span>
-  </footer>
 
   <div id="conn" class="conn">Connecting to the dashboard server</div>
 

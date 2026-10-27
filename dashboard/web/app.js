@@ -94,12 +94,12 @@ async function loadCadModel(name) {
   });
   s.add(gltf.scene);
   const l = label(name);
-  l.obj.position.set(0, 0, name === 'ls108g' ? 0.04 : 0.015);
+  l.obj.position.set(0, 0, { ls108g: 0.04, rack: 0.02 }[name] ?? 0.015);
   g.add(l.obj);
   cad[name] = { g, s, l, key: '' };
   applyCad(lastState?.cad);
 }
-Promise.all(['ls108g', 'breadboard'].map(loadCadModel)).catch((e) => console.error('CAD models', e));
+Promise.all(['ls108g', 'breadboard', 'rack'].map(loadCadModel)).catch((e) => console.error('CAD models', e));     // rack: assets/models/cad/rack.py
 let cadOn = true;
 // Tr(o) · S · Tr(−o): the pitch scales stretch the model about its scale origin o (object frame)
 function setCadScale(m, scale, o) {
@@ -116,7 +116,7 @@ function applyCad(c) {
     m.key = key;
     m.g.matrix.copy(mat4(p.T));
     setCadScale(m, p.scale, p.scale_origin);
-    m.l.el.innerHTML = `${name} <small>${esc(p.kind)}${p.anchors ? ` · ${p.anchors} anchor${p.anchors > 1 ? 's' : ''}` : ''}</small>`;
+    m.l.el.textContent = name;     // the pose source (manual, cloud, anchors) stays off the label
   }
 }
 
@@ -166,22 +166,10 @@ function setFrustum(f, K, size, ortho) {
   f.face.geometry.computeBoundingSphere();
   f.l.obj.position.copy(up).add(new THREE.Vector3(0, -0.2 * d, 0));
 }
-// orthographic heightmap (SICK T Mini through Nova), drawn in its grid frame (z up): the
-// square is the image's footprint on the table, the apex sits above its centre at the top
-// of Nova's working range — a stand-in, Nova does not report where the sensor is
+// orthographic heightmap (SICK T Mini through Nova): not a pinhole camera and Nova does not
+// report where the sensor is, so no glyph and no label; its cloud and its view stay
 function setOrthoGlyph(f) {
-  const { origin: [ox, oy], pixel: [px, py], top } = f.ortho;
-  const [w, h] = f.size;
-  const P = (u, v, z = 0) => new THREE.Vector3(ox + u * px, oy + v * py, z);
-  const tl = P(0, 0), tr = P(w, 0), br = P(w, h), bl = P(0, h);
-  const o = P(w / 2, h / 2, top ?? 0.45);
-  const up = P(w / 2, -0.12 * h);        // beyond the image's top edge (row 0)
-  f.lines.geometry.setFromPoints([o, tl, o, tr, o, br, o, bl, tl, tr, tr, br, br, bl, bl, tl,
-    tl.clone().lerp(tr, 0.4), up, up, tl.clone().lerp(tr, 0.6)]);
-  f.face.geometry.setFromPoints([tl, tr, br, tl, br, bl]);
-  f.lines.geometry.computeBoundingSphere();
-  f.face.geometry.computeBoundingSphere();
-  f.l.obj.position.copy(o).add(new THREE.Vector3(0, 0, 0.03));
+  f.lines.visible = f.face.visible = f.l.obj.visible = false;
 }
 function frustumImage(f, img) {
   // a feed wider than the image (T Mini: intensity | depth side by side) keeps its left part
@@ -229,7 +217,7 @@ new ResizeObserver(resize).observe(viewport);
 const view = { cam: null, saved: null };
 function showGlyph(f, on) {
   f.glyph.visible = on;
-  f.l.obj.visible = on && f.g.visible;    // CSS2D labels ignore their parents' visibility
+  f.l.obj.visible = on && f.g.visible && !f.ortho;    // CSS2D labels ignore their parents' visibility; no T Mini label
 }
 const OPT_TO_GL = new THREE.Matrix4().makeRotationX(Math.PI);   // optical (z fwd, y down) -> three (−z fwd, y up)
 function setView(which) {       // camera index, or null for the free view
@@ -319,11 +307,8 @@ function ensureViews(list) {
     if (!b) {
       b = document.createElement('button');
       b.dataset.view = String(i);
-      b.innerHTML = `${esc(c.model)}${kindTag(c)}`;
+      b.innerHTML = `<i class="sw ${CAM_SW[i] || 'sw-cam'}"></i>${esc(c.model)}${kindTag(c)}`;     // its frustum's colour
       $('#view-seg').appendChild(b);
-      const l = document.createElement('span');
-      l.innerHTML = `<i class="sw ${CAM_SW[i] || 'sw-cam'}"></i>${esc(c.model)}`;
-      $('#scene-legend').appendChild(l);
     }
     const why = !c.T_world_cam ? 'not placed in the scene yet' : !c.K && !c.ortho ? 'no pinhole intrinsics' : '';
     b.disabled = !!why || !cams[i];
@@ -357,10 +342,44 @@ function ensureFeeds(list) {
     if (feeds[i]) return;
     const el = document.createElement('div');
     el.className = 'feed';
-    el.innerHTML = `<img alt=""><div class="nosig">No signal</div><div class="cap">${esc(c.name)}${kindTag(c)}<span></span></div>`;
+    el.innerHTML = `<div class="zoom"><img alt=""></div><div class="nosig">No signal</div><div class="cap">${esc(c.name)}${kindTag(c)}<span></span></div>`;
     $('#feeds').appendChild(el);
     feeds[i] = { el, img: el.querySelector('img'), nosig: el.querySelector('.nosig'), cap: el.querySelector('.cap span'), url: null };
+    zoomable(el, el.querySelector('.zoom'));
   });
+}
+// wheel to zoom about the pointer, drag to move, double click back to the whole frame
+function zoomable(el, inner) {
+  let s = 1, x = 0, y = 0, drag = null;
+  const apply = () => {
+    const w = el.clientWidth, h = el.clientHeight;
+    x = Math.min(0, Math.max(w - w * s, x));
+    y = Math.min(0, Math.max(h - h * s, y));
+    inner.style.transform = s === 1 ? '' : `translate(${x}px, ${y}px) scale(${s})`;
+    el.classList.toggle('zoomed', s > 1);
+  };
+  el.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const r = el.getBoundingClientRect(), mx = e.clientX - r.left, my = e.clientY - r.top;
+    const n = Math.min(8, Math.max(1, s * Math.exp(-e.deltaY * 0.0015)));
+    x = mx - (mx - x) * (n / s);
+    y = my - (my - y) * (n / s);
+    s = n;
+    apply();
+  }, { passive: false });
+  el.addEventListener('pointerdown', (e) => {
+    if (s === 1 || e.button !== 0) return;
+    drag = { px: e.clientX, py: e.clientY, x, y };
+    el.setPointerCapture(e.pointerId);
+  });
+  el.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    x = drag.x + e.clientX - drag.px;
+    y = drag.y + e.clientY - drag.py;
+    apply();
+  });
+  el.addEventListener('pointerup', () => { drag = null; });
+  el.addEventListener('dblclick', () => { s = 1; x = y = 0; apply(); });
 }
 function showFrame(i, blob) {
   const f = feeds[i];
@@ -370,6 +389,7 @@ function showFrame(i, blob) {
     if (f.url) URL.revokeObjectURL(f.url);
     f.url = url;
     f.el.style.setProperty('--ar', `${f.img.naturalWidth} / ${f.img.naturalHeight}`);
+    f.el.style.setProperty('--arn', f.img.naturalWidth / f.img.naturalHeight);
     if (view.cam === cams[i]) frustumImage(cams[i], f.img);
   };
   f.img.src = url;
@@ -382,13 +402,13 @@ function showFrame(i, blob) {
 function buildCards() {
   $('#cards').innerHTML = `
     <div class="card dark" id="c-robot"></div>
-    <div class="card" id="c-base">
+    <div class="card hidden" id="c-base">
       <div class="card-head"><div><h3>Robot base</h3><p>Upright, under the board plane</p></div></div>
       <div class="actions"><button id="b-edit">Edit base</button></div>
       <div class="rows" id="base-rows"></div>
       <div class="msg" id="msg"></div>
     </div>
-    <div class="card" id="c-fuse">
+    <div class="card dark" id="c-fuse">
       <div class="card-head"><div><h3>Fused cloud</h3><p>1 cm voxels within 1 m of the board</p></div></div>
       <div class="actions"><button id="b-tint" class="toggle" title="Paint each camera's points in its colour">Colour by camera</button></div>
       <table class="fuse" id="fuse-rows"></table>
@@ -570,7 +590,7 @@ const rows = (m) => [0, 1, 2, 3].map((i) => [0, 4, 8, 12].map((j) => m.elements[
 const sg = (v, d = 2) => `${v < -0.5 * 10 ** -d ? '−' : '+'}${Math.abs(v).toFixed(d)}`;
 const STEPS = [{ mm: 0.1, deg: 0.05, pitch: 0.001 }, { mm: 0.5, deg: 0.2, pitch: 0.005 }, { mm: 2, deg: 1, pitch: 0.02 }];
 const DEC = { x: 2, y: 2, z: 2, yaw: 3, px: 4, py: 4 };
-const ORIGIN = { ls108g: 'the case bottom centre', breadboard: 'the top face centre' };
+const ORIGIN = { ls108g: 'the case bottom centre', breadboard: 'the top face centre', rack: 'the footprint centre on the table' };
 
 // the plank (state.cad.plank: z = a x + b y + c in the world) in the base frame as drawn now
 function plankInBase() {
@@ -658,6 +678,7 @@ const editor = {
     const isCad = it.kind === 'cad';
     document.querySelectorAll('#editor .cad-only').forEach((e) => e.classList.toggle('hidden', !isCad));
     $('#ed-py').classList.toggle('hidden', !isCad || !it.info.pitch_mm[1]);
+    $('#editor [data-k="px"]').closest('label').classList.toggle('hidden', !isCad || !it.info.pitch_mm[0]);     // the rack has no pitch
     $('#ed-items').querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.item === id));
     if (isCad) {
       const p = it.info;
@@ -915,17 +936,27 @@ renderer.domElement.addEventListener('pointerdown', (e) => {
 
 // ── tabs ────────────────────────────────────────────────────────────────────
 // one set of camera feeds, moved into whichever tab is showing
-function showTab(name) {
-  for (const t of ['calib', 'qa', 'cams', 'obj', 'circuit', 'exp']) $(`#tab-${t}`).classList.toggle('hidden', t !== name);
+function showTab(name, project) {
+  for (const t of ['calib', 'qa', 'cams', 'obj', 'circuit', 'exp', 'projects']) $(`#tab-${t}`).classList.toggle('hidden', t !== name);
   document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === name));
   const home = { calib: '#calib-cams', qa: '#qa-cams', cams: '#cams-only', obj: '#obj-cams', circuit: '#ca-feeds' }[name];
   if (home) $(home).appendChild($('#feeds'));
+  if (name === 'projects') {      // the projects page (web/projects/), loaded on first open
+    const f = $('#projects-frame');
+    if (!f.src || project) f.src = `/projects?embed=1${project ? `&id=${encodeURIComponent(project)}` : ''}`;
+  }
   if (name === 'exp') expShow(expOpen, expWithTrace);
+  else if (name === 'projects' && location.hash.startsWith('#projects')) { /* keeps #projects:<id> */ }
   else if (!(name === 'circuit' && location.hash.startsWith('#circuit'))) {   // keeps #circuit:<design>
-    history.replaceState(null, '', name === 'calib' ? location.pathname : `#${name}`);
+    history.replaceState(null, '', name === 'projects' ? location.pathname : `#${name === 'calib' ? 'environment' : name}`);     // Projects is the home tab
   }
 }
 $('#tabs').onclick = (e) => { const b = e.target.closest('button'); if (b) showTab(b.dataset.tab); };
+// the open project, from the projects page, goes into the address: #projects:<id>
+window.addEventListener('message', (e) => {
+  if (e.origin !== location.origin || !('project' in (e.data || {}))) return;
+  if (!$('#tab-projects').classList.contains('hidden')) history.replaceState(null, '', e.data.project ? `#projects:${e.data.project}` : '#projects');
+});
 
 // the simulated arm (python -m simulation): simulation/web/sim_tab.js, loaded on first open
 let simMod = null;
@@ -940,7 +971,6 @@ let qaLast = null;
 let qaVlmT = null;                // follow the VLM's port each time it reports a new one
 const VLM_FRESH_S = 5;
 const sw3d = new SwitchView($('#qa-3d'), { onPick: (p) => { qaSel = p; if (qaLast) renderQA(qaLast); } });
-$('#qa-view').onclick = () => sw3d.resetView();
 const qaDet = (r) => {
   if (!r) return '—';
   if (r.want === 'down') return r.ok ? `down ${fmt(r.t_link)} s` : 'stays up';
@@ -960,62 +990,28 @@ function renderQA(q) {
   sw3d.update({ ports: q.ports, sel: qaSel, active: busyPort ?? (vlm?.fresh ? vlm.port : null),
     testing: !!q.busy, link: L, vlm });
   setHTML('#qa-link', `
-    <div><div class="k">${esc(q.iface)}</div><div class="v ${L.up ? '' : 'alert'}">${L.error ? 'No interface' : L.up ? 'Link up' : 'No link'}</div></div>
-    <div class="m">${L.up ? `${L.speed ?? '?'} Mb/s · ${esc(L.duplex)} duplex` : 'cable out or port dead'}</div>
-    <div class="m">${q.busy ? `checking ${esc(q.busy)}…` : esc(q.message)}</div>`);
+    <div class="v ${L.up ? '' : 'alert'}">${L.error ? 'No interface' : L.up ? `Link up · ${L.speed ?? '?'} Mb/s` : 'No link'}</div>`);
+  // one row per port: a light (grey untested, green pass, red fail, brass while checking)
   setHTML('#qa-ports', q.ports.map((p) => `
-    <button class="port ${p.status === 'untested' ? '' : p.status} ${p.port === qaSel ? 'sel' : ''} ${p.port === busyPort ? 'testing' : ''}" data-port="${p.port}">
-      <span class="num">${p.port}</span><span class="st2">${p.port === busyPort ? 'testing' : esc(p.status)}</span>
-      <span class="det">in ${qaDet(p.insert)}<br>out ${qaDet(p.extract)}</span>
+    <button class="prow ${p.port === busyPort ? 'testing' : p.status} ${p.port === qaSel ? 'sel' : ''}" data-port="${p.port}">
+      <i></i><span>Port ${p.port}</span><em>${p.port === busyPort ? 'checking' : p.status === 'untested' ? '' : esc(p.status)}</em>
     </button>`).join(''));
 
-  const ev = (q.events || []).slice().reverse().map((e) =>
-    `<div class="e ${e.up ? '' : 'down'}"><span>${esc(e.t)}</span><span>${e.up ? 'link up' : 'link down'}</span><span>${e.up && e.speed ? `${e.speed} Mb/s` : ''}</span></div>`).join('');
-  setHTML('#qa-c-link', `
-    <div class="card-head"><div><h3>Link</h3><p>${esc(q.iface)} · live from /sys/class/net</p></div>
-      <span class="chip ${L.up ? '' : 'bad'}">${L.up ? `${L.speed ?? '?'} Mb/s` : 'down'}</span></div>
-    <div class="rows">
-      <b>Carrier</b><span>${L.up ? 'up' : 'down'}</span>
-      <b>Duplex</b><span>${esc(L.duplex ?? '—')}</span>
-      <b>Carrier changes</b><span>${L.carrier_changes ?? '—'}</span>
-      <b>Pass rule</b><span>≥ ${q.cfg.min_speed} Mb/s · holds ${fmt(q.cfg.stable_s, 1)} s · ${fmt(q.cfg.timeout_s, 0)} s timeout</span>
-    </div>
-    <div class="events">${ev || '<div class="e down"><span>—</span><span>no link changes yet</span><span></span></div>'}</div>
-    ${L.error ? `<p class="note" style="color:#d2483c">${esc(L.error)}</p>` : ''}`);
-
   const p = q.ports[qaSel - 1];
-  const resRows = (name, r) => !r ? `<b>${name}</b><span>not checked</span>`
-    : `<b>${name}</b><span class="${r.ok ? '' : 'alert'}">${r.ok ? 'pass' : 'fail'} · ${esc(r.reason)}</span>`;
+  const res = (name, r) => `<b>${name}</b><span class="${r && !r.ok ? 'alert' : ''}">${!r ? '—' : `${r.ok ? 'pass' : 'fail'} · ${qaDet(r)}`}</span>`;
   setHTML('#qa-c-port', `
-    <div class="card-head"><div><h3>Port ${qaSel}</h3><p>${p.stamp ? esc(p.stamp.replace('T', ' ')) : 'not tested yet'} · ${p.attempts} insert${p.attempts === 1 ? '' : 's'}</p></div>
+    <div class="card-head"><div><h3>Port ${qaSel}</h3><p>${p.stamp ? esc(p.stamp.replace('T', ' ').slice(0, 16)) : 'not tested'}</p></div>
       <span class="chip ${p.status === 'fail' ? 'bad' : p.status === 'untested' ? 'quiet' : ''}">${esc(p.status)}</span></div>
     <div class="rows">
-      <b>Gripper cam VLM</b><span class="${vlm && !vlm.fresh ? 'alert' : ''}">${vlm ? `port ${vlm.port}${vlm.confidence != null ? ` · ${Math.round(vlm.confidence * 100)}%` : ''} · ${fmt(vlm.age, 1)} s ago` : 'no report yet'}</span>
-      ${resRows('Insert', p.insert)}${resRows('Extract', p.extract)}
-      ${p.insert?.flaps ? `<b>Flaps on insert</b><span class="alert">${p.insert.flaps}</span>` : ''}</div>`);
-
-  const n = (st) => q.ports.filter((x) => x.status === st).length;
-  const host = location.host || 'localhost:8090';
-  setHTML('#qa-c-run', `
-    <div class="card-head"><div><h3>Run</h3><p>${q.ports.length} ports · results in data/qa/ports.json</p></div>
-      <span class="chip ${n('fail') ? 'bad' : ''}">${n('pass')}/${q.ports.length} pass</span></div>
-    <div class="state">
-      <div><div class="k">Pass</div><div class="v">${n('pass')}</div></div>
-      <div><div class="k">Fail</div><div class="v ${n('fail') ? 'alert' : 'muted'}">${n('fail')}</div></div>
-      <div><div class="k">Left</div><div class="v ${n('untested') ? '' : 'muted'}">${n('untested')}</div></div>
-    </div>
-    <b style="font-size:11px;letter-spacing:.18em;text-transform:uppercase">Robot API</b>
-    <pre class="api">http://${esc(host)}
-POST /api/qa/vlm {"port": ${qaSel}, "confidence": 0.9}
-POST /api/qa/current/insert
-POST /api/qa/current/extract
-→ 200 pass · 409 fail · JSON result</pre>`);
+      ${res('Insert', p.insert)}${res('Extract', p.extract)}
+      ${vlm ? `<b>Camera</b><span class="${vlm.fresh ? '' : 'alert'}">port ${vlm.port}${vlm.confidence != null ? ` · ${Math.round(vlm.confidence * 100)}%` : ''}</span>` : ''}
+      ${p.insert?.flaps ? `<b>Flaps</b><span class="alert">${p.insert.flaps}</span>` : ''}</div>`);
 
   const busy = !!q.busy;
   for (const id of ['#qa-insert', '#qa-extract', '#qa-reset-port', '#qa-reset-all']) $(id).disabled = busy;
 }
 $('#qa-ports').onclick = (e) => {
-  const b = e.target.closest('.port');
+  const b = e.target.closest('.prow');
   if (!b) return;
   qaSel = +b.dataset.port;
   if (qaLast) renderQA(qaLast);
@@ -1122,7 +1118,6 @@ function connect() {
   };
 }
 connect();
-setInterval(() => { $('#clock').textContent = new Date().toLocaleTimeString('en-GB'); }, 1000);
 
 // ── experiments ─────────────────────────────────────────────────────────────
 // agent runs under results/: a grid of runs; a run shows its camera videos, its tags and
@@ -1498,17 +1493,19 @@ async function expTrace(run) {
   $('#exp-text').onclick = (e) => { const b = e.target.closest('button.exp-t'); if (b) expSeek(b.dataset.at); };
 }
 
-// open the tab named in the address: #qa, #cams, #obj, #circuit[:<design>], #exp[:<folder>][/<run>[/trace]]
+// open the tab named in the address: #qa, #cams, #obj, #projects[:<id>], #circuit[:<design>], #exp[:<folder>][/<run>[/trace]]
 {
   const h = decodeURIComponent(location.hash.slice(1));
   const m = h.match(/^exp(?::([^/]+))?(?:\/([^/]+)(\/trace)?)?$/);
-  if (['qa', 'cams', 'obj'].includes(h)) showTab(h);
-  else if (h === 'claude' || h.startsWith('circuit')) showTab('circuit');
+  if (['environment', 'calib'].includes(h)) showTab('calib');
+  else if (['qa', 'cams', 'obj'].includes(h)) showTab(h);
+  else if (/^(projects|circuit)(:|$)/.test(h)) showTab('projects', h.split(':')[1]);     // Projects replaced Circuit Assembly
+  else if (h === 'claude') showTab('circuit');
   else if (m) {
     if (m[1]) expSrc = m[1];
     expOpen = m[2] || null;
     expWithTrace = !!m[3];
     showTab('exp');
-  }
+  } else showTab('projects');
 }
 

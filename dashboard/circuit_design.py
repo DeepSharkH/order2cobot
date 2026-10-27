@@ -12,11 +12,13 @@ against the same geometry (assembly_plan.py) and hands solver failures back to t
 A design is a list of events (data/circuit_designs/<id>/events.jsonl). The browser replays
 them, so a reload or a second browser shows the same progress.
 
-POST /api/circuit                     {"text", "design"?}  new design, or the next message in one
+POST /api/circuit                     {"text", "design"?}  new design, or the next message in one (also a
+                                      refinement after the layout, until the assembly starts)
                                       -> NDJSON events of the turn (the turn goes on without the
                                          browser; GET .../events picks it up again)
 GET  /api/circuit/static              board, inventory parts and gripper model, for drawing
 GET  /api/circuit/latest              {"id"} of the most recent design (null if none)
+GET  /api/circuit/list                every design, newest first: {"id", "text", "status"} (the projects page)
 GET  /api/circuit/{id}/events?from=N  NDJSON events from N, open until the turn ends
 POST /api/circuit/{id}/stop           stop the running turn
 POST /api/circuit/{id}/start          approve the layout and hand it to the assembly pipeline:
@@ -41,6 +43,7 @@ from aiohttp import web
 
 from . import assembly_plan as ap
 from . import claude_chat
+from .build_runner import BuildRunner
 
 ROOT = Path(__file__).resolve().parent.parent
 MAPPER_DIR = ROOT / 'src' / 'circuit_mapper'
@@ -188,6 +191,8 @@ class Design:
         t = ev['t']
         if t == 'session':
             self.session = ev['id']
+        elif t == 'user' and self.phase == 'review':
+            self.phase = 'design'                   # a refinement: the layout waits for the next one
         elif t == 'circuit':
             self.circuit = ev['circuit']
         elif t == 'mapping':
@@ -254,6 +259,7 @@ class CircuitDesigner:
         self.schema = design_schema(self.parts)
         self.designs = {}
         DESIGNS.mkdir(parents=True, exist_ok=True)
+        self.runner = BuildRunner(self, cfg.get('build'))     # the robot builds an approved plan
 
     def get(self, did):
         if did not in self.designs:
@@ -481,6 +487,45 @@ class CircuitDesigner:
         d.emit('handoff', plan=str((d.dir / 'plan.json').relative_to(ROOT)))
         return run
 
+    # ── a project's state: one name, and what may be done from it ────────────
+    #   new -> designing -> question | failed | ready | outdated      (the design turns)
+    #   ready -build-> waiting/running <-> paused | waiting_part | interrupted -> done | failed | aborted
+    #   outdated: a layout with parts no longer in stock or holes the board does not have
+    def stale(self, d):
+        if not d.mapping:
+            return []
+        ids = {p['part_id'] for p in self.parts}
+        holes = {h for g in self.board['conductive_groups'] for h in g['holes']}
+        used = [*d.mapping['pin_to_hole'].values(), *(d.mapping.get('manual_connections') or {}).values(),
+                *(h for j in d.mapping['jumpers'] for h in j['pins'].values())]
+        return ([c['id'] for c in (d.circuit or {}).get('components', []) if c['part_id'] not in ids]
+                + [h for h in used if h not in holes])
+
+    def state(self, d):
+        run = self.runner.state(d)
+        if run:
+            return run['status']
+        if d.running:
+            return 'designing'
+        if d.phase == 'review':
+            return 'outdated' if self.stale(d) else 'ready'
+        last = next((e['t'] for e in reversed(d.events) if e['t'] not in ('turn_end', 'stage', 'trace', 'reasoning', 'thought', 'session', 'note')), None)
+        return {None: 'new', 'error': 'failed', 'questions': 'question', 'agent': 'question', 'user': 'failed'}.get(last, 'question')
+
+    def actions(self, state):
+        """What the page may offer in this state; the routes refuse the rest."""
+        return {
+            'new': ['message'], 'question': ['message'], 'failed': ['message', 'solve'], 'designing': ['stop'],
+            'ready': ['message', 'build', 'solve'], 'outdated': ['message', 'solve'],
+            'waiting': ['abort'], 'running': ['pause', 'abort'], 'waiting_part': ['slot', 'abort'],
+            'paused': ['resume', 'retry', 'skip', 'abort'], 'interrupted': ['resume', 'abort'],
+            'done': [], 'aborted': ['retry'],
+        }.get(state, [])
+
+    def view(self, d):
+        s = self.state(d)
+        return {'id': d.id, 'state': s, 'actions': self.actions(s), 'stale': self.stale(d), 'run': self.runner.state(d)}
+
     def run(self, d):
         p = d.dir / 'run.json'
         return _read(p) if p.exists() else None
@@ -555,10 +600,9 @@ def routes(cfg=None):
         d = cd.get(body['design']) if body.get('design') else cd.new()
         if d is None:
             return web.json_response({'ok': False, 'reason': 'no such design'}, status=404)
-        if d.running:
-            return web.json_response({'ok': False, 'reason': 'the agent is still working'}, status=409)
-        if d.phase != 'design':
-            return web.json_response({'ok': False, 'reason': 'the layout is locked: start assembly or restart'}, status=409)
+        state = cd.state(d)
+        if 'message' not in cd.actions(state):
+            return web.json_response({'ok': False, 'reason': f'not while {state}'}, status=409)
         start = len(d.events)
         d.task = asyncio.create_task(cd.turn(d, text, body.get('solver')))
         d.task.add_done_callback(lambda _: d.wake())     # wakes the followers once it is over
@@ -582,6 +626,43 @@ def routes(cfg=None):
         ids = sorted(p.parent.name for p in DESIGNS.glob('*/events.jsonl'))
         return web.json_response({'id': ids[-1] if ids else None})
 
+    async def listing(_request):
+        out = []
+        for did in sorted((p.parent.name for p in DESIGNS.glob('*/events.jsonl')), reverse=True):
+            d = cd.get(did)
+            text = next((e['text'] for e in d.events if e['t'] == 'user'), '')
+            out.append({'id': did, 'text': _clip(text, 120), 'state': cd.state(d)})
+        return web.json_response(out)
+
+    async def state(request):
+        return web.json_response(cd.view(design_or_404(request)))
+
+    async def build(request):
+        """Approve the layout and start the robot on it: the one way from ready to building."""
+        d = design_or_404(request)
+        if 'build' not in cd.actions(cd.state(d)):
+            return web.json_response({'ok': False, 'reason': f'not while {cd.state(d)}'}, status=409)
+        try:
+            if cd.runner.task is not None and not cd.runner.task.done():
+                raise RuntimeError(f'the robot is building {cd.runner.design.id}')
+            cd.start(d)
+            cd.runner.start(d)
+        except RuntimeError as e:
+            return web.json_response({'ok': False, 'reason': str(e)}, status=409)
+        return web.json_response(cd.view(d))
+
+    async def build_control(request):
+        d = design_or_404(request)
+        action = request.match_info['action']
+        if action not in cd.actions(cd.state(d)):
+            return web.json_response({'ok': False, 'reason': f'{action}: not while {cd.state(d)}'}, status=409)
+        body = await request.json() if request.can_read_body else {}
+        try:
+            cd.runner.control(d, action, body)
+        except (ValueError, RuntimeError) as e:
+            return web.json_response({'ok': False, 'reason': str(e)}, status=409)
+        return web.json_response(cd.view(d))
+
     async def static(_request):
         return web.json_response({'board': cd.board, 'parts': cd.parts, 'gripper': cd.gripper, 'solver': cd.solver})
 
@@ -602,7 +683,7 @@ def routes(cfg=None):
         return web.json_response(cd.start(d))
 
     async def run_get(request):
-        run = cd.run(design_or_404(request))
+        run = cd.runner.state(design_or_404(request))
         return web.json_response(run) if run else web.json_response({'ok': False, 'reason': 'not started'}, status=404)
 
     async def run_post(request):
@@ -612,6 +693,8 @@ def routes(cfg=None):
             return web.json_response({'ok': False, 'reason': str(e)}, status=400)
 
     return [web.post('/api/circuit', post), web.get('/api/circuit/static', static), web.get('/api/circuit/latest', latest),
+            web.get('/api/circuit/list', listing), web.get('/api/circuit/{id}/state', state),
+            web.post('/api/circuit/{id}/build', build), web.post('/api/circuit/{id}/build/{action}', build_control),
             web.get('/api/circuit/{id}/events', events), web.post('/api/circuit/{id}/stop', stop),
             web.post('/api/circuit/{id}/start', start), web.post('/api/circuit/{id}/solve', solve),
             web.get('/api/circuit/{id}/run', run_get), web.post('/api/circuit/{id}/run', run_post)]

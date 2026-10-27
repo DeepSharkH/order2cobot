@@ -1,7 +1,6 @@
-// Port QA 3D view: the TP-Link LS108G and the 400-hole breadboard side by side, both
-// loaded from the CAD builds in models/cad/ (assets/models/cad/*.py). The switch model
-// follows the official spec + photos (latch slot up, one Link/Act LED top-left of each
-// jack) with the pitch we measured; the breadboard is rebuilt from the vendor CAD.
+// Port QA 3D view: the TP-Link LS108G, loaded from the CAD build in models/cad/
+// (assets/models/cad/*.py). The switch model follows the official spec + photos (latch
+// slot up, one Link/Act LED top-left of each jack) with the pitch we measured.
 // Units mm in this view (the GLBs are metres), z up, port face toward -y, port 1 on the
 // left seen from the front. Jacks are tinted by QA status; the port under test gets the
 // robot's plug + grip shell and a lit LED.
@@ -14,9 +13,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 const CAD = './models/cad/';
 const COL = { bg: 0x111111, cream: 0xfef5da, brass: 0xc9a15d, red: 0xd2483c, idle: 0x1f1f21,
   shell: 0xe2711d, cable: 0x3b6fd6, green: 0x5cff7a, amber: 0xffb347 };
-// breadboard placement next to the switch's right end, rows along y (display only; the
-// measured poses live in the world scene)
-const BOARD_AT = { x: 79 + 30 + 27.5, y: -49.55 + 42.5, rotZ: 0 };
+const SEL_GLOW = new THREE.Color(0x2a2418), TEST_GLOW = new THREE.Color(0x4a3410), NONE = new THREE.Color(0);
 
 function label(text, cls) {
   const el = document.createElement('div');
@@ -48,9 +45,9 @@ export class SwitchView {
     container.appendChild(this.labels.domElement);
 
     const scene = this.scene = new THREE.Scene();
-    const cam = this.camera = new THREE.PerspectiveCamera(32, 1, 5, 3000);
+    const cam = this.camera = new THREE.PerspectiveCamera(32, 1, 40, 2000);
     cam.up.set(0, 0, 1);
-    this.home = { pos: new THREE.Vector3(-40, -330, 170), target: new THREE.Vector3(30, -20, 8) };
+    this.home = { pos: new THREE.Vector3(-30, -300, 150), target: new THREE.Vector3(0, -15, 8) };
     cam.position.copy(this.home.pos);
     this.controls = new OrbitControls(cam, renderer.domElement);
     this.controls.enableDamping = true;
@@ -65,12 +62,12 @@ export class SwitchView {
     scene.add(rim);
     const grid = new THREE.GridHelper(700, 35, 0x2f2f2f, 0x1d1d1d);
     grid.rotation.x = Math.PI / 2;
-    grid.position.set(60, 0, -0.05);
+    grid.position.set(0, 0, -0.5);
     scene.add(grid);
 
     this._buildPlug();
     this._buildVlmMarker();
-    this.ready = Promise.all([this._loadSwitch(), this._loadBoard()])
+    this.ready = this._loadSwitch()
       .then(() => this._last && this.update(this._last))
       .catch((e) => console.error('CAD models', e));
 
@@ -93,45 +90,21 @@ export class SwitchView {
     const { g, spec } = await loadCad('ls108g');
     this.sw = spec;
     this.scene.add(g);
-    const [, , H] = spec.size;
-    const tag = label('LS108G <small>8-port gigabit · CAD</small>', 'label3d cam');
-    tag.obj.position.set(-spec.size[0] / 2 + 22, spec.face_y + 14, H + 0.5);
-    this.scene.add(tag.obj);
     const pickMat = new THREE.MeshBasicMaterial({ visible: false });
     for (let k = 1; k <= 8; k++) {
       const p = spec.ports[k];
       const mouth = g.getObjectByName(`jack_${k}`);
       const led = g.getObjectByName(`led_${k}`);
-      mouth.material = mouth.material.clone();
-      led.material = led.material.clone();
+      // the jack and LED faces lie on the switch's front face: pull them forward in depth,
+      // or the two fight and the ports flicker as the view moves
+      mouth.material = Object.assign(mouth.material.clone(), { polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+      led.material = Object.assign(led.material.clone(), { polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
       // invisible box over the opening for clicks
       const pick = new THREE.Mesh(new THREE.BoxGeometry(spec.pitch - 1, 4, spec.opening.bbox[1] + 2), pickMat);
       pick.position.set(p.centre[0], p.centre[1] + 1, p.centre[2]);
       pick.userData.port = k;
       this.scene.add(pick);
-      const num = label(String(k), 'label3d');
-      num.obj.position.set(p.centre[0], spec.face_y - 1, spec.window.z[0] - 3.5);
-      this.scene.add(num.obj);
-      this.jacks.push({ port: k, x: p.centre[0], z: p.centre[2], mouth, led, pick, num });
-    }
-  }
-
-  async _loadBoard() {
-    const { g, spec } = await loadCad('breadboard');
-    this.bb = spec;
-    const holder = new THREE.Group();
-    holder.position.set(BOARD_AT.x, BOARD_AT.y, spec.size[2]);   // board frame origin = top centre
-    holder.rotation.z = BOARD_AT.rotZ;
-    holder.add(g);
-    this.scene.add(holder);
-    const tag = label('Breadboard <small>400 · CAD</small>', 'label3d cam');
-    tag.obj.position.set(0, -spec.size[1] / 2 - 8, 0);
-    holder.add(tag.obj);
-    for (const h of ['a1', 'j30']) {
-      const l = label(h, 'label3d');
-      l.obj.position.set(...spec.holes[h]);
-      l.obj.position.z += 3;
-      holder.add(l.obj);
+      this.jacks.push({ port: k, x: p.centre[0], z: p.centre[2], mouth, led, pick });
     }
   }
 
@@ -180,13 +153,13 @@ export class SwitchView {
     this._last = state;
     const { ports, sel, active, testing, link, vlm } = state;
     this.testing = testing;
+    this.sel = sel;
     if (!this.sw) return;                         // models still loading
     for (const j of this.jacks) {
       const st = ports[j.port - 1]?.status;
       const isActive = j.port === active;
       const c = isActive && testing ? COL.brass : st === 'pass' ? COL.cream : st === 'fail' ? COL.red : COL.idle;
       j.mouth.material.color.setHex(c);
-      j.num.el.className = j.port === sel ? 'label3d dark' : 'label3d';
       const lit = isActive && link?.up;
       j.led.material.emissive.setHex(lit ? (link.speed >= 1000 ? COL.green : COL.amber) : 0x000000);
     }
@@ -204,9 +177,13 @@ export class SwitchView {
   _animate() {
     this.t = (this.t || 0) + 1;
     if (this.vlm.visible) this.vlm.children[0].position.z = Math.sin(this.t / 18) * 1.5;
+    // the port under test breathes slowly, the selected one glows faintly: no on/off strobe
+    const breath = 0.5 + 0.5 * Math.sin(this.t / 30);
     for (const j of this.jacks) {
-      const pulse = this.testing && j.mouth.material.color.getHex() === COL.brass && Math.sin(this.t / 8) > 0;
-      j.mouth.material.emissive.setHex(pulse ? 0x3a2a10 : 0x000000);
+      const testing = this.testing && j.mouth.material.color.getHex() === COL.brass;
+      const e = j.mouth.material.emissive;
+      if (testing) e.copy(NONE).lerp(TEST_GLOW, breath);
+      else e.copy(j.port === this.sel ? SEL_GLOW : NONE);
     }
   }
 

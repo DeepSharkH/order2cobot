@@ -588,7 +588,7 @@ class App:
         b, cad = req.get('base'), {}
         for name, p in (req.get('cad') or {}).items():
             try:
-                if name in self.cad.models:
+                if name in self.cad.names:      # the cadguide targets and the rack
                     cad[name] = cad_targets.checked_pose(p['T'], p['scale'])
             except (ValueError, KeyError, TypeError):
                 pass
@@ -882,6 +882,10 @@ async def index(_):
     return web.FileResponse(WEB / 'index.html')
 
 
+async def projects_page(_):
+    return web.FileResponse(WEB / 'projects' / 'index.html')
+
+
 @web.middleware
 async def no_cache(request, handler):
     """Always revalidate the page and its scripts: a cached app.js from an older
@@ -904,6 +908,8 @@ def main():
     w['app'] = App(cfg, mirror=a.mirror)
     w['dt'] = 1.0 / cfg.get('state_hz', 10)
     w.router.add_get('/', index)
+    w.router.add_get('/projects', projects_page)
+    w.router.add_get('/order', projects_page)
     w.router.add_get('/ws', ws_handler)
     w.router.add_get('/api/qa', qa_get)
     w.router.add_get('/api/frame/{cam:[0-9]}', frame_get)
