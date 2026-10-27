@@ -7,10 +7,13 @@
 // Geometry: Jan's latest holder (assets/models/component_casings/All_Casings_Holder_Print.stl,
 // 10-27 15:33), measured from its through-holes: 142.16 x 82.5 mm, 4 columns x 5 rows; column c
 // (0..3) holds legs (c + 1) x 2.54 mm apart, centre x 20.0 + 34.04 c; row r at y 10.62 + 15.3 r.
-// Slot k (1..20): c = (k-1) % 4, r = (k-1) // 4.
+// Slot numbers as engraved on the holder: column-major, S1..S4 from the left seen from the front,
+// 1..5 in S1 from the front (STL row 4, large y) to the back, then 6..10 in S2 and so on:
+// slot k: c = (k-1) // 5, r = 4 - (k-1) % 5.
 
-const RACK = { w: 142.16, d: 82.5, x0: 20.0, dx: 34.04, y0: 10.62, dy: 15.3, cols: 4, pitch: 2.54 };
-export const slotSpacing = (slot) => ((Number(slot.slice(1)) - 1) % RACK.cols) + 1;
+const RACK = { w: 142.16, d: 82.5, x0: 20.0, dx: 34.04, y0: 10.62, dy: 15.3, cols: 4, rows: 5, pitch: 2.54 };
+const colOf = (k) => Math.floor((k - 1) / RACK.rows), rowOf = (k) => RACK.rows - 1 - ((k - 1) % RACK.rows);
+export const slotSpacing = (slot) => colOf(Number(slot.slice(1))) + 1;
 const LED_COL = { red: '#e0463a', green: '#3f9a4a', yellow: '#e8c33a', blue: '#2f74c8' };
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
@@ -61,7 +64,7 @@ export class RackView {
   render() {
     const r = this.data;
     if (!r) return;
-    const M = 6, W = RACK.w + 2 * M, H = RACK.d + 2 * M + 18, top = M + 9;
+    const M = 6, W = RACK.w + 2 * M, H = RACK.d + 2 * M + 22, top = M + 9;
     // from the front (the person refilling it): the STL's y = 0 edge is the back (rack.glb is the STL
     // turned 180 deg about x, and data/cad/rack_scene.json has its +y toward the switch), its +x to the right
     const view = ([x, y]) => (this.turned ? [M + RACK.w - x, top + RACK.d - y] : [M + x, top + y]);
@@ -75,12 +78,12 @@ export class RackView {
     // column heads: the leg spacing each column takes
     for (let c = 0; c < RACK.cols; c++) {
       const [cx] = view([RACK.x0 + c * RACK.dx, 0]);
-      svg += `<text x="${cx}" y="${top - 1.5}" class="col">${c + 1}×</text>`;
+      svg += `<text x="${cx}" y="${top + RACK.d + 4.2}" class="col">S${c + 1}</text>`;
     }
     const sw = 22, sh = 4;      // a casing seen from above: about its width x its 4 mm thickness
     for (const s of r.slots) {
-      const k = Number(s.slice(1)), c = (k - 1) % RACK.cols, half = ((c + 1) * RACK.pitch) / 2;
-      const [cx, cy] = view([RACK.x0 + c * RACK.dx, RACK.y0 + Math.floor((k - 1) / RACK.cols) * RACK.dy]);
+      const k = Number(s.slice(1)), c = colOf(k), half = ((c + 1) * RACK.pitch) / 2;
+      const [cx, cy] = view([RACK.x0 + c * RACK.dx, RACK.y0 + rowOf(k) * RACK.dy]);
       const it = r.contents[s], o = it && opt[it.part_id], look = it && partLook(o);
       const misfit = o && o.pin_spacing !== c + 1;       // entered before the columns were checked
       svg += `<g class="slot${it ? ' full' : ''}${it && needed.has(it.part_id) ? ' needed' : ''}${misfit ? ' misfit' : ''}${!it && wantCols.has(c + 1) ? ' wanted' : ''}" data-slot="${s}" transform="translate(${cx} ${cy})">`;
@@ -94,7 +97,7 @@ export class RackView {
         if (look.bands) ['#7b4a1e', '#1a1a1a', '#d32f2f', '#c9a15d'].forEach((col, i) => { svg += `<rect x="${-6 + i * 3.4}" y="${-sh / 2 + 0.3}" width="1.4" height="${sh - 0.6}" fill="${col}"/>`; });
         if (look.dot) svg += `<circle r="1.8" fill="${look.dot}" stroke="#111" stroke-width=".3"/>`;
       }
-      svg += `<text y="${sh / 2 + 4.6}" class="lbl">${s}${look ? ` · ${esc(look.tag)}` : ''}</text></g>`;
+      svg += `<text y="${sh / 2 + 4.6}" class="lbl">${k}${look ? ` · ${esc(look.tag)}` : ''}</text></g>`;
     }
     this.host.innerHTML = `${svg}</svg><div class="rk-pick hidden"></div>`;
   }
@@ -107,7 +110,7 @@ export class RackView {
     const groups = needed.length ? { needed } : {};
     for (const o of r.options.filter(fits)) (groups[o.type] ||= []).push(o);
     const btn = (o) => `<button data-part="${esc(o.part_id)}" class="${o.part_id === cur ? 'on' : ''}" title="${esc(o.name)} · ${esc(o.casing)}">${swatch(o)}${esc(partLook(o).tag)}</button>`;
-    box.innerHTML = `<div class="rp-head">${slot} · legs ${slotSpacing(slot)}×2.54 mm<button data-part="" class="${cur ? '' : 'on'}">empty</button></div>`
+    box.innerHTML = `<div class="rp-head">${slot.slice(1)} · S${slotSpacing(slot)}<button data-part="" class="${cur ? '' : 'on'}">empty</button></div>`
       + Object.entries(groups).map(([t, os]) => `<div class="rp-group${t === 'needed' ? ' need' : ''}"><span>${t === 'needed' ? 'missing for this project' : esc(t)}</span>${os.map(btn).join('')}</div>`).join('');
     box.classList.remove('hidden');
     const hb = this.host.getBoundingClientRect();

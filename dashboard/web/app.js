@@ -12,6 +12,7 @@ import { HandEModel } from './hande_model.js';
 import { SwitchView } from './switch3d.js';
 import { ObjectsView } from './objects3d.js';
 import { RackView } from './rack.js';
+import { rackParts } from './rack_parts3d.js';
 
 const C = { bg: 0x111111, cream: 0xfef5da, brass: 0xc9a15d, grey: 0x8c8577, teal: 0x6fb3a8 };
 const JN = ['Base', 'Shoulder', 'Elbow', 'Wrist 1', 'Wrist 2', 'Wrist 3'];
@@ -91,7 +92,7 @@ async function loadCadModel(name) {
   gltf.scene.traverse((o) => {
     if (!o.isMesh) return;
     o.material = o.material.clone();
-    Object.assign(o.material, { transparent: true, opacity: 0.45, depthWrite: false });
+    Object.assign(o.material, { transparent: true, opacity: 0.9, depthWrite: false });
   });
   s.add(gltf.scene);
   const l = label(name);
@@ -100,7 +101,8 @@ async function loadCadModel(name) {
   cad[name] = { g, s, l, key: '' };
   applyCad(lastState?.cad);
 }
-Promise.all(['ls108g', 'breadboard', 'rack'].map(loadCadModel)).catch((e) => console.error('CAD models', e));     // rack: assets/models/cad/rack.py
+Promise.all(['ls108g', 'breadboard', 'rack'].map(loadCadModel)).then(() => { if (rackView.data) showRack(rackView.data); })
+  .catch((e) => console.error('CAD models', e));     // rack: assets/models/cad/rack.py
 let cadOn = true;
 // Tr(o) · S · Tr(−o): the pitch scales stretch the model about its scale origin o (object frame)
 function setCadScale(m, scale, o) {
@@ -433,11 +435,20 @@ function buildCards() {
 buildCards();
 
 // the rack card: the rack from above with what stands in each slot (web/rack.js)
-const rackView = new RackView($('#rack-grid'), { turnButton: $('#rack-turn'),
-  onChange: (r) => { $('#rack-count').textContent = `${Object.keys(r.contents).length} / ${r.slots.length}`; } });
+// and in 3D the bare parts on its slots (web/rack_parts3d.js), in the rack model's frame
+let rackKey = null;
+function showRack(r) {
+  $('#rack-count').textContent = `${Object.keys(r.contents).length} / ${r.slots.length}`;
+  const m = cad.rack, key = JSON.stringify(r.contents);
+  if (!m || key === rackKey) return;
+  rackKey = key;
+  m.s.getObjectByName('rack-parts')?.removeFromParent();
+  m.s.add(rackParts(r));
+}
+const rackView = new RackView($('#rack-grid'), { turnButton: $('#rack-turn'), onChange: showRack });
 async function loadRack() {
   const r = await rackView.load();
-  if (r) $('#rack-count').textContent = `${Object.keys(r.contents).length} / ${r.slots.length}`;
+  if (r) showRack(r);
 }
 loadRack();
 setInterval(() => { if (!document.hidden && !$('#tab-calib').classList.contains('hidden') && !rackView.picking) loadRack(); }, 10000);

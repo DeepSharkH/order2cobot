@@ -47,8 +47,9 @@ def _clip(s, n=160):
     return s if len(s) <= n else s[:n - 1] + '…'
 
 
-# Jan's latest holder (All_Casings_Holder_Print.stl, 10-27 15:33): 4 columns x 5 rows of leg-hole
-# pairs, column c (1..4) drilled for legs c x 2.54 mm apart; slot k: column (k-1) % 4 + 1
+# Jan's latest holder (All_Casings_Holder_Print.stl, 10-27 15:33): 4 columns (S1..S4, drilled for
+# legs 1..4 x 2.54 mm apart) x 5 rows; slots numbered as engraved: S1 holds 1..5 from the front,
+# S2 6..10, S3 11..15, S4 16..20
 RACK_COLS, RACK_SLOTS = 4, 20
 
 

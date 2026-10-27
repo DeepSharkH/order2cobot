@@ -553,7 +553,7 @@ class CircuitDesigner:
         opt = next((o for o in self.rack_options() if o['part_id'] == part_id), None) if part_id else None
         if part_id and not opt:
             raise ValueError(f'{part_id}: not a part the robot picks')
-        col = (int(slot[1:]) - 1) % RACK_COLS + 1        # each rack column is drilled for one leg spacing
+        col = (int(slot[1:]) - 1) // (RACK_SLOTS // RACK_COLS) + 1     # engraved numbering: S1 holds 1..5, S2 6..10, ...; one leg spacing per column
         if opt and opt['pin_spacing'] != col:
             raise ValueError(f"{slot} takes legs {col} x 2.54 mm apart, {part_id} has {opt['pin_spacing']}")
         set_rack_slot(slot, part_id or None, opt['casing'] if opt else None)
