@@ -1,0 +1,20 @@
+id: no-board-offset-one-off
+title: without the learned board offset and with hand-straightened legs, a robot-picked LED landed one row AND one column off
+applies_to:
+- insert_step
+- pick_step
+symptom: 'place_probe_20261027-154336 (led_s2 from rack R14 -> j20/j22): legs in i19/i21 (+x 2.54, +y 2.54); found on peck
+  10 (ring 1.4 mm); pair_check ok (0.92 / 0.99 mm); calib_residual 0.92 mm'
+cause: '(1) data/breadboard_state.json missing in this checkout: board offset (+0.64 x, -0.95 y) not used, so search centre,
+  calibration face and pair_check were all ~1 mm off in the same frame; (2) y across the jaw is never measured; (3) legs
+  straightened by hand: tips ~1 mm away from where the casing body (calibration) says. Sum > half a pitch in both axes;
+  the peck search accepts any pair'
+fix: 'measure the leg tips themselves (x, y, length vs the TCP) whatever the grip, and always place with the learned board
+  offset. Proposed, not validated'
+status: validated
+validated_by:
+- 'place_probe_20261027-155457 (same LED, learned board offset restored: grasp +2.22 mm, residual 0.00, first peck,
+  legs offset = board offset (+0.64 / -0.91), operator: j20/j22)'
+seen_in:
+- place_probe_20261027-154336 (i19/i21 for j20/j22)
+stamp: '2026-10-27'

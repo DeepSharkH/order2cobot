@@ -33,4 +33,7 @@ rough:                        # camera box corrected by the first locate's touch
 # slits (checked 15:15), so it is gone.
 # Seen on the camera 2026-10-27 (keep touches away): yellow tape straps across x' ~26-46 and
 # ~146-167 (also down both long sides); the post-it covers x' ~105-181 (end of the rack, robot side).
-pose: {"origin_mm": [-335.56, -67.63], "yaw_deg": 1.01, "top_z_mm": 20.51, "tilt_deg": 0.95, "top_spread_mm": 0.5, "source": "touch (rack_locate_20261027-140804): 2 edge + 1 end + 3 top", "stamp": "2026-10-27T14:09:27"}
+# 2026-10-27 15:35 the rack was turned 90 deg and moved (clears placing's grasp calibration at the row-1 end):
+# the touched pose below is STALE; run rack_pick locate again (the orientation / faces may need a new rough box).
+# stale: {"origin_mm": [-335.56, -67.63], "yaw_deg": 1.01, "top_z_mm": 20.51, "tilt_deg": 0.95, "top_spread_mm": 0.5, "source": "touch (rack_locate_20261027-140804): 2 edge + 1 end + 3 top", "stamp": "2026-10-27T14:09:27"}
+pose: null

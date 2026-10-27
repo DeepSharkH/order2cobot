@@ -1,0 +1,19 @@
+id: rack-pick-bent-legs
+title: a robot-picked casing can arrive with bent legs; placing then pecks bent legs at 2 N and finds nothing
+applies_to:
+- pick_step
+- insert_step
+symptom: 'place_probe_20261027-153322 (led_s2 from rack R14 -> j20/j22): strip leg length 3.92 mm (normal 6.3-7.1),
+  grasp calibration -4.34 mm, 17 pecks NOT FOUND; operator: legs fully bent'
+cause: 'upstream in rack-pick: a put-back descended 30 mm from the lift height instead of from the pull end and opened
+  ~20 mm above the post-it (casing dropped); the next pull needed 5.28 N (2.10 N for the same casing before): the legs
+  were bent in the paper. Straightening by hand then pulled the legs out to 13.1 mm (calibration: legs too long)'
+fix: 'never release a casing above the rack (descend to the pull start, or set it down beside the rack); before
+  placing a robot-picked part, treat a pull peak well above ~2-4 N, a leg length off by > 1 mm or a grasp offset > ~3 mm
+  as bent legs: stop and have the operator look, do not peck. After a hand fix, the legs must protrude ~6.5 mm'
+status: proposed
+validated_by: []
+seen_in:
+- place_probe_20261027-153322 (legs bent, NOT FOUND)
+- 2026-10-27 15:40 retry (legs 13.1 mm after straightening, calibration aborted)
+stamp: '2026-10-27'
