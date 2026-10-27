@@ -50,7 +50,7 @@ MAPPER_DIR = ROOT / 'src' / 'circuit_mapper'
 DESIGNS = ROOT / 'data' / 'circuit_designs'
 STAGES = ('request', 'clarify', 'netlist', 'solve', 'assembly', 'review')
 PHASES = ('pick', 'move', 'insert', 'verify')
-SOLVERS = ('v2', 'v1')     # mapper.py --solver: v2 the 10-27 solver, v1 the one before (mapper_v1.py)
+SOLVERS = ('v2', 'v1', 'v3')     # mapper.py --solver: v2 the 10-27 solver, v1 the one before (mapper_v1.py), v3 topology first (mapper_v3.py)
 
 
 def _read(path):
@@ -252,7 +252,8 @@ class CircuitDesigner:
         self.casings = ap.load_casings()
         self.gripper = ap.load_gripper()
         self.time_limit = float(cfg.get('solver_time_limit', 120))     # v1 needs ~30 s for one LED on the Jetson
-        self.solver = cfg.get('solver', 'v2')       # v2: mapper.py (10-27); v1: mapper_v1.py, kept to compare
+        self.solver = cfg.get('solver', 'v2')       # v2: mapper.py (10-27); v1: mapper_v1.py, kept to compare; v3: mapper_v3.py
+        self.hand_wires = int(cfg.get('hand_wires', 0))     # v3: wires the operator may plug after the robot (user 10-27: accepted)
         self.model = cfg.get('model')
         self.exe = shutil.which('claude') or os.path.expanduser('~/.local/bin/claude')
         self.system = system_prompt(self.parts, self.casings)
@@ -334,7 +335,8 @@ class CircuitDesigner:
             py = [shutil.which('uv') or os.path.expanduser('~/.local/bin/uv'), 'run', '--no-project', '--with', 'ortools', 'python']
         proc = await asyncio.create_subprocess_exec(
             *py, str(MAPPER_DIR / 'mapper.py'), str(cpath), '--output', str(mpath), '--time-limit', f'{self.time_limit:g}',
-            '--solver', solver, cwd=str(ROOT), stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
+            '--solver', solver, *(['--hand-wires', str(self.hand_wires)] if solver == 'v3' and self.hand_wires else []),
+            cwd=str(ROOT), stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
         try:
             out, _ = await proc.communicate()
         finally:
@@ -417,17 +419,19 @@ class CircuitDesigner:
 
     async def _layout(self, d, circuit, solver):
         """Solver and assembly plan for this circuit; the solver's error, or None."""
-        d.stage('solve', 'active', f'CP-SAT {solver} · {self.time_limit:g} s budget', started=time.time(), budget=self.time_limit)
+        d.stage('solve', 'active', f'CP-SAT · {self.time_limit:g} s budget', started=time.time(), budget=self.time_limit)
         t0 = time.time()
         mapping, err = await self._solve(d, circuit, solver)
         secs = time.time() - t0
         if not mapping:
             d.emit('trace', stage='solve', text=f'solver {solver}: {err}')
-            d.stage('solve', 'failed', _clip(f'{solver}: {err}', 70))
+            d.stage('solve', 'failed', _clip(err, 70))
             return err
         d.emit('mapping', mapping=mapping, seconds=round(secs, 1), solver=solver)
-        nj = len(mapping['jumpers'])
-        d.stage('solve', 'done', f"{solver} · {mapping['status']} · {nj} jumper{'s' * (nj != 1)} · {secs:.0f} s")
+        nj = sum(1 for j in mapping['jumpers'] if not j.get('hand'))
+        nh = sum(1 for j in mapping['jumpers'] if j.get('hand'))       # wires plugged by hand after the robot
+        d.stage('solve', 'done', f"{mapping['status']} · {nj} jumper{'s' * (nj != 1)}"
+                + (f" · {nh} hand wire{'s' * (nh != 1)}" if nh else '') + f" · {secs:.0f} s")
         steps = ap.steps(circuit, mapping, self.parts, self.board, self.casings)
         for st in steps:
             why = []
@@ -448,11 +452,11 @@ class CircuitDesigner:
 
     async def resolve(self, d, solver):
         """The same circuit through a solver again, no agent turn: to compare v1 and v2."""
-        d.emit('user', text=f'Solve the layout again with solver {solver}.')
+        d.emit('user', text='Solve the layout again.')
         try:
             err = await self._layout(d, d.circuit, solver)
             if err:
-                d.emit('error', text=f'Solver {solver}: {err}')
+                d.emit('error', text=f'No layout: {err}')
                 d.stage('review', 'wait', 'solve again, or restart')
         except asyncio.CancelledError:
             d.emit('error', text='Stopped.')
@@ -474,6 +478,7 @@ class CircuitDesigner:
             'design': d.id, 'approved_at': time.strftime('%Y-%m-%dT%H:%M:%S'),
             'circuit': d.circuit, 'mapping': d.mapping,
             'hand_wired': d.mapping.get('manual_connections') or {},
+            'hand_wires': {j['id']: list(j['pins'].values()) for j in d.mapping['jumpers'] if j.get('hand')},
             'steps': [{'index': k, **{f: s[f] for f in ('item', 'part_id', 'holes', 'casing', 'center_mm', 'orientation_deg', 'why')}}
                       for k, s in enumerate(d.assembly['sequence'])],
         }

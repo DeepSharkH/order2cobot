@@ -71,6 +71,7 @@ qa:
 circuit:                   # Circuit Assembly tab (dashboard/circuit_design.py)
   solver: v2               # default layout solver: v2 (src/circuit_mapper/mapper.py), v1 (mapper_v1.py, the old one)
   solver_time_limit: 120   # s per solve
+  hand_wires: 4            # v3 only: wires the operator may plug after the robot (user 10-27: accepted)
 
 simulation:                # Simulation tab: the simulated UR3e + bridge (python -m simulation)
   url: http://127.0.0.1:8095

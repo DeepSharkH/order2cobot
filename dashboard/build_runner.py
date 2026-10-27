@@ -302,8 +302,9 @@ class BuildRunner:
                 self._save(d, run, f"{step['item']} in {'–'.join(step['holes'])}", item=step['item'])
             run = self._run(d)
             run['status'], run['current'] = 'done', None
-            hand = plan.get('hand_wired') or {}
-            self._save(d, run, 'all steps done' + (f"; by hand: {', '.join(f'{p} {h}' for p, h in hand.items())}" if hand else ''))
+            hand = [f'{p} {h}' for p, h in (plan.get('hand_wired') or {}).items()]
+            hand += [f"{w} {'–'.join(hs)}" for w, hs in (plan.get('hand_wires') or {}).items()]     # wires plugged by hand
+            self._save(d, run, 'all steps done' + (f"; by hand: {', '.join(hand)}" if hand else ''))
         except asyncio.CancelledError:
             run = self._run(d)
             run['status'] = 'paused'

@@ -205,11 +205,12 @@ function renderBoard() {
   // the foot: hand-wired holes, holes or parts the board and stock no longer have
   const foot = [];
   const mc = P.mapping?.manual_connections || {};
-  if (Object.keys(mc).length) {
-    foot.push(h('div', {}, h('span', { class: 'k' }, 'By hand '), Object.entries(mc).map(([pin, hole]) => {
+  const wires = (P.mapping?.jumpers || []).filter((j) => j.hand);       // plugged by hand after the robot
+  if (Object.keys(mc).length || wires.length) {
+    foot.push(h('div', {}, h('span', { class: 'k' }, 'By hand '), [...Object.entries(mc).map(([pin, hole]) => {
       const [c, p] = pin.split('.');
       return `${c === 'J_POWER' ? ({ positive: '+', negative: '−' }[p] || p) : pin} ${hole}`;
-    }).join(' · ')));
+    }), ...wires.map((j) => `wire ${Object.values(j.pins).join('–')}`)].join(' · ')));
   }
   const { missing, gone } = stale();
   if (missing.length) {

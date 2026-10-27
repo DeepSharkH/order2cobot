@@ -181,6 +181,15 @@ export function drawBoard(svg, model, opt) {
     const id = j.id, holes = Object.values(j.pins);
     if (!holes.every(inView)) return;
     const [[x1, y1], [x2, y2]] = holes.map(xy);
+    if (j.hand) {          // a wire the operator plugs in after the robot: a loose arc, not a rigid jumper
+      const g = sv('g', { class: `item wire hand${cls(id)}`, 'data-focus': id }, wiresG);
+      const mx = (x1 + x2) / 2, my = (y1 + y2) / 2, len = Math.hypot(x2 - x1, y2 - y1) || 1;
+      const bow = Math.min(28, 8 + len * 0.25), nx = -(y2 - y1) / len, ny = (x2 - x1) / len;
+      sv('path', { d: `M ${x1} ${y1} Q ${mx + nx * bow} ${my + ny * bow} ${x2} ${y2}`, fill: 'none', stroke: '#e9b65a',
+        'stroke-width': 2.4, 'stroke-dasharray': '5 3', 'stroke-linecap': 'round' }, g);
+      for (const [x, y] of [[x1, y1], [x2, y2]]) sv('circle', { cx: x, cy: y, r: 3, fill: '#e9b65a', stroke: '#111', 'stroke-width': 0.7 }, g);
+      return;
+    }
     const g = sv('g', { class: `item jumper${cls(id)}`, 'data-nets': j.net, 'data-focus': id }, wiresG);
     sv('line', { x1, y1, x2, y2, stroke: col[j.net], 'stroke-width': 5, 'stroke-linecap': 'square' }, g);
     for (const [x, y] of [[x1, y1], [x2, y2]]) sv('rect', { x: x - 2.2, y: y - 2.2, width: 4.4, height: 4.4, fill: '#d8d8d8', stroke: '#111', 'stroke-width': 0.7 }, g);
