@@ -22,27 +22,46 @@ PLATE_CLEAR = 0.0008   # leg tips at least this far above the plate
 OVERLAP_MIN = 0.0005   # casing bottom at least this far below the board top
 
 
-def program(rv, face_x, y, top, plate, spec, leg_len, safe=0.020):
-    """URScript: casing face against the end face from +x. Returns (script, z, start_x)."""
+def program(rv, face_x, y, top, plate, spec, leg_len, safe=0.020, strip=None):
+    """URScript: casing face against the end face from +x. Returns (script, z, start_x); z is the
+    planning estimate. With `strip` (x, y of a hole-free strip) the legs are measured there first
+    and the descent height is computed in the program (a new grasp: leg length unknown)."""
     o = ', '.join(f'{v:.5f}' for v in rv)
-    P = lambda x, z: f'p[{x if isinstance(x, str) else f"{x:.5f}"}, {y:.5f}, {z}, {o}]'  # noqa: E731
+    Pa = lambda x, yy, z: f'p[{x if isinstance(x, str) else f"{x:.5f}"}, {yy:.5f}, {z}, {o}]'  # noqa: E731
+    P = lambda x, z: Pa(x, y, z)  # noqa: E731
     half = spec['width_x'] / 2000
     z = max(top - 0.001, plate + leg_len + PLATE_CLEAR)
-    if top - z < OVERLAP_MIN:
+    if strip is None and top - z < OVERLAP_MIN:
         raise ValueError(f'legs too long ({leg_len * 1000:.1f} mm) to touch the end face above the plate')
     x0 = face_x + half + 0.003 + GAP          # +3 mm for a grasp offset up to -3 mm
-    s = ['textmsg("grasp_calib start")',
-         f'movel({P(x0, f"{top + safe:.5f}")}, a=0.3, v=0.03)',
-         # down beside the board end, guarded: a contact here means something is in the way
-         f'h = guarded_axial([0, 0, -1], {top + safe - z:.4f}, 2.0, 0.005)',
-         'if h:', '  textmsg("BLOCKED down")', f'  movel({P(x0, f"{top + safe:.5f}")}, a=0.3, v=0.02)',
-         'else:',
-         f'  h = guarded_axial([-1, 0, 0], {GAP + 0.010:.4f}, {F_SIDE}, {V_SIDE})',
-         '  if h:', '    textmsg("C side ", get_actual_tcp_pose())', '  else:', '    textmsg("MISS side")', '  end',
-         '  back_off([-1, 0, 0], 0.002)',
-         f'  q = get_actual_tcp_pose()', f'  movel({P("q[0]", f"{top + safe:.5f}")}, a=0.3, v=0.02)',
-         'end',
-         'textmsg("grasp_calib done")']
+    side = [f'movel({P(x0, f"{top + safe:.5f}")}, a=0.3, v=0.03)',
+            # down beside the board end, guarded: a contact here means something is in the way
+            f'h = guarded_axial([0, 0, -1], {top + safe:.5f} - zc, 2.0, 0.005)',
+            'if h:', '  textmsg("BLOCKED down")', f'  movel({P(x0, f"{top + safe:.5f}")}, a=0.3, v=0.02)',
+            'else:',
+            f'  h = guarded_axial([-1, 0, 0], {GAP + 0.010:.4f}, {F_SIDE}, {V_SIDE})',
+            '  if h:', '    textmsg("C side ", get_actual_tcp_pose())', '  else:', '    textmsg("MISS side")', '  end',
+            '  back_off([-1, 0, 0], 0.002)',
+            '  q = get_actual_tcp_pose()', f'  movel({P("q[0]", f"{top + safe:.5f}")}, a=0.3, v=0.02)',
+            'end']
+    s = ['textmsg("grasp_calib start")']
+    if strip is None:
+        s += [f'zc = {z:.5f}'] + side
+    else:
+        sx, sy = strip
+        s += [f'movel({Pa(sx, sy, f"{top + safe:.5f}")}, a=0.3, v=0.03)',
+              f'h = guarded_axial([0, 0, -1], {safe + 0.004:.4f}, 2.0, 0.005)',
+              'if not h:', '  textmsg("ABORT no strip contact")', f'  movel({Pa(sx, sy, f"{top + safe:.5f}")}, a=0.3, v=0.03)',
+              'else:',
+              'zs = get_actual_tcp_pose()[2]', 'textmsg("strip ", zs)',
+              'back_off([0, 0, -1], 0.003)',
+              f'movel({Pa(sx, sy, f"{top + safe:.5f}")}, a=0.3, v=0.03)',
+              # casing bottom 1 mm below the top, unless the legs would come closer than PLATE_CLEAR to the plate
+              f'zc = {top - 0.001:.5f}',
+              f'if {plate + PLATE_CLEAR:.5f} + (zs - {top:.5f}) > zc:', f'  zc = {plate + PLATE_CLEAR:.5f} + (zs - {top:.5f})', 'end',
+              f'if {top:.5f} - zc < {OVERLAP_MIN}:', '  textmsg("ABORT legs too long for the end face")',
+              'else:'] + side + ['end', 'end']
+    s += ['textmsg("grasp_calib done")']
     return '\n'.join(s), z, x0
 
 

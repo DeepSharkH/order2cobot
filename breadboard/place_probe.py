@@ -195,7 +195,7 @@ def main():
         leg_len = (st.get('last', {}).get('leg_length_mm') or 6.5) / 1000
         face_x = pose['row1_end_x_mm'] / 1000 + board_off[0]   # same frame as the holes: model + learned board offset
         cprog, cz, cx0 = grasp_calib.program(rv, face_x, CALIB_Y, top,
-                                             top - BOARD_H, spec, leg_len)
+                                             top - BOARD_H, spec, leg_len, strip=strip)   # legs measured first
         print(cprog, f'\n--- calib: casing bottom z {cz * 1000:.1f} mm (top {top * 1000:.1f}), start x {cx0 * 1000:.1f}, '
               f'legs {leg_len * 1000:.2f} mm\nlint:', lint(LIB + cprog) or 'ok')
         bad = ik_ok(ex, grip, rv, q0, [(cx0, CALIB_Y, top + 0.04), (cx0, CALIB_Y, cz), (cx0 - 0.020, CALIB_Y, cz)])
