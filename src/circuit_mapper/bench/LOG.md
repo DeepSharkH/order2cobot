@@ -10,3 +10,12 @@
   - p3/p4/p5 still UNKNOWN, but 54/35/26 rounds instead of 9/8/7; parallel_leds_5 still UNKNOWN (26 s per round, about as before); others unchanged
 - why kept: all solved instances verify, nothing regressed, rounds are 4-5× faster (6.5-17 s → 1.0-4.6 s). PLAN thresholds: p2/rc ≤ 15 s met; p1/led ≤ 6 s and parallel_resistors ≤ 4 s missed because of the lazy-round count (2-11 rounds at about 1.0-1.4 s each), which is P5/P6's job.
 - surprising: parallel_leds_5 once returned after 134.7 s (limit 120): its solves summed to 131 s. Two re-runs took 123.8 and 123.4 s and a profiled run 124.5 s, so this looks like a CP-SAT overrun under load. P9 (deadline guard) should look at it.
+
+## P2 staged jumper budget, no dangling jumpers - KEPT (91f0606)
+- change: `JUMPER_STAGES` = K 0, 1, 2, 3, 4, then any number. Each stage gets an equal share of the time left. K = 0 builds no wire or flow variables, collision cuts replay into later stages, and there is no objective. A chosen wire must carry nonzero flow of its strip's net. From K = 3 on, flow also runs uphill in a strip potential, so it cannot circulate. Unneeded jumpers are pruned before verify. `OPTIMAL` means every smaller K was proven INFEASIBLE.
+- bench p2 vs p1. Fast instances are the median of 3 runs (p2, p2_rep2, p2_rep3), all OPTIMAL with 0 jumpers and ver = yes:
+  - p1 7.2 → 4.1 s (it 4-6); led_circuit 7.5 → 3.5 s (it 3-6)
+  - p2 6.4 → 2.2 s, it 3 → 1; rc_low_pass 6.2 → 2.1 s, it 3 → 1; parallel_resistors 6.1 → 1.6 s, it 1
+  - p3/p4/p5/parallel_leds_5 still UNKNOWN (45/25/13/6 solves). K = 0 is proven INFEASIBLE in 2-5 s (pl5 22 s). At K = 1, p3/p4 layouts carry 1 jumper, but the point cuts never converge. pl5 now returns at 121.7 s (was 134.7). Others unchanged.
+- why kept: the gate passes, and the P1 thresholds are now met (p1/led ≤ 6 s, parallel_resistors ≤ 4 s). P2's own "p3 and p4 solve" is not met, which is P5/P6's job.
+- surprising: with nonzero flow alone, the any-K stage picked 100-180 wires in circulating cycles; the potential brought that down to 1-5. Potentials (even a direction bool replacing `flow != 0`) made K = 1 rounds 1.5-2× slower, so they start at K = 3 (a cycle needs 3 wires). Fixed cumulative slices gave p5's unprovable K = 1 stage 45 s, hence equal shares. p2_try_fast is an intermediate run without potentials.
