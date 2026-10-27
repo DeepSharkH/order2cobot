@@ -125,6 +125,30 @@ def program(rv, strip_xy, target, offset, top, pull_first):
     return '\n'.join(s)
 
 
+def snapshot(ex):
+    """Fixed cam + gripper cam frames from the dashboard (PNG bytes), for the run record."""
+    import urllib.request
+    out = {}
+    for cam, name in ((0, 'grasp_fixed.png'), (1, 'grasp_gripper.png')):
+        try:
+            out[name] = urllib.request.urlopen(f'http://127.0.0.1:8090/api/frame/{cam}', timeout=5).read()
+        except OSError:
+            pass
+    return out
+
+
+def grip_record(ex, note):
+    """How the part is held: the bridge's Gripper Close settings (no position / force readout exists)
+    and the operator's note. The Hand-E is closed on the pendant for now."""
+    rec = {'note': note}
+    try:
+        sk = next(s for s in call(ex.b, 'smartskill_list')['data'] if s.get('type') == 'robotiq-gripper-close-smart-skill')
+        rec['close_skill'] = {k: sk['parameters']['dao'].get(k) for k in ('force', 'speed', 'targetPosition')}
+    except Exception as e:  # noqa: BLE001
+        rec['close_skill'] = f'unavailable: {str(e)[:80]}'
+    return rec
+
+
 def ik_ok(ex, grip, rv, q0, pts):
     bad = []
     for x, y, z in pts:
@@ -148,6 +172,7 @@ def main():
     ap.add_argument('--pull', action='store_true')
     ap.add_argument('--confirm', action='store_true', help='record the holes the operator read')
     ap.add_argument('--calib', action='store_true', help='grasp calibration (casing against the row-1 end) first')
+    ap.add_argument('--note', default='', help='operator note on the grasp (how it was closed, tilt, ...)')
     a = ap.parse_args()
     st = load_state()
     if a.confirm:
@@ -212,6 +237,7 @@ def main():
         ex.move_checked(list(start) + rv, v=0.2, floor=top, min_clear=0.02)
         cmsgs, _ = ex.run(cprog, timeout=180)
         print('\n'.join(m for m in cmsgs if not m.startswith(('pose ', 'force ', 'contact '))))
+        shots = snapshot(ex)          # how the part sits in the fingers, at the calibration pose
         g = grasp_calib.parse(cmsgs, face_x, spec)
         if g is None:
             raise SystemExit('grasp calibration: no side contact')
@@ -231,8 +257,11 @@ def main():
     if not pull_first and not a.calib:   # a part in the board: the program pulls it out before any sideways move
         ex.move_checked(list(start) + rv, v=0.2, floor=top, min_clear=0.02)
     t0 = time.time()
+    if not a.calib:
+        shots = {}
     msgs, _ = ex.run(prog, timeout=300)
-    res = {'stamp': time.strftime('%Y-%m-%dT%H:%M:%S'), 'secs': round(time.time() - t0, 1), 'part': a.part,
+    res = {'grip': grip_record(ex, a.note), 'shots': list(shots),
+           'stamp': time.strftime('%Y-%m-%dT%H:%M:%S'), 'secs': round(time.time() - t0, 1), 'part': a.part,
            'holes': [h.lower() for h in a.holes], 'target_mm': np.round(target * 1000, 2).tolist(),
            'offset_used_mm': np.round(offset * 1000, 2).tolist(), 'yaw_deg': round(float(np.degrees(yaw))), 'msgs': msgs}
     zs = next((float(m.split()[1]) for m in msgs if m.startswith('strip ')), None)
@@ -249,17 +278,22 @@ def main():
             ok, dev = grasp_calib.legs_offset_ok(p[0], target[0], board_off[0], g)
             res['grasp_dx_mm'] = round(g * 1000, 2)
             res['pair_check'] = 'ok' if ok else f'ONE HOLE OFF suspected: legs {dev * 1000:+.2f} mm from the expected pair'
+            # calibration (casing bottom) vs drop (leg tips, ~6-7 mm lower): grows with the part's tilt
+            res['calib_residual_mm'] = round(dev * 1000, 2)
             if ok:      # only a confirmed pair teaches the board offset
                 st['offset_mm'] = res['legs_offset_mm']
         else:
             st['offset_mm'] = res['found_offset_mm']   # jumper runs: hand-centred grasp, legs = TCP
     st['last'] = {k: res[k] for k in ('stamp', 'part', 'holes', 'target_mm', 'offset_used_mm') if k in res} | \
-                 {k: res.get(k) for k in ('found_offset_mm', 'leg_length_mm')}
+                 {k: res.get(k) for k in ('found_offset_mm', 'legs_offset_mm', 'leg_length_mm', 'grasp_dx_mm',
+                                          'pair_check', 'calib_residual_mm', 'grip')}
     save_state(st)
     print(json.dumps({k: v for k, v in res.items() if k != 'msgs'}, indent=1))
     print('\n'.join(m for m in msgs if not m.startswith(('pose ', 'force ', 'contact '))))
     d = ROOT / 'data' / 'runs' / time.strftime('place_probe_%Y%m%d-%H%M%S')
     d.mkdir(parents=True, exist_ok=True)
+    for name, img in shots.items():
+        (d / name).write_bytes(img)
     (d / 'result.json').write_text(json.dumps(res, indent=1))
     print('saved', d)
 
