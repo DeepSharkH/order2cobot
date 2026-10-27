@@ -169,18 +169,26 @@ def used_rows(result):
 
 
 def test_first_window_is_centred(monkeypatch):
-    """Two 14 mm casings give the 12-row minimum: rows 27-38 of 64, 26 spare at each end."""
+    """Two 14 mm casings give the 12-row minimum: rows 26-37 of 63, 25 spare above, 26 below."""
     models = record_models(monkeypatch)
     board = mapper.read_json(ROOT / "board_connections.json")
     inventory = mapper.read_json(ROOT / "example_components.json")
     circuit = mapper.read_json(ROOT / "bench/circuits/p1_red_led_1k_series.json")
     result = mapper.map_circuit(circuit, inventory, board, time_limit=20)
-    window = set(range(27, 39))
+    window = set(range(26, 38))
     assert result["status"] == "OPTIMAL" and used_rows(result) <= window
     # Candidates, not just the answer, stay inside: 12 rows of 10 holes per manual pin.
     manual = [v.name for v in models[0].proto.variables if v.name.startswith("manual_")]
     assert len(manual) == 2 * 12 * 10
     assert {int(name.rsplit("_", 1)[1][1:]) for name in manual} == window
+
+
+def test_board_has_63_rows():
+    """The real board ends at row 63: two 5-hole strips and one E-F pair per row."""
+    board = mapper.read_json(ROOT / "board_connections.json")
+    positions, _ = mapper.board_geometry(board)
+    assert {int(hole[1:]) for hole in positions} == set(range(1, 64))
+    assert len(positions) == 63 * 10 and len(board["center_gap_pairs"]) == 63
 
 
 def test_too_small_window_widens(monkeypatch):

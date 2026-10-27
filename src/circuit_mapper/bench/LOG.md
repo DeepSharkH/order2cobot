@@ -38,3 +38,11 @@
   - p3/p4/p5/parallel_leds_5 still UNKNOWN: 76/45/29/7 solves at load 22. p4_heapq (an earlier hand-written sort, same cuts and order) gave 90/73/34/7 at load 16.5, against p3's 106/85/34/7. Others unchanged.
 - A/B against the P3 code (same load, alternating runs): p4_npn did 74 old vs 81 new solves in 120 s, and K = 1 rounds took 0.8-1.4 s in both. So the order ints cost no measurable time per round. Round medians over 8 runs each (old → new): rc_low_pass 1 → 2.5, p2 1 → 1, led_circuit 8.5 → 2, p1 3.5 → 4.5 (125 vs 133 rounds in total). Which first layout CP-SAT returns depends on the model, so rc lost its lucky 1-round layout and led gained one. Every run stayed under 5 s.
 - why kept: the gate passes. The model is smaller, every lazy cut is a clause, and the order is deterministic and readable (led_circuit gives R1, D1). Old order-only rounds were rare (1 in 9 fast runs, 2 of 74 in p4_npn) because forbidden pairs usually came in the same round. After P6 they would be the only lazy rounds left; now they cost none. Cost: geometry.py has 26 more lines, and there is no speed gain for now.
+
+## R2 board has 63 rows (real board) - KEPT (7e6ba73)
+- change: cherry-pick of a96089b (orders-overnight): board_connections.json drops row 64 (2 strips, 1 E-F pair), `rows.last` 63; E-F channel unchanged (still to be measured). test_mapper_csp: first window is now rows 26-37 of 63 (25 spare above, 26 below: the best an even window gets on an odd board); new test checks rows 1-63, 630 holes, 63 E-F pairs.
+- bench r2_63rows vs p4. Fast instances are the median of 3 runs (r2_63rows, _rep2, _rep3) at load 12-21, against 16-22 for p4, all OPTIMAL with 0 jumpers and ver = yes:
+  - p1 1.5 → 1.4 s; p2 1.7 → 1.4 s; led_circuit 1.5 → 1.7 s; parallel_resistors 1.3 → 1.5 s; rc_low_pass 2.4 → 1.5 s: noise
+  - every layout lies in rows 26-35 (window 26-37); no hole past row 37, none in row 64
+  - p3/p4/p5/parallel_leds_5 still UNKNOWN: 116/99/26/7 solves (p4: 76/45/29/7; load 12-15 at their start, so not comparable). Others unchanged.
+- why kept: data fix confirmed by the user; the gate passes and nothing regressed. Becomes the new reference.
