@@ -25,6 +25,7 @@ import numpy as np
 import yaml
 from scipy.spatial.transform import Rotation as R
 
+from breadboard import grasp_calib
 from breadboard.touch_locate import GRIPPER, tool_down
 from urcore.urexec import URExec, call
 from urcore.urlib import LIB
@@ -42,6 +43,8 @@ DROP = 0.0015         # legs this far below the surface = they found the holes
 LIFT = 0.005          # after seating, legs stay ~1.5 mm in the holes for reading
 RINGS = (0.0007, 0.0014)
 X_MIN = -0.460        # reach: further out the elbow straightens (singularity)
+CALIB_Y = -0.045      # grasp calibration at the row-1 end, near half (the white cube sits on the a-side rail)
+BOARD_H = 0.0085      # board top above the plate (board.yaml)
 
 
 def casing(name):
@@ -144,6 +147,7 @@ def main():
     ap.add_argument('--run', action='store_true')
     ap.add_argument('--pull', action='store_true')
     ap.add_argument('--confirm', action='store_true', help='record the holes the operator read')
+    ap.add_argument('--calib', action='store_true', help='grasp calibration (casing against the row-1 end) first')
     a = ap.parse_args()
     st = load_state()
     if a.confirm:
@@ -177,7 +181,8 @@ def main():
     target = np.mean(pair, axis=0)
     if min(pair[0][0], pair[1][0]) < X_MIN:
         raise SystemExit(f'beyond the reach limit (x < {X_MIN}): rows past ~41')
-    offset = np.array(st.get('offset_mm', [0, 0])) / 1000
+    board_off = np.array(st.get('offset_mm', [0, 0])) / 1000      # board pose error (legs - model)
+    offset = board_off.copy()
     # legs side by side along the finger face = flange y: turn flange y along base x (the rows)
     yaw = next((y for y in (-np.pi / 2, np.pi / 2) if not ik_ok(ex, grip, tool_down(y), q0, [(*target, top + 0.04)])), None)
     if yaw is None:
@@ -185,6 +190,34 @@ def main():
     rv = tool_down(yaw)
     strip = (target[0], strip_y(a.holes[0][0].lower(), pose))
     pull_first = bool(st.get('inserted'))
+    g = 0.0
+    if a.calib:
+        leg_len = (st.get('last', {}).get('leg_length_mm') or 6.5) / 1000
+        face_x = pose['row1_end_x_mm'] / 1000 + board_off[0]   # same frame as the holes: model + learned board offset
+        cprog, cz, cx0 = grasp_calib.program(rv, face_x, CALIB_Y, top,
+                                             top - BOARD_H, spec, leg_len)
+        print(cprog, f'\n--- calib: casing bottom z {cz * 1000:.1f} mm (top {top * 1000:.1f}), start x {cx0 * 1000:.1f}, '
+              f'legs {leg_len * 1000:.2f} mm\nlint:', lint(LIB + cprog) or 'ok')
+        bad = ik_ok(ex, grip, rv, q0, [(cx0, CALIB_Y, top + 0.04), (cx0, CALIB_Y, cz), (cx0 - 0.020, CALIB_Y, cz)])
+        print('IK calib:', 'all reachable' if not bad else bad)
+        if not a.run or bad:
+            return
+        if pull_first:
+            msgs, _ = ex.run('\n'.join(pull_lines(top)), timeout=120)
+            print('\n'.join(msgs))
+            st['inserted'] = None
+            save_state(st)
+            pull_first = False
+        start = R.from_rotvec(rv).as_matrix() @ -np.array(grip['tcp_tip'][:3]) + [cx0, CALIB_Y, top + 0.04]
+        ex.move_checked(list(start) + rv, v=0.2, floor=top, min_clear=0.02)
+        cmsgs, _ = ex.run(cprog, timeout=180)
+        print('\n'.join(m for m in cmsgs if not m.startswith(('pose ', 'force ', 'contact '))))
+        g = grasp_calib.parse(cmsgs, face_x, spec)
+        if g is None:
+            raise SystemExit('grasp calibration: no side contact')
+        print(f'grasp: legs {g * 1000:+.2f} mm from the fingertip along x')
+        offset = board_off - [g, 0.0]
+        q0 = [call(ex.b, 'robot_get_joint_positions')['data'][k] for k in J]   # the arm moved: fresh joints
     prog = program(rv, strip, target, offset, top, pull_first)
     problems = lint(LIB + prog)
     print(prog, '\n---\nlint:', problems or 'ok', '| part', a.part, '| yaw deg', round(np.degrees(yaw)),
@@ -195,7 +228,7 @@ def main():
     if not a.run or problems or bad:
         return
     start = R.from_rotvec(rv).as_matrix() @ -np.array(grip['tcp_tip'][:3]) + [strip[0], strip[1], top + 0.04]
-    if not pull_first:      # a part in the board: the program pulls it out before any sideways move
+    if not pull_first and not a.calib:   # a part in the board: the program pulls it out before any sideways move
         ex.move_checked(list(start) + rv, v=0.2, floor=top, min_clear=0.02)
     t0 = time.time()
     msgs, _ = ex.run(prog, timeout=300)
@@ -208,9 +241,18 @@ def main():
     found = next((m for m in msgs if m.startswith('found ')), None)
     if found:
         p = [float(v) for v in found.split('p[')[1].rstrip(']').split(',')]
-        res['found_offset_mm'] = np.round((np.array(p[:2]) - target) * 1000, 2).tolist()
-        st['offset_mm'] = res['found_offset_mm']
+        res['found_offset_mm'] = np.round((np.array(p[:2]) - target) * 1000, 2).tolist()      # TCP - target
+        legs = np.array(p[:2]) + [g, 0.0]
+        res['legs_offset_mm'] = np.round((legs - target) * 1000, 2).tolist()                   # legs - target
         st['inserted'] = res['holes']
+        if a.calib:
+            ok, dev = grasp_calib.legs_offset_ok(p[0], target[0], board_off[0], g)
+            res['grasp_dx_mm'] = round(g * 1000, 2)
+            res['pair_check'] = 'ok' if ok else f'ONE HOLE OFF suspected: legs {dev * 1000:+.2f} mm from the expected pair'
+            if ok:      # only a confirmed pair teaches the board offset
+                st['offset_mm'] = res['legs_offset_mm']
+        else:
+            st['offset_mm'] = res['found_offset_mm']   # jumper runs: hand-centred grasp, legs = TCP
     st['last'] = {k: res[k] for k in ('stamp', 'part', 'holes', 'target_mm', 'offset_used_mm') if k in res} | \
                  {k: res.get(k) for k in ('found_offset_mm', 'leg_length_mm')}
     save_state(st)
