@@ -28,3 +28,4 @@
 .rk-svg .slot.misfit .lbl { fill: #f0a49c; }
 .rk-svg .slot.wanted .pad { stroke: #e9b65a; stroke-width: .6; stroke-dasharray: 1.2 .8; animation: rk-want 1.6s ease-in-out infinite; }
 @keyframes rk-want { 50% { stroke-opacity: .35; } }
+.rk-svg .side.front { fill: #e9b65a; }

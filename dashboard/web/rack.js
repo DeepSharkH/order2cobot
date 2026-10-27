@@ -1,5 +1,6 @@
-// The casing rack seen from above, as the person refilling it sees it: the long robot-side edge on
-// top, a slot per leg-hole pair with the part standing in it; a tap on a slot picks what stands
+// The casing rack seen from above, as the person refilling it sees it: the front (toward the
+// breadboard and the workplace) at the bottom, the back (toward the switch) on top; ↻ turns it so
+// the hole columns match the real rack. A slot per leg-hole pair with the part standing in it; a tap on a slot picks what stands
 // there (only parts whose leg spacing fits that column). Used by the 3D Environment's Rack card and
 // by a project's shopping list (with `need`: the parts its layout still lacks, offered first).
 // State: GET/POST /api/rack (data/rack_state.json, shared with rack-pick and the build).
@@ -60,18 +61,21 @@ export class RackView {
   render() {
     const r = this.data;
     if (!r) return;
-    const M = 6, W = RACK.w + 2 * M, H = RACK.d + 2 * M + 10, top = this.turned ? M : M + 10;
-    const view = ([x, y]) => (this.turned ? [M + x, top + RACK.d - y] : [M + RACK.w - x, top + y]);
+    const M = 6, W = RACK.w + 2 * M, H = RACK.d + 2 * M + 18, top = M + 9;
+    // from the front (the person refilling it): the STL's y = 0 edge is the back (rack.glb is the STL
+    // turned 180 deg about x, and data/cad/rack_scene.json has its +y toward the switch), its +x to the right
+    const view = ([x, y]) => (this.turned ? [M + RACK.w - x, top + RACK.d - y] : [M + x, top + y]);
     const opt = Object.fromEntries(r.options.map((o) => [o.part_id, o]));
     const needed = new Set(this.need.map((n) => n.part_id));
     const wantCols = new Set(this.need.map((n) => opt[n.part_id]?.pin_spacing).filter(Boolean));     // columns a missing part fits
     let svg = `<svg viewBox="0 0 ${W} ${H}" class="rk-svg">
-      <text x="${W / 2}" y="${this.turned ? H - 2 : 8}" class="side">ROBOT SIDE</text>
+      <text x="${W / 2}" y="7" class="side">BACK · SWITCH</text>
+      <text x="${W / 2}" y="${H - 1.5}" class="side front">FRONT · BREADBOARD</text>
       <rect x="${M}" y="${top}" width="${RACK.w}" height="${RACK.d}" rx="3" class="plate"/>`;
     // column heads: the leg spacing each column takes
     for (let c = 0; c < RACK.cols; c++) {
       const [cx] = view([RACK.x0 + c * RACK.dx, 0]);
-      svg += `<text x="${cx}" y="${this.turned ? top + RACK.d + 4.5 : top - 1.5}" class="col">${c + 1}×</text>`;
+      svg += `<text x="${cx}" y="${top - 1.5}" class="col">${c + 1}×</text>`;
     }
     const sw = 22, sh = 4;      // a casing seen from above: about its width x its 4 mm thickness
     for (const s of r.slots) {
