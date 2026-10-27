@@ -516,6 +516,7 @@ button.exp-t:hover { color: var(--cream); }
 .ca-in textarea:focus { outline: none; }
 .ca-in textarea::placeholder { color: #5c5c5c; }
 .ca-in button { min-width: 92px; margin: 6px; }
+.ca-in select { align-self: center; font: inherit; font-size: 12px; background: #161616; color: var(--grey); border: 1px solid #3a3a3a; padding: 4px 6px; }
 
 /* component list: icon tiles drawn like the board */
 .ca-parts-head { display: flex; justify-content: space-between; align-items: baseline; padding: 6px 0 12px; border-bottom: 1px solid var(--rule);

@@ -27,6 +27,7 @@ else:
     )
 
 HERE = Path(__file__).parent
+SOLVERS = ("v2", "v1")  # v2: this file (10-27 overnight work); v1: mapper_v1.py (before it)
 DEFAULT_CASINGS = HERE.parents[1] / "assets/models/component_casings/casings.json"
 # (row window, jumper budget) per stage. The window is a multiple of the first window's
 # rows, centred on the board (None: every row); a None budget allows any number of jumpers.
@@ -459,11 +460,21 @@ def main():
     parser.add_argument("--time-limit", type=float, default=30)
     parser.add_argument("--casings", type=Path, default=DEFAULT_CASINGS)
     parser.add_argument("--gripper", type=Path, default=HERE / "gripper.json")
+    parser.add_argument(
+        "--solver", choices=SOLVERS, default="v2", help="v2: this file; v1: mapper_v1.py, the old one"
+    )
     args = parser.parse_args()
     if args.time_limit <= 0:
         parser.error("--time-limit must be positive")
+    if args.solver == "v1":
+        if __package__:
+            from .mapper_v1 import map_circuit as solve
+        else:
+            from mapper_v1 import map_circuit as solve
+    else:
+        solve = map_circuit
     try:
-        result = map_circuit(
+        result = solve(
             read_json(args.circuit),
             read_json(args.inventory),
             read_json(args.board),

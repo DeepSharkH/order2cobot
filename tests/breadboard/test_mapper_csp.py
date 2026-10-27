@@ -377,3 +377,15 @@ def test_part_collisions_are_eager(monkeypatch):
     circuit = mapper.read_json(ROOT / "bench/circuits/p1_red_led_1k_series.json")
     result = mapper.map_circuit(circuit, inventory, board, time_limit=20)
     assert result["status"] == "OPTIMAL" and len(models) == 1
+
+
+@pytest.mark.parametrize("solver", ["v1", "v2"])
+def test_cli_solver_switch(solver):
+    """mapper.py --solver v1 runs the old solver (mapper_v1.py, kept to compare), v2 this one."""
+    import subprocess
+
+    proc = subprocess.run(
+        [sys.executable, str(ROOT / "mapper.py"), str(ROOT / "examples/pnp_transistor_switch.json"), "--solver", solver],
+        capture_output=True, text=True, timeout=60,
+    )
+    assert proc.returncode == 1 and "Missing supported casing geometry" in proc.stderr

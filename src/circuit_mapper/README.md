@@ -14,7 +14,18 @@ silently treated as having zero size. The parallel-resistor example is also
 available as a small geometry demonstration.
 
 Options: `--inventory`, `--board`, `--casings`, `--gripper`, `--time-limit` (30
-seconds by default, including model construction), and `--output`.
+seconds by default, including model construction), `--solver`, and `--output`.
+
+`--solver v2` (default) is this solver, from the 10-27 overnight work
+(bench/LOG.md, a second or less for the circuits without jumpers). `--solver v1`
+runs `mapper_v1.py` + `geometry_v1.py`, the solver before it (e0702f9), kept
+unchanged to compare against; both read the same board, parts, casings and
+gripper. v1 adds one collision cut per solve (~7 s each on the Jetson), so it is
+luck-dependent: one LED took 4 solves (27 s) on the old 64-row board file and
+does not finish in 120 s on the real 63-row board. The dashboard's Circuit
+Assembly tab picks the solver per request (`circuit.solver` in
+configs/calib_dashboard.yaml is the default) and can solve a design again with
+the other one.
 Without `--output`, JSON is printed to stdout. The old `--clearance` option
 has been replaced by the millimeter-based geometry model.
 
