@@ -1026,7 +1026,7 @@ $('#qa-reset-port').onclick = () => { if (confirm(`Clear the results of port ${q
 $('#qa-reset-all').onclick = () => { if (confirm('Clear the results of all ports?')) send({ type: 'qa_reset' }); };
 
 // ── objects ─────────────────────────────────────────────────────────────────
-// bounding box of a configured object (configs/objects.yaml) in the live clouds;
+// bounding box of a configured object (configs/wire/objects.yaml) in the live clouds;
 // the server runs the search (dashboard/objects.py) and sends the result with the state
 let lastState = null;
 const objView = new ObjectsView($('#obj-3d'));
