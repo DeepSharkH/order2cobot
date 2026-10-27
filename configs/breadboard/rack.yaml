@@ -1,0 +1,39 @@
+# Casing rack (blue print + pink post-it as pin "holes") in the robot base frame, for
+# breadboard/rack_pick.py (skill rack-pick). Millimetres, base frame.
+#
+# Geometry: the ORIGINAL rack print, git 645bb7d:assets/models/All_Casings_Holder_Print.stl
+# (181.2 x 71.2 x 18; checked by slicing the STL 2026-10-27: slit centres x' 20.55 + 35.05 c,
+# y' 11.15 + 16.3 r). The 142.2 x 82.5 file in assets/models/component_casings/ is Jan's newer
+# design (user 2026-10-27: the blue rack on the table is the original).
+# Rack frame: origin front-left corner on the table, x' along the front edge, y' away from it, z' up.
+stamp: '2026-10-27T14:20'
+geometry:
+  source: git 645bb7d:assets/models/All_Casings_Holder_Print.stl (sliced 2026-10-27)
+  size: [181.2, 71.2]
+  top_z: 18.0                 # rack top above the table (plate z' 10-18)
+  slot_x0: 20.55              # slot k: c = (k-1) % 5, r = (k-1) // 5
+  slot_dx: 35.05
+  slot_y0: 11.15
+  slot_dy: 16.3
+  pocket: [24.2, 5.4, 4.5]    # under the post-it the casing stands on paper over this pocket
+  solid_between_pockets: [12.1, 23.0]   # along x' from a slot centre
+orientation:
+  source: operator 2026-10-27 (slot 1 at the breadboard end)
+  slot1_end: breadboard       # breadboard (-x base) or robot (+x base)
+  # -> x' along +x base, S1 on the -y (pendant) edge, robot end = x' 181.2
+rough:                        # camera box corrected by the first locate's touches
+  source: fixed cam 13:43 (slit grid, rms 0.9 mm) corrected by rack_locate_20261027-140429 (end face x -336.7; +y edge
+    not met at y >= 14.1 -> cam biased >= +13 mm in y, +6 in x)
+  stamp: '2026-10-27T14:12'
+  origin_mm: [-336.7, -60.7]  # x from the touched end; y: +y edge guessed at 10.5 (< 12.1 measured)
+  yaw_deg: 0.6
+  top_z_mm: 22.6              # plate (board top 13.1 - 8.5, board_pose.yaml) + 18
+camera_fit:                   # the rack as the FIXED CAM sees it (biased ~20 mm in base): rack_pick find measures
+  source: fixed cam frame 13:43, 12 slits back-projected onto z top_z_mm, grid fit rms 0.9 mm (find refines it on the slits)
+  stamp: '2026-10-27T13:50'
+  origin_mm: [-330.8, -45.7]
+  yaw_deg: 0.6
+  top_z_mm: 22.6
+# Seen on the camera 2026-10-27 (keep touches away): yellow tape straps across x' ~26-46 and
+# ~146-167 (also down both long sides); the post-it covers x' ~105-181 (end of the rack, robot side).
+pose: {"origin_mm": [-335.56, -67.63], "yaw_deg": 1.01, "top_z_mm": 20.51, "tilt_deg": 0.95, "top_spread_mm": 0.5, "source": "touch (rack_locate_20261027-140804): 2 edge + 1 end + 3 top", "stamp": "2026-10-27T14:09:27"}

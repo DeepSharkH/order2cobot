@@ -1,0 +1,23 @@
+id: gripper-skill-lost-hande
+title: an unactivated Hand-E answers every open/close with xmlrpc "Invalid request" (code 3) and does not move
+applies_to:
+- pick_step
+- grasp_step
+symptom: 'Gripper Open (smartskill_run in close_gripper) returned in 2.2 s with WARNING xmlrpc_unknown_problem
+  {"parameter2":"Invalid request.","parameter1":"3"}; the fingers stayed closed and the "open" descent met the
+  casing top at 39.57 mm (2 N guard -> abort up, casing still upright)'
+cause: 'the Hand-E was NOT ACTIVATED (operator 10-27, found after ~1 h): every command then fails in the URCap''s
+  driver_griper_client.setSpeed(slave_ids, speed_norm) with xmlrpc code 3 "Invalid request"; smartskill_run still
+  says started, smartskill_status active null, the fingers do not move. Not the speed value, not a lost URCap, not
+  the loaded app (all tried). Activation moved the arm 5 mm in z (flange 247.8 -> 252.8)'
+fix: 'activate the Hand-E on the pendant before the first open/close of a session and after any code-3 warning (do
+  not change smart-skill parameters); re-check the arm pose after activation. rack_pick.gripper() reads psx_logs
+  after every skill; any WARNING/ERROR stops the pick before the next motion'
+status: validated
+validated_by:
+- 'rack_pick_20261027-142033 (after a robot reboot + Hand-E activation: Close/Open via MCP clean, then Close on the
+  casing right after a motion step in breadboard_pick: clean)'
+seen_in:
+- rack_pick_20261027-141209 (R4 led_s2, height 19.72 ok, open failed, aborted on the casing top)
+- rack_pick_20261027-141441 (after a Hand-E reconnect: same warning; stopped before the descent)
+stamp: '2026-10-27'
