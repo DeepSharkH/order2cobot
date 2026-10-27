@@ -1,0 +1,10 @@
+id: seat-lift-z-compliant
+title: "z-compliant seat lifts the taped switch"
+applies_to: ["insert_step", "seat"]
+symptom: {"cmd": ["seat_compliant"], "all": [["d_mm.z", ">", 2.0]]}
+cause: "~2 N vertical force bias in force mode with z free: the plug rides up and takes the switch front with it"
+fix: "seat with seat_x (x compliant, z stiff, 2 mm deviation)"
+status: "validated"
+validated_by: ["20261025-202013_rj45-port1", "20261026-100643_rj45-port1-B"]
+seen_in: ["20261025-200103_rj45-port4 (z +6.9 mm)"]
+stamp: "2026-10-26"

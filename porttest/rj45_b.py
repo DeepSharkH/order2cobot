@@ -16,6 +16,7 @@ import urllib.request
 
 import yaml
 
+from porttest import skilllib
 from porttest.go_view import W3_REF
 from porttest.skill_b import SkillB
 from porttest.urexec import ROOT, BridgeError, call
@@ -169,6 +170,14 @@ def touch_check():
         save_refs(short)
 
 
+def lib_report(s, extra=None):
+    """Check this step's trace records against the skill library; log every match."""
+    hits = skilllib.check(s.records, extra=extra)
+    for h in hits:
+        runlog("note", "observed", skilllib.describe(h)[:480])
+    return {h[0]["id"] for h in hits}
+
+
 def port_target(refs, n):
     dx = PROD.get("measured_from_left_x", {}).get(n, PROD["port1_from_left_pass_x"] + (n - 1) * 0.0150)
     dz = PROD.get("measured_below_top_z", {}).get(n, PROD["port1_below_top_pass_z"])
@@ -246,14 +255,26 @@ def main(port, upload=True, fast=False, short=False):
         if upload:
             sk.upload()
         steps["prep"] = time.time() - t
+        for st_name in ("touch_reference_step", "insert_step"):
+            ids = [f"{e['id']}({e.get('status', '?')[0]})" for e in skilllib.for_step(st_name)]
+            runlog("note", "interpretation", f"library read for {st_name}: {', '.join(ids)}")
         runlog("done", "--status", "success", "--summary", f"tier move, NORMAL, uploaded={upload}")
 
         runlog("step", "S5", "touch_reference_step", "--intent", "one play: approach + face/top/left touches")
         t = time.time()
         r1 = PROD["touch"]
         spot = [r1["left_end_pass_x"] + 0.0179, r1["face_y"] - 0.0118, r1["top_pass_z"] - 0.0139]
-        with sk.session() as s:
-            refs = touch_refs_short(s, json.loads(LAST.read_text())) if short and LAST.exists() else touch_refs(s, spot)
+        prev = json.loads(LAST.read_text()) if LAST.exists() else None
+        with sk.session(step="touch_reference_step") as s:
+            refs = touch_refs_short(s, prev) if short and prev else touch_refs(s, spot)
+        moved = {k: round((refs[k] - prev[k]) * 1000, 2) for k in ("face_y", "top_pass_z", "left_pass_x")} if prev else {}
+        hits = lib_report(s, extra={"refs_vs_last_mm": max(map(abs, moved.values())) if moved else None})
+        if "switch-creep" in hits:
+            msg = (f"OPERATOR: the switch moved since the last run (face {moved['face_y']:+.2f}, top {moved['top_pass_z']:+.2f}, "
+                   f"left end {moved['left_pass_x']:+.2f} mm). The seats push the taped switch; proposal: a printed corner "
+                   "stop / bracket against its back and left side, or clamps instead of tape. Continuing with fresh touches.")
+            print(msg)
+            runlog("note", "interpretation", msg)
         save_refs(refs)
         steps["touch"] = time.time() - t
         runlog("note", "observed", f"B touches: face {refs['face_y']*1000:.2f}, top {refs['top_pass_z']*1000:.2f}, "
@@ -264,8 +285,9 @@ def main(port, upload=True, fast=False, short=False):
         X, Z = port_target(refs, port)
         runlog("step", "S7", "insert_step", "--intent", f"one play: port {port} at x {X*1000:.2f} z {Z*1000:.2f}")
         t = time.time()
-        with sk.session() as s:
+        with sk.session(step="insert_step") as s:
             res = insert(s, X, Z, refs)
+        lib_report(s)
         link = qa(port, "insert") if res["seated"] else {"ok": False, "reason": "not seated"}
         steps["insert"] = time.time() - t
         runlog("note", "observed", f"B insert: {json.dumps(res)[:300]}; link {link.get('ok')} {link.get('reason', '')}")
@@ -274,7 +296,7 @@ def main(port, upload=True, fast=False, short=False):
 
         runlog("step", "S8", "extract_step", "--intent", "one play: guarded pull, link drop, lift")
         t = time.time()
-        with sk.session() as s:
+        with sk.session(step="extract_step") as s:
             blocked = extract(s)
             drop = qa(port, "extract")
             s.movel_rel([0, -0.010, 0], a=SPEED["near_a"], v=SPEED["near_v"])

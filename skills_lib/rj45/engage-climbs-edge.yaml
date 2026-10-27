@@ -1,0 +1,11 @@
+id: engage-climbs-edge
+title: "x/z-compliant engage climbs the edge of the opening and jams"
+applies_to: ["insert_step", "peg-into-face"]
+symptom: {"cmd": ["engage", "engage_x"], "all": [["d_mm.z", ">", 2.0], ["result_mm", "<", 4.0]]}
+cause: "when the search catches the edge of the opening (~1 mm off centre), a free z axis lets the 11 N push ride up the edge instead of entering"
+fix: "engage with z stiff / x compliant (engage_x, skill_b op 20); on a hit: back off 2 mm and retry the search once from the computed target"
+auto_fix: "retry_search_from_target"
+status: "validated"
+validated_by: ["20261025-210552_rj45-port2", "20261026-112530_rj45-port1-B-fast"]
+seen_in: ["20261025-210552_rj45-port2 (z +3.9 mm)", "20261026-112235_rj45-port1-B-fast (z +3.8 mm)"]
+stamp: "2026-10-26"

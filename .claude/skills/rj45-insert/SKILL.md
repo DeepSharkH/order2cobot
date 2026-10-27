@@ -30,6 +30,26 @@ memories `rj45-port-qa-status`, `ur3-cable-limits`, `ur-bridge-motion`.
 6. **Stop on surprises.** Any protective stop, false hit or disagreement between two
    measurements > tolerance: stop, log it, re-measure. Do not retry blindly.
 
+## Skill library (read before you write or change a step)
+
+`skills_lib/rj45/*.yaml` holds the validated lessons (symptom → cause → fix → validated_by).
+- **Before writing or changing a step:** `python -m porttest.skilllib list <step>` (e.g.
+  `insert_step`) and follow every `validated` entry. Today's repeat failure (engage jam,
+  11:23) happened because a known fix (`engage_x`) was not looked up.
+- **Every skill_b command is traced** (`data/runs/current/trace.jsonl`: step, cmd, params,
+  result, tip pose before/after, displacement mm, end force, duration). After a failure read
+  the failing step's records first (`python -m porttest.skilllib check <run>` lists known
+  symptoms with their fix); `rj45_b` logs matches automatically and applies `auto_fix`.
+- **New failure → new entry** with `status: proposed`, `seen_in: [<run>]`, a `symptom`
+  condition on trace metrics if one exists (`d_mm.x|y|z`, `result_mm`, `f_end_norm`, `result`).
+- **Validation rule:** an entry becomes `validated` only via
+  `python -m porttest.skilllib validate <id> <run>` with a run that ended in success, ideally
+  on a different port than the one it was learned on (refused otherwise). One data point is
+  not a rule (the 0.3 mm / 4 N wiggle threshold was adopted after one port and failed on the
+  next three). Never delete entries: mark them `superseded`.
+- Write entries in general terms where they transfer (`applies_to: peg-into-face`, `any
+  URScript`): the LED jumper repair will reuse them.
+
 ## Fast path: Option B (use this for routine ports)
 
 Every program edit through the bridge costs ~9 s (`program_update_node`, measured 2026-10-26)
