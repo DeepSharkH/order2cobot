@@ -59,13 +59,22 @@ class Board:
         use the slow, accurate path.
         """
         if not fast:
-            # small or steep boards (640x480 D435 across the table) need upsampling
-            for s in (1, 2, 3):
-                g = cv2.resize(gray, None, fx=s, fy=s, interpolation=cv2.INTER_CUBIC) if s > 1 else gray
-                ok, corners = cv2.findChessboardCornersSB(g, (self.cols, self.rows), DET_FLAGS)
-                if ok:
-                    return corners.reshape(-1, 2).astype(np.float64) / s
-            return None
+            corners = self._detect_sb(gray)
+            if corners is not None:
+                return corners
+            # SB can miss a small, steep board in a busy frame (the D435 across the table)
+            # that it finds on a crop around it: find the board with the classic detector,
+            # then SB on the crop, so the corner order stays SB's
+            ok, rough = cv2.findChessboardCorners(gray, (self.cols, self.rows),
+                                                  cv2.CALIB_CB_ADAPTIVE_THRESH | cv2.CALIB_CB_NORMALIZE_IMAGE)
+            if not ok:
+                return None
+            rough = rough.reshape(-1, 2)
+            pad = 3 * np.ptp(rough, axis=0).max() / (max(self.cols, self.rows) - 1)
+            x0, y0 = np.maximum(rough.min(0) - pad, 0).astype(int)
+            x1, y1 = (rough.max(0) + pad).astype(int)
+            corners = self._detect_sb(gray[y0:y1, x0:x1])
+            return None if corners is None else corners + [x0, y0]
         scale = min(1.0, max_width / gray.shape[1])
         small = cv2.resize(gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA) if scale < 1 else gray
         ok, corners = cv2.findChessboardCornersSB(small, (self.cols, self.rows), 0)
@@ -75,6 +84,15 @@ class Board:
         cv2.cornerSubPix(gray, corners, (5, 5), (-1, -1),
                          (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 20, 0.01))
         return corners.reshape(-1, 2).astype(np.float64)
+
+    def _detect_sb(self, gray):
+        # small or steep boards (640x480 D435 across the table) need upsampling
+        for s in (1, 2, 3):
+            g = cv2.resize(gray, None, fx=s, fy=s, interpolation=cv2.INTER_CUBIC) if s > 1 else gray
+            ok, corners = cv2.findChessboardCornersSB(g, (self.cols, self.rows), DET_FLAGS)
+            if ok:
+                return corners.reshape(-1, 2).astype(np.float64) / s
+        return None
 
     def detect_partial(self, gray, max_width=640):
         """Grid size of a partly visible board, for the UI hint; or None."""

@@ -538,7 +538,7 @@ class App:
 
     def locate_fixed(self):
         """Fixed cam pose from its view of the board, averaged over several frames."""
-        return self._locate(0, 'fcam', 'fixed cam')
+        return self._locate(0, 'fcam', 'fixed cam', timeout=20)     # SB misses + crop retry: ~2 s a frame
 
     def locate_tof(self):
         """SICK T Mini pose (Nova's grid frame) from its heightmap view of the board."""
