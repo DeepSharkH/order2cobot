@@ -97,18 +97,30 @@ under ~185 N before; reach x > −0.46 m; wrist 3 within ±0.8 rad.
 
 ```
 python -m breadboard.rack_pick locate [--run]                   # S1, once: writes the rack.yaml pose
-python -m breadboard.rack_pick find                             # which slots hold a casing (fixed cam)
-python -m breadboard.rack_pick pick R7 --part led_s2 [--run]    # S2-S3: holds at the grasp, fingers open
-python -m breadboard.rack_pick pick R7 --part led_s2 --close --run     # S3 close + S4 + S5
+python -m breadboard.rack_pick find --run                       # parks the arm, which slots hold a casing (fixed cam)
+python -m breadboard.rack_pick pick R7 --part led_s2 [--run]    # S2-S5 in ONE command, straight through
 python -m breadboard.rack_pick --confirm R7 "<what the operator / a check saw>"
 ```
-`--close --closed` pulls only (fingers already closed, e.g. after a stopped pull); `--pull-stop N`
-changes the 8 N stop.
+Recovery only: `pick ... --close --run` resumes at the close from the pending grasp; `--closed`
+pulls only (fingers already closed, e.g. after a stopped pull); `--pull-stop N` changes the 8 N stop.
+
+**Speed (10-27):** each URScript step costs ~10-20 s before anything moves (`program_update_node`
+~9 s, load, play, log polling; `data/bridge_timing.jsonl`). So a pick is 3 steps, no more:
+- **A** = the joint move to the start (checked like `move_checked`, played as `movej` inside the
+  program) + the surface and casing-top touches;
+- **G** = the grasp descent; **B** = pull and lift. Between them only MCP gripper calls.
+- The gripper skills run with **our app loaded**: no app switching. The empty close before the
+  touches is skipped when `rack_state.json` says the fingers are closed (`fingers` is written
+  after every gripper call).
+- Free moves fast (transit 0.15 m/s, approach 0.05 m/s to 6 mm above a contact); only contacts are
+  guarded and slow; the grasp descent is fast to 5 mm above the casing top, guarded below; the pull
+  is slow (2 mm/s, force stop) for the first 10 mm only, then lifts at 30 mm/s.
+- Every check still stops the run on its own: height, gripper warning, finger contact, pull limit.
 
 ## Typical use
 
 The rack is located **once** (S1, `rack.yaml` pose by touch; again only if the rack moved).
-A pick is then: S0 → `find` (the slot) → `pick R<k> --run` → `pick R<k> --close --run` → S5.
+A pick is then: S0 → `find --run` (the slot) → `pick R<k> --part <casing> --run` (straight through) → S5.
 Only the slot changes between picks; the agent finds it, the operator does not tell it.
 
 ## Steps
@@ -164,13 +176,13 @@ Only the slot changes between picks; the agent finds it, the operator does not t
   two rows away: 2.3 mm. That only holds with the touched rack pose, a yaw error < 1°, and no
   leaning casing (camera check).
 - **Moves:** open the gripper (MCP Gripper Open) → transit 2 cm above the highest casing top →
-  down over the slot, guarded at 2 N, 5 mm/s, to the grasp height (a stop before it = a finger
-  hit something: abort, do not close) → close (MCP Gripper Close) → read `psx_logs` (any
-  WARNING = the fingers did not move: stop).
+  fast to 5 mm above the casing top, then guarded at 2 N, 5 mm/s, to the grasp height (a stop
+  before it = a finger hit something: abort, do not close) → close (MCP Gripper Close) → read
+  `psx_logs` (any WARNING = the fingers did not move: stop).
 
 ### S4 Pull out
-- `pull_out([0, 0, -1], 20 N cap, 30 mm, 2 mm/s)`: straight up only, the legs leave the paper
-  and the slit. The post-it holds the legs: peak **4.06 N** at R4 (10-27); stop at **8 N**
+- `pull_out([0, 0, -1], stop, 10 mm, 2 mm/s)`: straight up only, the legs (~6.5 mm) leave the
+  paper and the slit; then `movel` straight up at 30 mm/s. The post-it holds the legs: peak **4.06 N** at R4 (10-27); stop at **8 N**
   (lesson `post-it-holds-legs`; 3 N stopped a clean pick) = a leg is caught: hold, image.
 - Then up to 2 cm above the highest casing top. Never `halt`: abort through if/else.
 

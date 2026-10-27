@@ -50,6 +50,8 @@ YAW = -np.pi / 2
 F_TOP, F_CASE, F_SIDE, F_HIT = 2.0, 1.0, 1.5, 2.0
 F_CAUGHT = 8.0       # pull stop: the post-it holds the legs with ~4 N (lesson post-it-holds-legs; 3 N stopped a clean pick)
 V_TOUCH, V_SLOW = 0.005, 0.002
+V_TRANSIT, V_APPROACH, V_LIFT = 0.15, 0.05, 0.03   # free moves; only contacts are guarded and slow
+PULL_SLOW = 0.010     # the legs (~6.5 mm) leave paper and slit within this, pulled at V_SLOW; the rest at V_LIFT
 SAFE = 0.045          # transit: tips this far above the rack top (25 mm over a 20 mm casing)
 OUT = 0.015           # side touches start this far outside the rough face
 REACH = 0.015         # ... and push this far past it (the camera box was 13+ mm off in y, 10-27)
@@ -116,27 +118,23 @@ def open_ex(grip, run):
     return ex
 
 
-def gripper(ex, which):
-    """Hand-E through the bridge smart skill Gripper Open / Close (the bridge cannot set its parameters;
-    the operator does it on the pendant). The skills run in the operator's close_gripper app: our own
-    apps have no Hand-E ("Gripper with ID 9 not found"), and the URCap node of an app cannot be edited
-    after creation. Returns the controller log's warnings (no position / force readout exists); the
-    next ex.run() loads our app again."""
-    app = next(a for a in call(ex.b, 'program_list')['data']['programs'] if a['name'] == 'close_gripper')
-    call(ex.b, 'program_load', appId=app['id'], confirm=True)
-    time.sleep(2)
-    sk = next(s for s in call(ex.b, 'smartskill_list')['data'] if s.get('type') == f'robotiq-gripper-{which}-smart-skill')
+def gripper(ex, which, st=None):
+    """Hand-E through the MCP smart skill Gripper Open / Close (no parameters; never changed). It runs with our
+    app loaded (10-27), so no app switching. No position / force readout: the controller log's warnings are the
+    only check (xmlrpc "Invalid request" code 3 = the Hand-E is not activated). Records the finger state in st."""
     base = max(int(l['ts']) for l in call(ex.b, 'psx_logs')['data']['lines'])
-    call(ex.b, 'smartskill_run', type=sk['type'], confirm=True)
     t0 = time.time()
+    call(ex.b, 'smartskill_run', type=f'robotiq-gripper-{which}-smart-skill', confirm=True)
     while time.time() - t0 < 20:
-        time.sleep(1)
+        time.sleep(0.3)
         if call(ex.b, 'smartskill_status')['data'].get('active') is None:
             break
     warn = [l['message'] for l in call(ex.b, 'psx_logs')['data']['lines']
             if int(l['ts']) > base and l['level'] in ('WARNING', 'ERROR', 'FAULT')]
-    return {'skill': which, 'settings': {k: sk['parameters']['dao'].get(k) for k in ('force', 'speed', 'targetPosition')},
-            'secs': round(time.time() - t0, 1), 'warnings': warn}
+    if st is not None:
+        st['fingers'] = 'unknown' if warn else ('open' if which == 'open' else 'closed')
+        save_state(st)
+    return {'skill': which, 'secs': round(time.time() - t0, 1), 'warnings': warn}
 
 
 def P(rv):
@@ -157,10 +155,10 @@ def side_touch(p, o, name, xy, d, z_tr, z_side):
 
 
 def down_touch(p, o, name, xy, z_from, maxd, f, v, z_tr):
-    return [f'movel({p(*xy, z_tr)}, a=0.3, v=0.05)', f'movel({p(*xy, z_from)}, a=0.3, v=0.02)',
+    return [f'movel({p(*xy, z_tr)}, a=0.5, v={V_TRANSIT})', f'movel({p(*xy, z_from)}, a=0.3, v={V_APPROACH})',
             f'h = guarded_axial([0, 0, -1], {maxd:.4f}, {f}, {v})',
             'if h:', f'  textmsg("C {name} ", get_actual_tcp_pose())', 'else:', f'  textmsg("MISS {name}")', 'end',
-            'back_off([0, 0, -1], 0.003)', f'movel({p(*xy, z_tr)}, a=0.3, v=0.02)']
+            'back_off([0, 0, -1], 0.003)', f'movel({p(*xy, z_tr)}, a=0.5, v={V_APPROACH})']
 
 
 def locate_p1(cfg, rv):
@@ -216,6 +214,20 @@ def check_ik(ex, grip, rv, pts):
 def start_move(ex, rv, grip, xy, z, floor):
     fl = R.from_rotvec(rv).as_matrix() @ -np.array(grip['tcp_tip'][:3]) + [xy[0], xy[1], z]
     ex.move_checked(list(fl) + rv, w3_ref=W3_REF, v=0.2, floor=floor, min_clear=0.03)
+
+
+def start_q(ex, rv, grip, xy, z, floor):
+    """Joints for a tip pose, with move_checked's checks (bent elbow, wrist 3 vs the cable, clearance), so the
+    joint move can open the next program instead of costing a step of its own."""
+    fl = R.from_rotvec(rv).as_matrix() @ -np.array(grip['tcp_tip'][:3]) + [xy[0], xy[1], z]
+    q0 = [call(ex.b, 'robot_get_joint_positions')['data'][k] for k in J]
+    ik = ex._in_active_tcp(list(fl) + rv, q0)
+    r = call(ex.b, 'robot_inverse_kinematics', pose={'position': list(ik[:3]), 'orientation': list(ik[3:])}, qNear=q0)['data']
+    q = [float(r[k]) for k in J]
+    low = min((fl + R.from_rotvec(rv).as_matrix() @ np.array(c))[2] for c in grip['collision_points'].values()) - 0.005 - floor
+    if abs(q[2]) < 0.5 or abs(q[5] - W3_REF) > 0.8 or low < 0.03:
+        raise SystemExit(f'start pose rejected: elbow {q[2]:.2f}, wrist3 {q[5]:.2f} (ref {W3_REF}), clearance {low * 1000:.0f} mm')
+    return q
 
 
 def run_dir(kind):
@@ -291,29 +303,84 @@ def pick_points(cfg, k):
     return pose, top, at(pose, xs, ys), at(pose, xn, ys)
 
 
+def prog_grasp(p, sxy, z_tr, z_top, z_grasp):
+    """Open fingers: fast to 5 mm above the casing top (the neighbours' tops are as high), guarded below."""
+    return '\n'.join(['textmsg("rack pick grasp start")', f'movel({p(*sxy, z_tr)}, a=0.5, v={V_APPROACH})',
+                      f'movel({p(*sxy, z_top + 0.005)}, a=0.5, v={V_APPROACH})',
+                      f'h = guarded_axial([0, 0, -1], {z_top + 0.005 - z_grasp:.4f}, {F_HIT}, {V_TOUCH})',
+                      'if h:', '  textmsg("ABORT finger hit something above the grasp height")',
+                      f'  movel({p(*sxy, z_tr)}, a=0.3, v={V_APPROACH})',
+                      'else:', '  textmsg("grasp ", get_actual_tcp_pose())', 'end'])
+
+
+def prog_pull(o, stop, z_lift):
+    """Straight up: the first PULL_SLOW slow with the force stop (legs in paper / slit), then lift fast."""
+    return '\n'.join(['textmsg("rack pick B start")', f'ok = pull_out([0, 0, -1], {stop}, {PULL_SLOW:.4f}, {V_SLOW})',
+                      'if ok:', '  q = get_actual_tcp_pose()', f'  movel(p[q[0], q[1], {z_lift:.5f}, {o}], a=0.5, v={V_LIFT})',
+                      '  textmsg("lifted ", get_actual_tcp_pose())', 'else:', '  textmsg("CAUGHT: holding")', 'end',
+                      'textmsg("rack pick B done")'])
+
+
 def pick(a, grip, rv):
+    """One command: [close] -> A (joint move + surface / casing-top touches) -> height check -> open -> G (grasp
+    descent) -> close -> B (pull, lift). Every check stops the run (height, gripper warning, finger contact,
+    pull limit). --close resumes at the close from the pending grasp (--closed: pull only)."""
     cfg, st = load_rack(), load_state()
     if not cfg.get('pose'):
         raise SystemExit('no touched rack pose: run locate first')
     k = int(a.slot.upper().lstrip('R'))
     spec = casing(a.part)
+    H = spec['height'] / 1000
     pose, top, sxy, nxy = pick_points(cfg, k)
     z_tr = top + SAFE
     o, p = P(rv)
     ex = open_ex(grip, a.run)
-    if a.close:
+    tm, t0 = {}, time.time()
+    mark = lambda name: tm.__setitem__(name, round(time.time() - t0, 1))  # noqa: E731
+
+    def finish(d, res, msgs):
+        """After B: snapshot, state, result."""
+        res['msgs_b'] = msgs
+        pk = next((m for m in msgs if m.startswith('pulled ')), None)
+        res['pull_peak_n'] = float(pk.split('peak ')[1]) if pk else None
+        res['caught'] = any(m.startswith(('CAUGHT', 'pull limit')) for m in msgs)
+        for name, img in snapshot(ex).items():
+            (d / name.replace('grasp_', 'picked_')).write_bytes(img)
+        res['result'] = 'caught' if res['caught'] else 'in the fingers (check the image, then --confirm)'
+        if res['caught']:
+            res['miss_reason'] = f'pull > {a.pull_stop} N: the paper / slit holds a leg; holding, image saved'
+        else:
+            st['slots'].setdefault(f'R{k}', {})['part'] = None
+            st['in_gripper'] = {'part': a.part, 'from': f'R{k}', 'pin1': st['pending'].get('pin1'), 'run': d.name}
+            st['pending'] = None
+        st['history'].append({'stamp': time.strftime('%Y-%m-%dT%H:%M:%S'), 'slot': f'R{k}', 'part': a.part, 'run': d.name,
+                              'result': res['result'], 'pull_peak_n': res['pull_peak_n'],
+                              **({'miss_reason': res['miss_reason']} if 'miss_reason' in res else {})})
+        mark('done')
+        res['timing_s'] = tm
+        save_state(st)
+        (d / 'result.json').write_text(json.dumps(res, indent=1))
+        print(json.dumps({k_: v for k_, v in res.items() if not k_.startswith('msgs')}, indent=1), '\nsaved', d)
+
+    def close_and_pull(d, res, zs):
+        if a.closed:    # already closed on the casing (an earlier close whose pull stopped)
+            res['close'] = {'skill': 'close', 'by': 'already closed', 'warnings': []}
+        else:
+            res['close'] = gripper(ex, 'close', st) | {'grip': grip_record(ex, 'robot grasp in the rack, Gripper Close smart skill')}
+            mark('closed')
+        if res['close']['warnings']:
+            res['miss_reason'] = f'Gripper Close failed ({res["close"]["warnings"][0][:90]}): not pulled; fingers open around the casing'
+            (d / 'result.json').write_text(json.dumps(res, indent=1))
+            raise SystemExit(res['miss_reason'])
+        msgs, _ = ex.run(prog_pull(o, a.pull_stop, zs + H + 0.030), timeout=120)
+        mark('B pulled')
+        finish(d, res, msgs)
+
+    if a.close:     # resume at the close: the fingers must still be where the grasp descent left them
         pend = st.get('pending')
         if not pend or pend['slot'] != f'R{k}':
-            raise SystemExit(f'no grasp pending at R{k}: run the pick without --close first')
-        z_lift = pend['z_surface'] + spec['height'] / 1000 + 0.030      # legs (~7 mm) clear the casing tops
-        prog = '\n'.join(['textmsg("rack pick B start")',
-                          f'ok = pull_out([0, 0, -1], {a.pull_stop}, 0.030, {V_SLOW})',
-                          'if ok:', '  q = get_actual_tcp_pose()', f'  movel(p[q[0], q[1], {z_lift:.5f}, {o}], a=0.3, v=0.02)',
-                          '  textmsg("lifted ", get_actual_tcp_pose())', 'else:', '  textmsg("CAUGHT: holding")', 'end',
-                          'textmsg("rack pick B done")'])
-        print(prog, '\n---\nlint:', lint(LIB + prog) or 'ok')
-        # the fingers must still be where (A) left them, open around the casing
-        q0, bad = check_ik(ex, grip, rv, [(*sxy, z_lift)])
+            raise SystemExit(f'no grasp pending at R{k}: run the pick first')
+        q0, bad = check_ik(ex, grip, rv, [(*sxy, pend['z_surface'] + H + 0.030)])
         here = np.array(call(ex.b, 'robot_get_pose')['data']['pose']['position'])
         want = np.array(pend['grasp_mm']) / 1000 + R.from_rotvec(rv).as_matrix() @ -np.array(grip['tcp_tip'][:3])
         off = float(np.linalg.norm(here - want))
@@ -324,103 +391,71 @@ def pick(a, grip, rv):
             return
         d = ROOT / 'data' / 'runs' / pend['run']
         res = json.loads((d / 'result.json').read_text())
-        if a.closed:    # already closed on the casing (an earlier --close whose pull stopped, or the pendant)
-            res.setdefault('close_runs', []).append(res.get('close'))
-            res['close'] = {'skill': 'close', 'by': 'already closed', 'warnings': [],
-                            'grip': grip_record(ex, 'robot grasp in the rack, already closed')}
-        else:
-            res['close'] = gripper(ex, 'close') | {'grip': grip_record(ex, 'robot grasp in the rack, Gripper Close smart skill')}
-        if res['close']['warnings']:
-            res['miss_reason'] = f'Gripper Close failed ({res["close"]["warnings"][0][:90]}): not pulled; fingers open around the casing'
-            (d / 'result.json').write_text(json.dumps(res, indent=1))
-            raise SystemExit(res['miss_reason'])
-        msgs, _ = ex.run(prog, timeout=120)
-        res['msgs_b'] = msgs
-        pk = next((m for m in msgs if m.startswith('pulled ')), None)
-        res['pull_peak_n'] = float(pk.split('peak ')[1]) if pk else None
-        res['caught'] = any(m.startswith(('CAUGHT', 'pull limit')) for m in msgs)
-        shots = snapshot(ex)
-        for name, img in shots.items():
-            (d / name.replace('grasp_', 'picked_')).write_bytes(img)
-        res['result'] = 'caught' if res['caught'] else 'in the fingers (check the image, then --confirm)'
-        if res['caught']:
-            res['miss_reason'] = f'pull > {a.pull_stop} N: the paper / slit holds a leg; holding, image saved'
-        else:
-            st['slots'].setdefault(f'R{k}', {})['part'] = None
-            st['in_gripper'] = {'part': a.part, 'from': f'R{k}', 'pin1': pend.get('pin1'), 'run': pend['run']}
-        st['pending'] = None
-        st['history'].append({'stamp': time.strftime('%Y-%m-%dT%H:%M:%S'), 'slot': f'R{k}', 'part': a.part,
-                              'run': pend['run'], 'result': res['result'], 'pull_peak_n': res['pull_peak_n'],
-                              **({'miss_reason': res['miss_reason']} if 'miss_reason' in res else {})})
-        save_state(st)
-        (d / 'result.json').write_text(json.dumps(res, indent=1))
-        print(json.dumps({k_: v for k_, v in res.items() if not k_.startswith('msgs')}, indent=1), '\nsaved', d)
-        return
-    # (A) height calibration, then (after Gripper Open) the guarded descent to the grasp height
-    prog_a = '\n'.join(['textmsg("rack pick A start")']
-                       + down_touch(p, o, 'surf', nxy, top + 0.006, 0.012, F_TOP, V_SLOW, z_tr)
-                       + down_touch(p, o, 'ctop', sxy, top + spec['height'] / 1000 + 0.006, 0.012, F_CASE, V_SLOW, z_tr)
-                       + ['textmsg("rack pick A done")'])
-    print(prog_a, '\n---\nlint:', lint(LIB + prog_a) or 'ok')
-    pts = [(*nxy, z_tr), (*nxy, top), (*sxy, z_tr), (*sxy, top + spec['height'] / 1000), (*sxy, top + 0.001)]
+        res.pop('miss_reason', None)
+        return close_and_pull(d, res, pend['z_surface'])
+
+    # plan: every program (grasp / pull with the nominal surface) linted, every point through IK
+    progs = {'A': '\n'.join(['textmsg("rack pick A start")', 'movej(q_start, a=0.8, v=0.5)']
+                            + down_touch(p, o, 'surf', nxy, top + 0.006, 0.012, F_TOP, V_SLOW, z_tr)
+                            + down_touch(p, o, 'ctop', sxy, top + H + 0.006, 0.012, F_CASE, V_SLOW, z_tr)
+                            + ['textmsg("rack pick A done")']),
+             'G': prog_grasp(p, sxy, z_tr, top + H, top + 0.001), 'B': prog_pull(o, a.pull_stop, top + H + 0.030)}
+    problems = {n: lint(LIB + ('q_start = [0, 0, 0, 0, 0, 0]\n' if n == 'A' else '') + s) for n, s in progs.items()}
+    pts = [(*nxy, z_tr), (*nxy, top), (*sxy, z_tr), (*sxy, top + H), (*sxy, top + 0.001), (*sxy, top + H + 0.030)]
     q0, bad = check_ik(ex, grip, rv, pts)
+    print(progs['A'], '\n---\nlint:', {n: v or 'ok' for n, v in problems.items()})
     print(f'R{k} {a.part}: slot (base mm)', np.round(sxy * 1000, 1).tolist(), '| surface touch', np.round(nxy * 1000, 1).tolist(),
-          '| rack top', round(top * 1000, 2), '\nIK:', bad or 'all reachable', '| wrist3 now', round(q0[5], 2))
-    if not a.run or bad or lint(LIB + prog_a):
+          '| rack top', round(top * 1000, 2), '| fingers', st.get('fingers', 'unknown'),
+          '\nIK:', bad or 'all reachable', '| wrist3 now', round(q0[5], 2))
+    if not a.run or bad or any(problems.values()):
         return
+    if st.get('in_gripper'):
+        raise SystemExit(f'the gripper holds {st["in_gripper"]}: place or release it first')
     d = run_dir('rack_pick')
     res = {'stamp': time.strftime('%Y-%m-%dT%H:%M:%S'), 'slot': f'R{k}', 'part': a.part,
            'rack_pose': pose.get('source'), 'slot_mm': np.round(sxy * 1000, 2).tolist()}
-    res['close_empty'] = gripper(ex, 'close')       # the touches need closed tips; the fingers may be open
-    if res['close_empty']['warnings']:
-        res['miss_reason'] = f'Gripper Close failed ({res["close_empty"]["warnings"][0][:90]}): activate the Hand-E'
-        (d / 'result.json').write_text(json.dumps(res, indent=1))
-        raise SystemExit(res['miss_reason'])
-    start_move(ex, rv, grip, nxy, top + 0.06, top)
-    msgs, _ = ex.run(prog_a, timeout=180)
-    res['msgs_a'] = msgs
-    C = parse(msgs)
 
     def stop(reason):
         res['miss_reason'] = reason
+        res['timing_s'] = tm
         st['history'].append({'stamp': res['stamp'], 'slot': f'R{k}', 'part': a.part, 'run': d.name, 'miss_reason': reason})
         save_state(st)
         (d / 'result.json').write_text(json.dumps(res, indent=1))
         print(json.dumps({k_: v for k_, v in res.items() if not k_.startswith('msgs')}, indent=1), '\nMISS:', reason, '\nsaved', d)
 
+    if st.get('fingers') != 'closed':       # the touches need closed tips
+        res['close_empty'] = gripper(ex, 'close', st)
+        mark('closed empty')
+        if res['close_empty']['warnings']:
+            return stop(f'Gripper Close failed ({res["close_empty"]["warnings"][0][:90]}): activate the Hand-E')
+    q = start_q(ex, rv, grip, nxy, top + 0.06, top)
+    msgs, _ = ex.run(f'q_start = {[round(v, 5) for v in q]}\n' + progs['A'], timeout=180)
+    mark('A touched')
+    res['msgs_a'] = msgs
+    C = parse(msgs)
     if 'surf' not in C or 'ctop' not in C:
         return stop('no surface / casing-top contact: ' + '; '.join(m for m in msgs if m.startswith('MISS')))
     zs, zt = C['surf'][2], C['ctop'][2]
     res |= {'z_surface_mm': round(zs * 1000, 2), 'z_top_mm': round(zt * 1000, 2),
             'height_mm': round((zt - zs) * 1000, 2), 'cad_height_mm': spec['height']}
-    if abs(zt - zs - spec['height'] / 1000) > CASE_TOL:
+    if abs(zt - zs - H) > CASE_TOL:
         return stop(f'casing top - surface {res["height_mm"]} mm vs CAD {spec["height"]} +- {CASE_TOL * 1000:.0f}: '
-                    'wrong casing, sunk into the pocket or tilted; not grasped')
-    res['open'] = gripper(ex, 'open')
+                    'wrong casing, sunk into the pocket, standing proud or tilted; not grasped')
+    res['open'] = gripper(ex, 'open', st)
+    mark('opened')
     if res['open']['warnings']:     # xmlrpc "Invalid request" (code 3) = the Hand-E is not activated (10-27)
         return stop(f'Gripper Open failed ({res["open"]["warnings"][0][:90]}): activate the Hand-E; no descent')
-    z_grasp = zs + 0.001
-    prog_g = '\n'.join(['textmsg("rack pick grasp start")', f'movel({p(*sxy, z_tr)}, a=0.3, v=0.02)',
-                        f'h = guarded_axial([0, 0, -1], {z_tr - z_grasp:.4f}, {F_HIT}, {V_TOUCH})',
-                        'if h:', '  textmsg("ABORT finger hit something above the grasp height")',
-                        f'  movel({p(*sxy, z_tr)}, a=0.3, v=0.02)',
-                        'else:', '  textmsg("grasp ", get_actual_tcp_pose())', 'end'])
-    msgs, _ = ex.run(prog_g, timeout=120)
+    msgs, _ = ex.run(prog_grasp(p, sxy, z_tr, zt, zs + 0.001), timeout=120)
+    mark('G at grasp')
     res['msgs_grasp'] = msgs
-    if not any(m.startswith('grasp ') for m in msgs):
+    gp = next((m for m in msgs if m.startswith('grasp ')), None)
+    if gp is None:
         return stop('open fingers stopped above the grasp height (hit a neighbour, the post-it or the casing); not closed')
-    shots = snapshot(ex)
-    res['shots'] = list(shots)
-    for name, img in shots.items():
-        (d / name).write_bytes(img)
-    gp = next(m for m in msgs if m.startswith('grasp '))
     st['pending'] = {'slot': f'R{k}', 'part': a.part, 'run': d.name, 'z_surface': zs,
                      'grasp_mm': np.round(np.array(ast.literal_eval(gp.split(' p', 1)[1])[:3]) * 1000, 2).tolist(),
                      'pin1': st['slots'].get(f'R{k}', {}).get('pin1')}
     save_state(st)
-    (d / 'result.json').write_text(json.dumps(res, indent=1))
-    print(json.dumps({k_: v for k_, v in res.items() if not k_.startswith('msgs')}, indent=1),
-          f'\nholding at the grasp height, fingers open. Operator go -> pick R{k} --part {a.part} --close --run', '\nsaved', d)
+    close_and_pull(d, res, zs)
 
 
 SCENE = ROOT / 'configs/calibration/scene.yaml'
