@@ -74,12 +74,16 @@ physical verification are still necessary before executing a layout.
    force another layout. Return only after independently checking the final
    assembly order and electrical connectivity.
 
-Jumpers come in stages (`JUMPER_STAGES` in `mapper.py`): first a model with no
-wire variables at all, then at most 1, 2, 3 and 4 jumpers, then any number.
-Each stage gets an equal share of the time left, so a stage that finishes early
-leaves more to the later ones. A stage that is proven infeasible or runs out of
-its share hands over to the next, and every collision constraint found so far
-carries over. An installed jumper must carry
+The search runs in stages (`STAGES` in `mapper.py`), each a row window and a
+jumper budget: in the first window no jumpers (a model with no wire variables
+at all), then at most 1, 2 and 4; then at most 4 in a window twice as tall;
+then any number on the whole board. The first window spans 1.5 times the robot
+parts' casing length per board half (12 to 24 rows). Windows are centred on the
+board, so layouts stay compact and off the board ends; candidates outside the
+window are never built. Each stage gets an equal share of the time left, so a
+stage that finishes early leaves more to the later ones. A stage that is proven
+infeasible or runs out of its share hands over to the next, and every collision
+constraint found so far carries over. An installed jumper must carry
 flow of its strip's net, so none dangles. A loop takes three jumpers; from that
 budget on, flow also runs only to a higher strip potential, so it cannot
 circulate around one. Jumpers that no net needs (two parallel paths) are
@@ -88,9 +92,10 @@ dropped before the layout is checked.
 Pair constraints are added as needed instead of constructing millions of
 unused combinations. Each solve is a pure feasibility problem and stops at its
 first candidate to leave time for collision checking. `OPTIMAL` means every
-smaller jumper count was proven infeasible (the collision constraints are
-necessary conditions, so the proof holds for the physical problem);
-`FEASIBLE` means a smaller count was not ruled out in its time slice.
+smaller jumper count was proven infeasible on the whole board (the collision
+constraints are necessary conditions, so the proof holds for the physical
+problem; a window proves nothing about the rows outside it);
+`FEASIBLE` means a smaller count was not ruled out on the whole board.
 `UNKNOWN` means no verified assembly was found before the search ended, not
 infeasibility. `INFEASIBLE` means the accumulated necessary constraints admit
 no layout with any number of jumpers.

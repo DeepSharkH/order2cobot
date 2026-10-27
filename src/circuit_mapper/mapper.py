@@ -3,6 +3,7 @@
 import argparse
 import json
 from collections import defaultdict
+from math import ceil
 from pathlib import Path
 from time import monotonic
 
@@ -15,9 +16,13 @@ else:
 
 HERE = Path(__file__).parent
 DEFAULT_CASINGS = HERE.parents[1] / "assets/models/component_casings/casings.json"
-# Jumper budget per stage; None allows any number. Each stage gets an equal share of the
-# time left, so one that cannot finish never starves the larger budgets after it.
-JUMPER_STAGES = (0, 1, 2, 3, 4, None)
+# (row window, jumper budget) per stage. The window is a multiple of the first window's
+# rows, centred on the board (None: every row); a None budget allows any number of jumpers.
+# Each stage's layouts include the previous stage's. Each stage gets an equal share of the
+# time left, so one that cannot finish never starves the later ones.
+STAGES = ((1, 0), (1, 1), (1, 2), (1, 4), (2, 4), (None, None))
+# Rows of the first window: 1.5x the robot parts' casing length per board half, clamped.
+FIRST_WINDOW_ROWS = (12, 24)
 
 
 def read_json(path):
@@ -130,8 +135,9 @@ def map_circuit(circuit, inventory, board, time_limit=30, casings=None, gripper=
             )
         return shape_cache[key]
 
-    def build(budget):
-        """One stage's model: at most budget jumpers (None: any number, 0: no wire variables)."""
+    def build(budget, inside):
+        """One stage's model: at most budget jumpers (None: any number, 0: no wire variables),
+        with every part, wire and manual pin in the holes of inside."""
         model = cp_model.CpModel()
         # Each conductive strip can belong to only one net (-1 means unused).
         labels = [model.new_int_var(-1, len(nets) - 1, f"net_{g}") for g in range(group_count)]
@@ -141,7 +147,7 @@ def map_circuit(circuit, inventory, board, time_limit=30, casings=None, gripper=
         choices = {}
         for owner, (cid, part) in enumerate(physical.items()):
             options = []
-            for holes in placements(part, positions):
+            for holes in placements(part, inside):
                 assignments = [
                     (pin_net[f"{cid}.{pin}"], groups[hole])
                     for pin, hole in zip(part["pins"], holes, strict=True)
@@ -167,8 +173,9 @@ def map_circuit(circuit, inventory, board, time_limit=30, casings=None, gripper=
                     terminals[n, g].append(chosen)
                     if f"{cid}.{pin}" == nets[n]["pins"][0]:
                         roots[n, g].append(chosen)
-            if not options:
+            if not options and len(inside) == len(positions):
                 raise ValueError(f"No legal placements for {cid}")
+            # In a window, no options only makes this stage infeasible.
             model.add_exactly_one(chosen for chosen, _ in options)
             choices[cid] = options
 
@@ -177,7 +184,8 @@ def map_circuit(circuit, inventory, board, time_limit=30, casings=None, gripper=
         for pin in sorted(manual_pins):
             n = pin_net[pin]
             options = []
-            for hole, g in groups.items():
+            for hole in inside:
+                g = groups[hole]
                 chosen = model.new_bool_var(f"manual_{pin}_{hole}")
                 options.append((chosen, hole))
                 occupancy[hole].append(chosen)
@@ -191,7 +199,7 @@ def map_circuit(circuit, inventory, board, time_limit=30, casings=None, gripper=
         wires, edges = [], defaultdict(list)
         seen_pairs = set()
         for part in jumper_parts if budget != 0 else ():
-            for holes in placements(part, positions):
+            for holes in placements(part, inside):
                 pair = tuple(sorted(holes))
                 if pair in seen_pairs or groups[holes[0]] == groups[holes[1]]:
                     continue
@@ -254,11 +262,25 @@ def map_circuit(circuit, inventory, board, time_limit=30, casings=None, gripper=
                 balance[n, b].append(-flow)
             model.add(sum(actives) == linked)
         for n, net in enumerate(nets):
-            for g in range(group_count):
+            for g in {groups[hole] for hole in inside}:
                 model.add(
                     sum(balance[n, g]) == len(net["pins"]) * sum(roots[n, g]) - sum(terminals[n, g])
                 )
         return model, labels, candidates, choices, manual_choices, wires, orders
+
+    rows = sorted({y for _, y in positions.values()})
+    length = sum(shapes[part["part_id"]]["width_x"] for part in physical.values()) / 2
+    first = min(max(ceil(1.5 * length / pitch), FIRST_WINDOW_ROWS[0]), FIRST_WINDOW_ROWS[1])
+
+    def window(width):
+        """The holes in width times the first window's rows around the board middle.
+
+        Centring keeps layouts off the board ends, so no shift is needed afterwards.
+        """
+        size = len(rows) if width is None else min(width * first, len(rows))
+        start = (len(rows) - size) // 2
+        kept = set(rows[start : start + size])
+        return {hole: xy for hole, xy in positions.items() if xy[1] in kept}
 
     solver = cp_model.CpSolver()
     # Keep at least 4 workers: 1 has no feasibility-jump and never found a layout.
@@ -270,14 +292,15 @@ def map_circuit(circuit, inventory, board, time_limit=30, casings=None, gripper=
     solver.parameters.stop_after_first_solution = True
     deadline = monotonic() + time_limit
     checked = []  # Every checked layout; its cuts are valid in every later stage.
-    lower = 0  # Fewer jumpers than this were proven INFEASIBLE.
-    for stage, budget in enumerate(JUMPER_STAGES):
+    lower = 0  # Fewer jumpers than this were proven INFEASIBLE on the whole board.
+    for stage, (width, budget) in enumerate(STAGES):
         now = monotonic()
         if now >= deadline:
             status = cp_model.UNKNOWN
             continue
-        stage_end = now + (deadline - now) / (len(JUMPER_STAGES) - stage)
-        model, labels, candidates, choices, manual_choices, wires, orders = build(budget)
+        stage_end = now + (deadline - now) / (len(STAGES) - stage)
+        inside = window(width)
+        model, labels, candidates, choices, manual_choices, wires, orders = build(budget, inside)
         by_key = {(c["id"], c["holes"]): c for c in candidates}
         known = set()
         for keys in checked:
@@ -298,8 +321,9 @@ def map_circuit(circuit, inventory, board, time_limit=30, casings=None, gripper=
                 break
         if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
             break
-        if status == cp_model.INFEASIBLE and budget is not None:
-            # Lazy cuts are valid constraints, so this is a proof under the cuts too.
+        if status == cp_model.INFEASIBLE and budget is not None and len(inside) == len(positions):
+            # Lazy cuts are valid constraints, so this is a proof under the cuts too. A
+            # window proves nothing about the rows outside it.
             lower = budget + 1
     else:
         reason = (
