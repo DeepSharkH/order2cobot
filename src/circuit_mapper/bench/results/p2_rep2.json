@@ -1,0 +1,425 @@
+{
+ "meta": {
+  "label": "p2_rep2",
+  "time_limit_s": 120.0,
+  "started": "2026-10-27 03:40:15",
+  "host": "tegra-ubuntu",
+  "cpus": 12,
+  "load_avg_at_start": [
+   16.35,
+   16.92,
+   15.76
+  ],
+  "commit": "873b2cc",
+  "dirty": true,
+  "finished": "2026-10-27 03:40:28",
+  "load_avg_at_end": [
+   15.87,
+   16.78,
+   15.73
+  ]
+ },
+ "instances": [
+  {
+   "file": "bench/circuits/p1_red_led_1k_series.json",
+   "name": "p1_red_led_1k_series",
+   "circuit_id": "red_led_1k_series",
+   "robot_parts": 2,
+   "manual_parts": 1,
+   "nets": 3,
+   "status": "OPTIMAL",
+   "error": null,
+   "solve_wall_s": 2.9,
+   "build_s": 0.286,
+   "solves": 5,
+   "solver_s": 2.582,
+   "wall_s": 4.125,
+   "jumpers": 0,
+   "placements": 2,
+   "row_min": 22,
+   "row_max": 24,
+   "rows_spanned": 3,
+   "geometry_model": "2d_casing_and_opening_fingers",
+   "verified": true,
+   "verify_error": null,
+   "mapping": {
+    "circuit_id": "red_led_1k_series",
+    "board_id": "breadboard_830",
+    "status": "OPTIMAL",
+    "geometry_model": "2d_casing_and_opening_fingers",
+    "gripper": {
+     "finger_thickness_mm": 2.0,
+     "finger_width_mm": 5.0,
+     "opening_per_finger_mm": 1.0,
+     "safety_margin_mm": 0.0,
+     "grip_center_x_mm": 0.0,
+     "assembled_thickness_overrides_mm": {
+      "led_s1": 6.2,
+      "led_s2": 6.2,
+      "led_s4": 6.2,
+      "rgb_led_s1": 6.2,
+      "rgb_led_s2": 6.2
+     }
+    },
+    "placements": [
+     {
+      "id": "R1",
+      "part_id": "resistor_1kohm_gap_0",
+      "orientation_deg": 90,
+      "center_mm": [
+       2.54,
+       54.61000000000001
+      ],
+      "casing_id": "resistor_s1"
+     },
+     {
+      "id": "D1",
+      "part_id": "led_red_gap_0",
+      "orientation_deg": 90,
+      "center_mm": [
+       10.16,
+       57.150000000000006
+      ],
+      "casing_id": "led_s1"
+     }
+    ],
+    "assembly_order": [
+     "R1",
+     "D1"
+    ],
+    "pin_to_hole": {
+     "R1.1": "B22",
+     "R1.2": "B23",
+     "D1.anode": "E23",
+     "D1.cathode": "E24"
+    },
+    "manual_connections": {
+     "J_POWER.negative": "A24",
+     "J_POWER.positive": "A22"
+    },
+    "jumpers": []
+   }
+  },
+  {
+   "file": "bench/circuits/p2_rc_low_pass_filter.json",
+   "name": "p2_rc_low_pass_filter",
+   "circuit_id": "rc_low_pass_filter",
+   "robot_parts": 2,
+   "manual_parts": 2,
+   "nets": 3,
+   "status": "OPTIMAL",
+   "error": null,
+   "solve_wall_s": 1.041,
+   "build_s": 0.322,
+   "solves": 1,
+   "solver_s": 0.698,
+   "wall_s": 2.234,
+   "jumpers": 0,
+   "placements": 2,
+   "row_min": 32,
+   "row_max": 34,
+   "rows_spanned": 3,
+   "geometry_model": "2d_casing_and_opening_fingers",
+   "verified": true,
+   "verify_error": null,
+   "mapping": {
+    "circuit_id": "rc_low_pass_filter",
+    "board_id": "breadboard_830",
+    "status": "OPTIMAL",
+    "geometry_model": "2d_casing_and_opening_fingers",
+    "gripper": {
+     "finger_thickness_mm": 2.0,
+     "finger_width_mm": 5.0,
+     "opening_per_finger_mm": 1.0,
+     "safety_margin_mm": 0.0,
+     "grip_center_x_mm": 0.0,
+     "assembled_thickness_overrides_mm": {
+      "led_s1": 6.2,
+      "led_s2": 6.2,
+      "led_s4": 6.2,
+      "rgb_led_s1": 6.2,
+      "rgb_led_s2": 6.2
+     }
+    },
+    "placements": [
+     {
+      "id": "R1",
+      "part_id": "resistor_1kohm_gap_0",
+      "orientation_deg": 90,
+      "center_mm": [
+       0.0,
+       80.00999999999999
+      ],
+      "casing_id": "resistor_s1"
+     },
+     {
+      "id": "C1",
+      "part_id": "capacitor_ceramic_100nf",
+      "orientation_deg": 90,
+      "center_mm": [
+       10.16,
+       82.55
+      ],
+      "casing_id": "capacitor_ceramic_s1"
+     }
+    ],
+    "assembly_order": [
+     "R1",
+     "C1"
+    ],
+    "pin_to_hole": {
+     "R1.1": "A32",
+     "R1.2": "A33",
+     "C1.1": "E33",
+     "C1.2": "E34"
+    },
+    "manual_connections": {
+     "J_IN.negative": "B34",
+     "J_IN.positive": "E32",
+     "J_OUT.negative": "D34",
+     "J_OUT.positive": "C33"
+    },
+    "jumpers": []
+   }
+  },
+  {
+   "file": "examples/led_circuit.json",
+   "name": "led_circuit",
+   "circuit_id": "led_circuit",
+   "robot_parts": 2,
+   "manual_parts": 1,
+   "nets": 3,
+   "status": "OPTIMAL",
+   "error": null,
+   "solve_wall_s": 2.288,
+   "build_s": 0.294,
+   "solves": 4,
+   "solver_s": 1.957,
+   "wall_s": 3.506,
+   "jumpers": 0,
+   "placements": 2,
+   "row_min": 62,
+   "row_max": 64,
+   "rows_spanned": 3,
+   "geometry_model": "2d_casing_and_opening_fingers",
+   "verified": true,
+   "verify_error": null,
+   "mapping": {
+    "circuit_id": "led_circuit",
+    "board_id": "breadboard_830",
+    "status": "OPTIMAL",
+    "geometry_model": "2d_casing_and_opening_fingers",
+    "gripper": {
+     "finger_thickness_mm": 2.0,
+     "finger_width_mm": 5.0,
+     "opening_per_finger_mm": 1.0,
+     "safety_margin_mm": 0.0,
+     "grip_center_x_mm": 0.0,
+     "assembled_thickness_overrides_mm": {
+      "led_s1": 6.2,
+      "led_s2": 6.2,
+      "led_s4": 6.2,
+      "rgb_led_s1": 6.2,
+      "rgb_led_s2": 6.2
+     }
+    },
+    "placements": [
+     {
+      "id": "R1",
+      "part_id": "resistor_1kohm_gap_0",
+      "orientation_deg": 90,
+      "center_mm": [
+       0.0,
+       156.21
+      ],
+      "casing_id": "resistor_s1"
+     },
+     {
+      "id": "D1",
+      "part_id": "led_red_gap_0",
+      "orientation_deg": 90,
+      "center_mm": [
+       10.16,
+       158.75
+      ],
+      "casing_id": "led_s1"
+     }
+    ],
+    "assembly_order": [
+     "R1",
+     "D1"
+    ],
+    "pin_to_hole": {
+     "R1.1": "A62",
+     "R1.2": "A63",
+     "D1.anode": "E63",
+     "D1.cathode": "E64"
+    },
+    "manual_connections": {
+     "J_POWER.negative": "A64",
+     "J_POWER.positive": "C62"
+    },
+    "jumpers": []
+   }
+  },
+  {
+   "file": "examples/parallel_resistors.json",
+   "name": "parallel_resistors",
+   "circuit_id": "parallel_resistors",
+   "robot_parts": 2,
+   "manual_parts": 0,
+   "nets": 2,
+   "status": "OPTIMAL",
+   "error": null,
+   "solve_wall_s": 0.466,
+   "build_s": 0.26,
+   "solves": 1,
+   "solver_s": 0.197,
+   "wall_s": 1.602,
+   "jumpers": 0,
+   "placements": 2,
+   "row_min": 7,
+   "row_max": 8,
+   "rows_spanned": 2,
+   "geometry_model": "2d_casing_and_opening_fingers",
+   "verified": true,
+   "verify_error": null,
+   "mapping": {
+    "circuit_id": "parallel_resistors",
+    "board_id": "breadboard_830",
+    "status": "OPTIMAL",
+    "geometry_model": "2d_casing_and_opening_fingers",
+    "gripper": {
+     "finger_thickness_mm": 2.0,
+     "finger_width_mm": 5.0,
+     "opening_per_finger_mm": 1.0,
+     "safety_margin_mm": 0.0,
+     "grip_center_x_mm": 0.0,
+     "assembled_thickness_overrides_mm": {
+      "led_s1": 6.2,
+      "led_s2": 6.2,
+      "led_s4": 6.2,
+      "rgb_led_s1": 6.2,
+      "rgb_led_s2": 6.2
+     }
+    },
+    "placements": [
+     {
+      "id": "R1",
+      "part_id": "resistor_1kohm_gap_0",
+      "orientation_deg": 90,
+      "center_mm": [
+       0.0,
+       16.51
+      ],
+      "casing_id": "resistor_s1"
+     },
+     {
+      "id": "R2",
+      "part_id": "resistor_10kohm_gap_0",
+      "orientation_deg": 90,
+      "center_mm": [
+       10.16,
+       16.51
+      ],
+      "casing_id": "resistor_s1"
+     }
+    ],
+    "assembly_order": [
+     "R1",
+     "R2"
+    ],
+    "pin_to_hole": {
+     "R1.1": "A7",
+     "R1.2": "A8",
+     "R2.1": "E7",
+     "R2.2": "E8"
+    },
+    "manual_connections": {},
+    "jumpers": []
+   }
+  },
+  {
+   "file": "examples/rc_low_pass.json",
+   "name": "rc_low_pass",
+   "circuit_id": "rc_low_pass",
+   "robot_parts": 2,
+   "manual_parts": 2,
+   "nets": 3,
+   "status": "OPTIMAL",
+   "error": null,
+   "solve_wall_s": 0.769,
+   "build_s": 0.328,
+   "solves": 1,
+   "solver_s": 0.426,
+   "wall_s": 1.901,
+   "jumpers": 0,
+   "placements": 2,
+   "row_min": 22,
+   "row_max": 24,
+   "rows_spanned": 3,
+   "geometry_model": "2d_casing_and_opening_fingers",
+   "verified": true,
+   "verify_error": null,
+   "mapping": {
+    "circuit_id": "rc_low_pass",
+    "board_id": "breadboard_830",
+    "status": "OPTIMAL",
+    "geometry_model": "2d_casing_and_opening_fingers",
+    "gripper": {
+     "finger_thickness_mm": 2.0,
+     "finger_width_mm": 5.0,
+     "opening_per_finger_mm": 1.0,
+     "safety_margin_mm": 0.0,
+     "grip_center_x_mm": 0.0,
+     "assembled_thickness_overrides_mm": {
+      "led_s1": 6.2,
+      "led_s2": 6.2,
+      "led_s4": 6.2,
+      "rgb_led_s1": 6.2,
+      "rgb_led_s2": 6.2
+     }
+    },
+    "placements": [
+     {
+      "id": "R1",
+      "part_id": "resistor_10kohm_gap_0",
+      "orientation_deg": 90,
+      "center_mm": [
+       0.0,
+       54.61000000000001
+      ],
+      "casing_id": "resistor_s1"
+     },
+     {
+      "id": "C1",
+      "part_id": "capacitor_ceramic_100nf",
+      "orientation_deg": 90,
+      "center_mm": [
+       7.62,
+       57.150000000000006
+      ],
+      "casing_id": "capacitor_ceramic_s1"
+     }
+    ],
+    "assembly_order": [
+     "R1",
+     "C1"
+    ],
+    "pin_to_hole": {
+     "R1.1": "A22",
+     "R1.2": "A23",
+     "C1.1": "D23",
+     "C1.2": "D24"
+    },
+    "manual_connections": {
+     "J_IN.negative": "C24",
+     "J_IN.positive": "E22",
+     "J_OUT.negative": "B24",
+     "J_OUT.positive": "E23"
+    },
+    "jumpers": []
+   }
+  }
+ ]
+}

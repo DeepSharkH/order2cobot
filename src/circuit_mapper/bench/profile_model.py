@@ -72,7 +72,12 @@ FAMILIES = [
     ("mapper.py", "labels[a] >= 0", "wire: strip used (enforced)"),
     ("mapper.py", "add_at_most_one(occupants)", "occupancy at_most_one per hole"),
     ("mapper.py", "sum(edge_candidates) == linked", "flow: link == sum(parallel wires)"),
-    ("mapper.py", "active <= linked", "flow: active <= link"),
+    ("mapper.py", "sum(actives) == linked", "flow: one active net per link"),
+    ("mapper.py", "potential[", "flow: strip potential order (enforced)"),
+    ("mapper.py", "flow != 0", "flow: nonzero on a link (enforced)"),
+    ("mapper.py", "flow >= 0", "flow: direction (enforced)"),
+    ("mapper.py", "flow <= 0", "flow: direction (enforced)"),
+    ("mapper.py", "<= budget", "wire budget"),
     ("mapper.py", "labels[a] == n).only_enforce_if(active)", "flow: active -> label (enforced)"),
     ("mapper.py", "flow <= capacity", "flow: capacity bound"),
     ("mapper.py", "flow >= -capacity", "flow: capacity bound"),
@@ -126,18 +131,23 @@ for _name in ("add", "add_at_most_one", "add_exactly_one", "add_bool_or", "add_i
     _wrap_add(_name)
 
 
+VAR_FAMILIES = {
+    "net_": "strip label int (net id / -1)",
+    "wire_": "wire candidate bool",
+    "order_": "order int (assembly position)",
+    "link_": "flow: link bool (strip pair)",
+    "active_": "flow: active bool (net, strip pair)",
+    "flow_": "flow: int (net, strip pair)",
+    "manual_": "manual pin->hole bool",
+    "potential_": "flow: strip potential int",
+    "forward_": "flow: link direction bool",
+}
+
+
 def var_family(name):
-    for prefix in ("net_", "wire_", "order_", "link_", "active_", "flow_", "manual_"):
+    for prefix, label in VAR_FAMILIES.items():
         if name.startswith(prefix):
-            return {
-                "net_": "strip label int (net id / -1)",
-                "wire_": "wire candidate bool",
-                "order_": "order int (assembly position)",
-                "link_": "flow: link bool (strip pair)",
-                "active_": "flow: active bool (net, strip pair)",
-                "flow_": "flow: int (net, strip pair)",
-                "manual_": "manual pin->hole bool",
-            }[prefix]
+            return label
     return "part placement bool"
 
 

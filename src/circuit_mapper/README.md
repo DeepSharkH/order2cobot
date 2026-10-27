@@ -14,7 +14,7 @@ silently treated as having zero size. The parallel-resistor example is also
 available as a small geometry demonstration.
 
 Options: `--inventory`, `--board`, `--casings`, `--gripper`, `--time-limit` (30
-seconds by default, excluding initial model construction), and `--output`.
+seconds by default, including model construction), and `--output`.
 Without `--output`, JSON is printed to stdout. The old `--clearance` option
 has been replaced by the millimeter-based geometry model.
 
@@ -74,14 +74,26 @@ physical verification are still necessary before executing a layout.
    force another layout. Return only after independently checking the final
    assembly order and electrical connectivity.
 
+Jumpers come in stages (`JUMPER_STAGES` in `mapper.py`): first a model with no
+wire variables at all, then at most 1, 2, 3 and 4 jumpers, then any number.
+Each stage gets an equal share of the time left, so a stage that finishes early
+leaves more to the later ones. A stage that is proven infeasible or runs out of
+its share hands over to the next, and every collision constraint found so far
+carries over. An installed jumper must carry
+flow of its strip's net, so none dangles. A loop takes three jumpers; from that
+budget on, flow also runs only to a higher strip potential, so it cannot
+circulate around one. Jumpers that no net needs (two parallel paths) are
+dropped before the layout is checked.
+
 Pair constraints are added as needed instead of constructing millions of
-unused combinations. Each solve stops at its first feasible candidate to leave
-time for collision checking. The objective favors fewer jumpers but returned
-`FEASIBLE` layouts are not guaranteed to minimize them. `OPTIMAL` means the
-objective was proven optimal for the model; a valid solution of the relaxed
-model also meets the physical constraints after verification. `UNKNOWN` means
-no verified assembly was found before the search ended, not infeasibility.
-`INFEASIBLE` means the accumulated necessary constraints admit no layout.
+unused combinations. Each solve is a pure feasibility problem and stops at its
+first candidate to leave time for collision checking. `OPTIMAL` means every
+smaller jumper count was proven infeasible (the collision constraints are
+necessary conditions, so the proof holds for the physical problem);
+`FEASIBLE` means a smaller count was not ruled out in its time slice.
+`UNKNOWN` means no verified assembly was found before the search ended, not
+infeasibility. `INFEASIBLE` means the accumulated necessary constraints admit
+no layout with any number of jumpers.
 
 ## Output
 
