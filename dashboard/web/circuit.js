@@ -620,7 +620,7 @@ function renderWork() {
   const has = !!D.mapping;
   $('#ca-design').classList.toggle('has-layout', has);
   updateInput();
-  if (!has) { renderActions(); return; }
+  if (!has) { renderActions(); renderCheck(); return; }
   $('#ca-title').textContent = D.circuit.circuit_id.replace(/_/g, ' ');
   const m = D.mapping, nj = m.jumpers.length;
   $('#ca-sub').textContent = `Solver ${D.solver} · ${m.status === 'OPTIMAL' ? 'Optimal' : 'Feasible'} layout · ${D.circuit.components.length} parts · ${nj} jumper${nj === 1 ? '' : 's'}`;

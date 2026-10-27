@@ -211,6 +211,11 @@ class Design:
         self.dir.mkdir(parents=True, exist_ok=True)
         with open(self.dir / 'events.jsonl', 'a') as f:
             f.write(json.dumps(ev) + '\n')
+        self.wake()
+
+    def wake(self):
+        """Wake the followers. Always a fresh event after: a set one never blocks again, and follow()
+        would spin without yielding (the server hung on a design's second request)."""
         self.changed.set()
         self.changed = asyncio.Event()
 
@@ -561,7 +566,7 @@ def routes(cfg=None):
             return web.json_response({'ok': False, 'reason': 'the layout is locked: start assembly or restart'}, status=409)
         start = len(d.events)
         d.task = asyncio.create_task(cd.turn(d, text, body.get('solver')))
-        d.task.add_done_callback(lambda _: d.changed.set())     # wakes the followers once it is over
+        d.task.add_done_callback(lambda _: d.wake())     # wakes the followers once it is over
         return await stream(request, d, start)
 
     async def solve(request):
@@ -575,7 +580,7 @@ def routes(cfg=None):
             return web.json_response({'ok': False, 'reason': 'nothing to solve' if not d.circuit else 'the layout is locked: start assembly or restart'}, status=409)
         start = len(d.events)
         d.task = asyncio.create_task(cd.resolve(d, solver))
-        d.task.add_done_callback(lambda _: d.changed.set())
+        d.task.add_done_callback(lambda _: d.wake())
         return await stream(request, d, start)
 
     async def latest(_request):
