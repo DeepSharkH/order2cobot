@@ -303,6 +303,16 @@ def pick_points(cfg, k):
     return pose, top, at(pose, xs, ys), at(pose, xn, ys)
 
 
+def grip_depth(z_tips, z_top, z_surface, height):
+    """How deep the casing sits in the fingers at the moment of the close: its bottom below the fingertips (mm,
+    + = below), from the casing-top touch minus the CAD height and, independently, from the surface it stands on.
+    Valid only until the casing slips; nothing re-measures it after the grip (10-27)."""
+    from_top = (z_tips - (z_top - height)) * 1000
+    from_surface = (z_tips - z_surface) * 1000
+    return {'casing_bottom_below_tips_mm': round(from_top, 2), 'from_surface_mm': round(from_surface, 2),
+            'disagree_mm': round(from_top - from_surface, 2), 'source': 'casing-top touch - CAD height, at the close'}
+
+
 def prog_grasp(p, sxy, z_tr, z_top, z_grasp):
     """Open fingers: fast to 5 mm above the casing top (the neighbours' tops are as high), guarded below."""
     return '\n'.join(['textmsg("rack pick grasp start")', f'movel({p(*sxy, z_tr)}, a=0.5, v={V_APPROACH})',
@@ -351,7 +361,8 @@ def pick(a, grip, rv):
             res['miss_reason'] = f'pull > {a.pull_stop} N: the paper / slit holds a leg; holding, image saved'
         else:
             st['slots'].setdefault(f'R{k}', {})['part'] = None
-            st['in_gripper'] = {'part': a.part, 'from': f'R{k}', 'pin1': st['pending'].get('pin1'), 'run': d.name}
+            st['in_gripper'] = {'part': a.part, 'from': f'R{k}', 'pin1': st['pending'].get('pin1'), 'run': d.name,
+                                'grip_depth': st['pending'].get('grip_depth')}
             st['pending'] = None
         st['history'].append({'stamp': time.strftime('%Y-%m-%dT%H:%M:%S'), 'slot': f'R{k}', 'part': a.part, 'run': d.name,
                               'result': res['result'], 'pull_peak_n': res['pull_peak_n'],
@@ -451,8 +462,10 @@ def pick(a, grip, rv):
     gp = next((m for m in msgs if m.startswith('grasp ')), None)
     if gp is None:
         return stop('open fingers stopped above the grasp height (hit a neighbour, the post-it or the casing); not closed')
+    grasp = np.array(ast.literal_eval(gp.split(' p', 1)[1])[:3])
+    res['grip_depth'] = grip_depth(grasp[2], zt, zs, H)
     st['pending'] = {'slot': f'R{k}', 'part': a.part, 'run': d.name, 'z_surface': zs,
-                     'grasp_mm': np.round(np.array(ast.literal_eval(gp.split(' p', 1)[1])[:3]) * 1000, 2).tolist(),
+                     'grasp_mm': np.round(grasp * 1000, 2).tolist(), 'grip_depth': res['grip_depth'],
                      'pin1': st['slots'].get(f'R{k}', {}).get('pin1')}
     save_state(st)
     close_and_pull(d, res, zs)

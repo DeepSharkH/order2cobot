@@ -195,6 +195,10 @@ Only the slot changes between picks; the agent finds it, the operator does not t
 - **Hand-off** to `breadboard-place` (HANDOVER "The interface"):
   1. legs straight down, leg pair along the finger faces, casing bottom at the fingertips;
   2. the casing name (from the slot, checked by the CAD height in S2);
+     **grip depth**: `grip_depth.casing_bottom_below_tips_mm` (casing-top touch − CAD height at the
+     close; `from_surface_mm` is the same from the surface it stood on) in `result.json`, the
+     pending grasp and `rack_state.json` `in_gripper`. Valid until the casing slips: nothing
+     re-measures it after the grip (placing's strip tap sees only the leg tips);
   3. along the legs: within ±3 mm (measured by `--calib`); across the legs: centred by the
      jaw; tilt: not measured by placing, so the image check above matters;
   4. polarity: `pin1` from `rack_state.json` (placing treats parts as symmetric today, say it
