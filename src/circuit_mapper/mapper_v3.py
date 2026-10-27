@@ -451,6 +451,17 @@ def map_circuit(circuit, inventory, board, time_limit=30, casings=None, gripper=
                 net_of_strip[a] = net_of_strip[b] = j["net"] = net
     for j in jumpers_out:
         j.pop("_strips")
+    # as v2: drop every jumper or wire that no net needs (the tree may carry a spare link)
+    wiring = {"pin_to_hole": pin_to_hole, "manual_connections": manual_connections}
+    for j in list(jumpers_out):
+        rest = [k for k in jumpers_out if k is not j]
+        try:
+            verify_connections({**wiring, "jumpers": rest}, nets, groups)
+        except ValueError:
+            continue
+        jumpers_out = rest
+    kept = {j["id"] for j in jumpers_out}
+    steps = [st for st in steps if not st["id"].startswith("jumper:") or st["id"] in kept]
 
     def priority(step):
         kind = used_parts[step["part_id"]]["type"]
