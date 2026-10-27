@@ -1,0 +1,40 @@
+{
+ "meta": {
+  "label": "baseline_stock_p5",
+  "time_limit_s": 120.0,
+  "started": "2026-10-27 18:48:19",
+  "host": "tegra-ubuntu",
+  "cpus": 12,
+  "load_avg_at_start": [
+   9.47,
+   15.5,
+   14.72
+  ],
+  "commit": "34cbce3",
+  "dirty": true,
+  "finished": "2026-10-27 18:50:21",
+  "load_avg_at_end": [
+   15.06,
+   15.65,
+   14.87
+  ]
+ },
+ "instances": [
+  {
+   "file": "bench/circuits/p5_three_inputs_three_leds.json",
+   "name": "p5_three_inputs_three_leds",
+   "circuit_id": "three_inputs_three_leds",
+   "robot_parts": 6,
+   "manual_parts": 3,
+   "nets": 7,
+   "status": "UNKNOWN",
+   "error": "ValueError: No mapping returned: UNKNOWN. No verified layout found within the search limit; not proof of infeasibility.",
+   "solve_wall_s": 120.493,
+   "build_s": 1.07,
+   "solves": 6,
+   "solver_s": 103.896,
+   "wall_s": 121.909,
+   "verified": false
+  }
+ ]
+}

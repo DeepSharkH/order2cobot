@@ -10,11 +10,11 @@
     },
     {
       "id": "R1",
-      "part_id": "resistor_1kohm_gap_0"
+      "part_id": "resistor_1kohm_gap_1"
     },
     {
       "id": "D1",
-      "part_id": "led_red_gap_0"
+      "part_id": "led_red_gap_3"
     }
   ],
   "nets": [
@@ -44,7 +44,8 @@
   "assumptions": [
     "Regulated 5 V supply on J_POWER (positive = +5 V, negative = GND), wired by hand.",
     "Default _gap_0 variants for the resistor and LED (leads in adjacent holes).",
-    "Resistor placed on the high side between VCC and the LED anode; LED current is about (5 - 2) V / 1 kOhm = 3 mA."
+    "Resistor placed on the high side between VCC and the LED anode; LED current is about (5 - 2) V / 1 kOhm = 3 mA.",
+    "Bench 10-27: part ids moved to the real stock (example_components.json)."
   ],
   "unresolved_questions": []
 }

@@ -20,14 +20,15 @@ changes.
 
 Results: bench/results/<label>.json and a one-line-per-instance table on stdout.
 
-Benchmark prompts (bench/circuits, as typed into the dashboard's Circuit Assembly tab):
+Benchmark prompts (bench/circuits, as typed into the dashboard's Circuit Assembly tab), with the
+part ids moved to the real stock of 10-27 (example_components.json, mostly one piece per part):
   p1 "A red LED with a 1 kΩ series resistor on a 5 V supply."               (real design, 10-26)
   p2 "An RC low-pass filter between a signal input and an output, 1 kΩ and 100 nF" (real, 10-26)
-  p3 "Two LEDs in parallel, each with its own 330 Ω resistor, on 5 V"        (330 Ω -> 220 Ω kit)
-  p4 "An NPN transistor (S8050) switching an LED from a 3.3 V logic input through a 10 kΩ base
-      resistor, LED with 220 Ω on 5 V"                                      (S8050 -> generic NPN)
-  p5 "An RGB LED (common cathode) with a 220 Ω resistor on each colour channel, three logic
-      inputs and ground"
+  p3 "Two LEDs in parallel, each with its own 330 Ω resistor, on 5 V"        (red + green, stock)
+  p5 "Three logic inputs, each driving its own LED through its own resistor, common ground"
+      (was an RGB LED; stock has none: red, green, yellow LEDs)
+  circuits/parallel_leds_3: three LEDs with 1 kΩ each on 5 V (was 5; stock has 3 LEDs)
+  p4 (NPN LED switch) was dropped with the stock: no transistor.
 """
 
 import argparse
@@ -190,10 +191,10 @@ def summarize(path, circuit, parts, board, record):
         "name": path.stem,
         "circuit_id": circuit.get("circuit_id"),
         "robot_parts": sum(
-            1 for c in circuit["components"] if parts[c["part_id"]].get("placement_mode") != "manual"
+            1 for c in circuit["components"] if parts.get(c["part_id"], {}).get("placement_mode") != "manual"
         ),
         "manual_parts": sum(
-            1 for c in circuit["components"] if parts[c["part_id"]].get("placement_mode") == "manual"
+            1 for c in circuit["components"] if parts.get(c["part_id"], {}).get("placement_mode") == "manual"
         ),
         "nets": len(circuit["nets"]),
         **{k: v for k, v in record.items() if k != "result"},

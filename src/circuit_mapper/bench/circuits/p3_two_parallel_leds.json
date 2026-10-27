@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
   "circuit_id": "two_parallel_leds",
-  "description": "Two red LEDs in parallel on a 5 V supply, each with its own series resistor: each branch runs VCC -> Rn -> Dn anode, Dn cathode -> GND.",
+  "description": "Two LEDs in parallel on a 5 V supply, each with its own 330 ohm series resistor: each branch runs VCC -> Rn -> Dn anode, Dn cathode -> GND.",
   "components": [
     {
       "id": "J_POWER",
@@ -10,19 +10,19 @@
     },
     {
       "id": "R1",
-      "part_id": "resistor_220ohm_gap_0"
+      "part_id": "resistor_330ohm_gap_0"
     },
     {
       "id": "D1",
-      "part_id": "led_red_gap_0"
+      "part_id": "led_red_gap_3"
     },
     {
       "id": "R2",
-      "part_id": "resistor_220ohm_gap_0"
+      "part_id": "resistor_330ohm_gap_1"
     },
     {
       "id": "D2",
-      "part_id": "led_red_gap_0"
+      "part_id": "led_green_gap_3"
     }
   ],
   "nets": [
@@ -60,9 +60,7 @@
   "unconnected_pins": [],
   "assumptions": [
     "Regulated 5 V supply on J_POWER (positive = +5 V, negative = GND), wired by hand.",
-    "The kit has no 330 ohm resistor; the user accepted the nearest kit value, 220 ohm (about (5 - 2) V / 220 ohm = 14 mA per red LED instead of 9 mA).",
-    "No LED colour was given; the user chose red.",
-    "Default _gap_0 variants for the resistors and LEDs (leads in adjacent holes)."
+    "Stock has two 330 ohm resistors (lead gaps 0 and 1) and one red and one green 4-pitch LED (10-27 stock)."
   ],
   "unresolved_questions": []
 }

@@ -1,0 +1,107 @@
+{
+  "schema_version": "1.0",
+  "circuit_id": "three_inputs_three_leds",
+  "description": "Three logic inputs, each driving its own LED (red, green, yellow) through its own series resistor, with a common ground.",
+  "components": [
+    {
+      "id": "J_IN_R",
+      "part_id": "power_connector_2pin",
+      "role": "signal"
+    },
+    {
+      "id": "J_IN_G",
+      "part_id": "power_connector_2pin",
+      "role": "signal"
+    },
+    {
+      "id": "J_IN_Y",
+      "part_id": "power_connector_2pin",
+      "role": "signal"
+    },
+    {
+      "id": "R_RED",
+      "part_id": "resistor_330ohm_gap_0"
+    },
+    {
+      "id": "D_RED",
+      "part_id": "led_red_gap_3"
+    },
+    {
+      "id": "R_GREEN",
+      "part_id": "resistor_330ohm_gap_1"
+    },
+    {
+      "id": "D_GREEN",
+      "part_id": "led_green_gap_3"
+    },
+    {
+      "id": "R_YELLOW",
+      "part_id": "resistor_1kohm_gap_1"
+    },
+    {
+      "id": "D_YELLOW",
+      "part_id": "led_yellow_gap_0"
+    }
+  ],
+  "nets": [
+    {
+      "id": "IN_RED",
+      "pins": [
+        "J_IN_R.positive",
+        "R_RED.1"
+      ]
+    },
+    {
+      "id": "RED_ANODE",
+      "pins": [
+        "R_RED.2",
+        "D_RED.anode"
+      ]
+    },
+    {
+      "id": "IN_GREEN",
+      "pins": [
+        "J_IN_G.positive",
+        "R_GREEN.1"
+      ]
+    },
+    {
+      "id": "GREEN_ANODE",
+      "pins": [
+        "R_GREEN.2",
+        "D_GREEN.anode"
+      ]
+    },
+    {
+      "id": "IN_YELLOW",
+      "pins": [
+        "J_IN_Y.positive",
+        "R_YELLOW.1"
+      ]
+    },
+    {
+      "id": "YELLOW_ANODE",
+      "pins": [
+        "R_YELLOW.2",
+        "D_YELLOW.anode"
+      ]
+    },
+    {
+      "id": "GND",
+      "pins": [
+        "J_IN_R.negative",
+        "J_IN_G.negative",
+        "J_IN_Y.negative",
+        "D_RED.cathode",
+        "D_GREEN.cathode",
+        "D_YELLOW.cathode"
+      ]
+    }
+  ],
+  "unconnected_pins": [],
+  "assumptions": [
+    "Stock has no RGB LED (10-27): three single LEDs replace the RGB LED of the original p5 prompt.",
+    "Each input is a hand-wired 2-pin connector (signal + its ground), not the fixed supply."
+  ],
+  "unresolved_questions": []
+}
