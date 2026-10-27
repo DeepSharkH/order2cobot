@@ -1,0 +1,9 @@
+id: short-touch
+title: "touch references: distance, not speed, is the lever"
+applies_to: ["touch_reference_step", "any edge/face touch"]
+symptom: null
+cause: "slides run at ~1 mm/s; the tip falls over an edge in 0.3 s (force-mode limit 5 mm/s) with <= 0.04 mm sideways travel; 13-20 mm slides cost ~52 s"
+fix: "start from the previous run's references (data/last_refs.json): descend 6 mm in front of the face, slides from 4 mm before the expected edge (<= 8 mm), one left slide; long-slide fallback. Keep slide speed <= 2 mm/s (>= 5 mm/s risks > 1 mm errors)"
+status: "validated"
+validated_by: ["touchcheck 2026-10-26 (short-long: face 0.01, top -0.19, left 0.02 mm)", "20261026-112530_rj45-port1-B-fast"]
+stamp: "2026-10-26"

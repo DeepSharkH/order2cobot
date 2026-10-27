@@ -1,0 +1,9 @@
+id: switch-creep
+title: "the taped switch moves between runs"
+applies_to: ["touch_reference_step"]
+symptom: {"refs_vs_last_mm": [">", 1.0]}
+cause: "each 18-25 N seat pushes it; +4 mm face / -2 mm left end over 5 runs on 10-25, +2.3 / -2.2 mm over 4 runs on 10-26"
+fix: "re-touch before every port (targets are relative to the touches); TELL THE OPERATOR with the numbers and propose a fixture (printed corner stop, screws/clamps) or a lower seat force"
+status: "validated"
+validated_by: ["20261026-112530_rj45-port1-B-fast"]
+stamp: "2026-10-26"

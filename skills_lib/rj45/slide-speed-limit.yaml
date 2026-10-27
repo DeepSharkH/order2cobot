@@ -1,0 +1,9 @@
+id: slide-speed-limit
+title: "do not slide faster than 2 mm/s"
+applies_to: ["touch_reference_step", "search"]
+symptom: null
+cause: "estimate: edge error ~ slide speed x 0.3 s fall time -> 5 mm/s ~1.5 mm (= search radius)"
+fix: "keep slides <= 2 mm/s; to go faster first raise the force-mode speed limit along n and lower the 1.5 mm advance threshold, then validate against long touches"
+status: "proposed"
+validated_by: []
+stamp: "2026-10-26"

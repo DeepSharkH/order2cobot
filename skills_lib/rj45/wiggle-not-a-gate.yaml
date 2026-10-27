@@ -1,0 +1,9 @@
+id: wiggle-not-a-gate
+title: "the force wiggle test does not decide 'in port'"
+applies_to: ["insert_step"]
+symptom: null
+cause: "in-port wiggle forces 1.6-7.6 N overlap face friction (2-5 N while sliding); it also drags the tip 1.7-3.4 mm down"
+fix: "gate = within the search radius of the predicted port AND > 4 mm past the measured local face; the link check is the proof; keep the wiggle only as logged data (or drop it)"
+status: "validated"
+validated_by: ["20261025-191456_rj45-port2", "20261025-192243_rj45-port3", "20261025-200103_rj45-port4", "20261025-202013_rj45-port1"]
+stamp: "2026-10-26"

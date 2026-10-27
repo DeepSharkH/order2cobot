@@ -1,0 +1,10 @@
+id: seat-residual-force
+title: "the plug keeps pressing after the seat"
+applies_to: ["insert_step", "seat"]
+symptom: {"cmd": ["seat_x", "release"], "all": [["f_end_norm", ">", 3.0]]}
+cause: "a fixed 0.5 mm back-off leaves the jack springs loaded (Fy -5 N for minutes, 12 N once)"
+fix: "release(n, 3.0, 0.002): back off in 0.1 mm steps until |F| < 3 N; never end a program while pressing (protective stop)"
+status: "proposed"
+validated_by: []
+seen_in: ["20261025-200103_rj45-port4", "20261025-202013_rj45-port1"]
+stamp: "2026-10-26"

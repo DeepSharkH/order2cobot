@@ -1,0 +1,9 @@
+id: shared-controller
+title: "another client may load/play programs on the same robot"
+applies_to: ["all robot steps"]
+symptom: null
+cause: "challenge1_medium_v2_* was played by a team mate during a run; play starts whatever is loaded"
+fix: "check the loaded app right before every play; own bridge client name per process; log foreign events as 'EXTERNAL:' (never delete log lines)"
+status: "validated"
+validated_by: ["20261025-184457_rj45-port1"]
+stamp: "2026-10-26"

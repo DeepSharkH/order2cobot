@@ -27,7 +27,7 @@ from porttest.urexec import APP, PREAMBLE, ROOT, BridgeError, URExec, call
 from porttest.urscript_lint import lint
 
 HOST, PORT = "192.168.2.250", 50101       # the Jetson on the robot network
-VERSION = 1.1                             # bump when the dispatcher or urlib changes
+VERSION = 1.2                             # bump when the dispatcher or urlib changes
 NP = 16                                   # parameters per command (plus the opcode)
 OPS = {"end": 0, "movel": 1, "movej": 2, "movel_rel": 3, "creep": 4, "contact": 5, "back_off": 6,
        "slide": 7, "search_port": 8, "engage": 9, "wiggle": 10, "seat_x": 11, "guarded_axial": 12,
@@ -36,7 +36,7 @@ OPS = {"end": 0, "movel": 1, "movej": 2, "movel_rel": 3, "creep": 4, "contact": 
 
 DISPATCH = f'''
 def sk_ret(v):
-  socket_send_line(str_cat(str_cat("R ", v), str_cat(" | ", get_actual_tcp_pose())), "sk")
+  socket_send_line(str_cat(str_cat(str_cat("R ", v), str_cat(" | ", get_actual_tcp_pose())), str_cat(" | ", get_tcp_force())), "sk")
 end
 
 def v3(c, i):
@@ -137,25 +137,50 @@ def _parse(v):
         return v
 
 
+TRACE_FIELDS = ("step", "cmd", "params", "result", "pose0", "pose1", "d_mm", "f_end", "t0", "dur")
+
+
 class Session:
-    def __init__(self, conn, timing):
+    """One play. Every command appends a trace record (step, cmd, params, result, tip pose
+    before/after, displacement in mm, TCP force at the end, wall time, duration) to
+    data/runs/current/trace.jsonl (or data/trace.jsonl outside a run)."""
+
+    def __init__(self, conn, timing, step="", trace_path=None):
         self.f = conn.makefile("rw", newline="\n")
         self.timing = timing
+        self.step = step
+        self.trace_path = trace_path
+        self.records = []
+        self.pose = None
 
     def cmd(self, name, *params, timeout=120.0):
         vals = [float(x) for x in params]
         if len(vals) > NP:
             raise ValueError(f"{name}: {len(vals)} params > {NP}")
         vals += [0.0] * (NP - len(vals))
-        t = time.monotonic()
+        t, tw = time.monotonic(), time.time()
         self.f.write("(" + ",".join([str(OPS[name])] + [f"{x:.6f}" for x in vals]) + ")\n")
         self.f.flush()
         line = self.f.readline()
         if not line.startswith("R "):
             raise BridgeError(f"skill_b {name}: unexpected reply {line!r}")
-        val, _, pose = line[2:].partition(" | ")
-        self.timing["cmds"].append((name, round(time.monotonic() - t, 3)))
-        return _parse(val), _parse(pose)
+        parts = line[2:].strip().split(" | ")
+        val, pose = _parse(parts[0]), _parse(parts[1])
+        force = _parse(parts[2]) if len(parts) > 2 else None
+        dur = round(time.monotonic() - t, 3)
+        self.timing["cmds"].append((name, dur))
+        p0 = self.pose
+        rec = {"step": self.step, "cmd": name, "params": [round(x, 6) for x in params], "result": val,
+               "pose0": p0[:3] if p0 else None, "pose1": pose[:3] if isinstance(pose, list) else None,
+               "d_mm": [round((b - a) * 1000, 3) for a, b in zip(p0[:3], pose[:3])] if p0 and isinstance(pose, list) else None,
+               "f_end": [round(x, 2) for x in force[:3]] if isinstance(force, list) else None,
+               "t0": round(tw, 3), "dur": dur}
+        self.records.append(rec)
+        if self.trace_path:
+            with open(self.trace_path, "a") as fh:
+                fh.write(json.dumps(rec) + "\n")
+        self.pose = pose if isinstance(pose, list) else self.pose
+        return val, pose
 
     # primitives (same arguments as urlib; vectors are lists of 3)
     def movel(self, pose, a=0.2, v=0.05):
@@ -259,7 +284,7 @@ class SkillB:
             out.append(f"error: {e}")
 
     @contextmanager
-    def session(self, connect_timeout=20.0):
+    def session(self, connect_timeout=20.0, step=""):
         """One play of the skill program; yields a Session for any number of commands."""
         timing = {"wall": time.time(), "cmds": []}
         t0 = time.monotonic()
@@ -274,7 +299,9 @@ class SkillB:
                               "- program not uploaded, not loaded, or not playing")
         conn.settimeout(120)
         timing["connect"] = round(time.monotonic() - t0, 3)
-        s = Session(conn, timing)
+        run = ROOT / "data" / "runs" / "current"
+        s = Session(conn, timing, step=step,
+                    trace_path=(run if step and run.exists() else ROOT / "data") / "trace.jsonl")
         hello = s.f.readline().strip()
         if hello != f"HELLO {VERSION}" and not hello.startswith(f"HELLO {VERSION:g}"):
             s.f.write(f"({OPS['end']}" + ",0" * NP + ")\n")
