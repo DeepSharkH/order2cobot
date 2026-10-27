@@ -504,14 +504,6 @@
     {
       "id": "right_row_63",
       "holes": ["F63", "G63", "H63", "I63", "J63"]
-    },
-    {
-      "id": "left_row_64",
-      "holes": ["A64", "B64", "C64", "D64", "E64"]
-    },
-    {
-      "id": "right_row_64",
-      "holes": ["F64", "G64", "H64", "I64", "J64"]
     }
   ],
   "center_gap_pairs": [
@@ -577,8 +569,7 @@
     ["E60", "F60"],
     ["E61", "F61"],
     ["E62", "F62"],
-    ["E63", "F63"],
-    ["E64", "F64"]
+    ["E63", "F63"]
   ],
   "geometry": {
     "unit": "hole_pitch",
@@ -597,7 +588,7 @@
     },
     "rows": {
       "first": 1,
-      "last": 64,
+      "last": 63,
       "first_position": 0,
       "spacing": 1
     }
