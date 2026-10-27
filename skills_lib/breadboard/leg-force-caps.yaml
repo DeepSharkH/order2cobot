@@ -1,0 +1,16 @@
+id: leg-force-caps
+title: 'jumper legs bend: touch 2 N, seat <= 6 N, straight z only'
+applies_to:
+- insert_step
+- seat_step
+symptom: null
+cause: bare 0.6 mm legs buckle under the 15 N seat of 10-26 (user); seating needs ~4-6 N for 2 legs, the pull to
+  lift 5 mm 8-10 N
+fix: guarded pecks at 2 N, seat_z capped at 6 N then release; pull_out capped at 20 N
+status: validated
+validated_by:
+- jumper_probe_20261027-113102
+- place_probe_20261027-120419
+- place_probe_20261027-120624
+seen_in: []
+stamp: '2026-10-27'

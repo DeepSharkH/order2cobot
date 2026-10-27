@@ -12,18 +12,22 @@ the camera pin-map protoboard track (`.claude/skills/protoboard-wire`, `configs/
 | Natural language → circuit JSON | Dashboard Circuit Assembly tab (`dashboard/circuit_design.py`, `web/circuit.js`); offline: skill `circuit-netlist` | works |
 | CSP solver → placements + verified `assembly_order` | `src/circuit_mapper/` (Jan: `mapper.py`, `geometry.py`, `board_connections.json`, `gripper.json`), casings `assets/models/component_casings/casings.json` | works (2 parallel LEDs time out on the Jetson) |
 | Plan hand-off | "Start assembly" → `data/circuit_designs/<id>/plan.json`, `current.json`, `run.json`; progress `POST /api/circuit/<id>/run` | works |
-| Board model: hole id → board mm | `breadboard/board.py` (CAD hole table `dashboard/web/models/cad/breadboard.json`) | **TODO**: real board = 63 rows (user 10-27); fix CAD (60) + solver (64), measure e1→f1 |
-| Manual calibration: corner inserts + workspace poses → board pose | `breadboard/teach.py`, `breadboard/calibration.py` → `configs/breadboard/calibration.yaml` | code done; **TODO** teach on the robot (2026-10-27) |
-| Tool model of the custom fingers | `configs/breadboard/gripper.yaml` (CAD `assets/models/gripper/`) | **TODO** measure: provisional numbers |
-| Grasp calibration after every grasp | `breadboard/grasp_calib.py` | **TODO** after the first successful grasps |
-| Executor: pick → grasp calib → move → insert → verify | `breadboard/run_plan.py` (`--dry-run` prints the targets) | **TODO** |
+| Board model: hole id -> board mm | `configs/breadboard/board.yaml` (calipers + BB830 datasheet: 63 rows, pitch 2.54, channel 7.62) | **works** (10-27); the CAD (60 rows) and the solver channel (10.16) are wrong |
+| Board pose in base | `breadboard/touch_locate.py` -> `configs/breadboard/board_pose.yaml` (guarded touches, no teaching) | **works** (10-27) |
+| ~~Manual calibration (corner inserts)~~ | `breadboard/teach.py`, `calibration.py` | **superseded** by the touch pose (user 10-27); kept |
+| Tool model of the custom fingers | `configs/breadboard/gripper.yaml` | fingertip **measured** (0.2269 m, by touch); grasp height still provisional |
+| Grasp calibration after every grasp | `breadboard/grasp_calib.py` (legs on the strip, casing face vs the row-1 end) | **works** for x along the legs (10-27); y / tilt open |
+| Place a held part | `breadboard/place_probe.py`, skill `breadboard-place` | **works**: 8 runs, 6 hits (see HANDOVER.md) |
+| Executor: pick -> grasp calib -> move -> insert -> verify | `breadboard/run_plan.py` (`--dry-run` prints the targets) | **TODO**: picking + release (picking team, HANDOVER.md) |
+
+**Start here: `breadboard/HANDOVER.md`.**
 
 Robot motion: `urcore` (`URExec` with the breadboard's own app/client and tool model, the shared
 primitives `seat_z`, `pull_out`, `spiral_from`, `release`, `guarded_axial`). Never import
 `porttest` (switch) from here. Run logging: `python -m urcore.runlog`, `urcore.telemetry`,
 `urcore.record`.
 
-## Calibration plan (user, 2026-10-26)
+## Calibration plan (user, 2026-10-26) — superseded 10-27 by touch_locate + grasp_calib
 
 1. CAD hole table (`board.py`): 63 rows (user-checked 10-27); measure e1 → f1, fix the CAD,
    the solver board and the corner annotations (TODO list in `board.py`) before teaching.

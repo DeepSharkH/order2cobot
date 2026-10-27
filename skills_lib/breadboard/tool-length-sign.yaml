@@ -1,0 +1,16 @@
+id: tool-length-sign
+title: a top contact BELOW the scene top means the tool is SHORTER
+applies_to:
+- locate_step
+- tool_model
+symptom: null
+cause: 'fingertip length from a top touch: L_real = L_used - (top_scene - z_contact); the sign was flipped once
+  (0.2821 instead of 0.2269), so the robot stayed ~55 mm higher than it believed'
+fix: 'touch_locate.fingertip_from_top (fixed); sanity: the commanded tip height vs what the operator sees; guarded
+  descents only until the tool is measured'
+status: validated
+validated_by:
+- jumper_probe_20261027-113102
+seen_in:
+- jumper_probe_20261027-112916 (stopped ~6 cm above the board)
+stamp: '2026-10-27'

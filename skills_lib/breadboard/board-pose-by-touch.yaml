@@ -1,0 +1,17 @@
+id: board-pose-by-touch
+title: find the board by guarded touches, not by teaching or the CAD
+applies_to:
+- locate_step
+symptom: null
+cause: the camera box is ~10 mm off (ArUco cube + depth); the team CAD (60 rows) and objects.yaml (2 halves) do
+  not match the real 63-row board
+fix: 'touch_locate: 3 top + 2 long-edge + 1 end touches (4 N, 5 mm/s) -> top, edge line, end; holes from board.yaml
+  (caliper model) on that frame'
+status: validated
+validated_by:
+- touch_locate_20261027-105602
+- place_probe_20261027-120419
+- place_probe_20261027-120624
+seen_in:
+- touch_locate_20261027-105602 (camera far edge 3.5 mm off, end 12 mm off)
+stamp: '2026-10-27'

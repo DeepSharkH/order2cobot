@@ -1,0 +1,14 @@
+id: pitch-confirmed
+title: the 2.54 pitch holds over 32 rows
+applies_to:
+- board_model
+symptom: null
+cause: hand calipers gave a1-a63 ~158 vs 157.48; found offsets at rows 3 and 35 differ by 0.08 mm -> pitch error
+  < 0.003 mm/row
+fix: keep pitch 2.54 in board.yaml; the residual is one constant offset
+status: validated
+validated_by:
+- place_probe_20261027-120419
+- place_probe_20261027-120624
+seen_in: []
+stamp: '2026-10-27'

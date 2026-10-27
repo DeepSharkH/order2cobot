@@ -19,16 +19,16 @@
 #   grasp_h      fingertip ends above the casing bottom (Jan: at what height do the tips grip a
 #                20 mm casing?); tcp_pins z = fingertip_z + grasp_h.
 # After the first successful grasps, breadboard/grasp_calib.py corrects tcp_pins per grasp.
-stamp: '2026-10-27T00:00'
-source: PROVISIONAL from the CAD, not measured
-fingertip_z: 0.2545
+stamp: '2026-10-27T11:29'
+source: fingertip_z measured by touch (touch_locate_20261027-105602); grasp_h still PROVISIONAL
+fingertip_z: 0.2269
 grasp_h: 0.010
-tcp_pins: [0.0, 0.0, 0.2645, 0.0, 0.0, 1.5708]
+tcp_pins: [0.0, 0.0, 0.2369, 0.0, 0.0, 1.5708]
 finger:
   length: 0.030          # below the cap
   tip: [0.002, 0.005]    # thickness (closing direction, flange x) x width (flange y)
 collision_points:        # for move_checked clearance
-  fingertip_a: [0.004, 0.0, 0.2545]
-  fingertip_b: [-0.004, 0.0, 0.2545]
-  casing_bottom: [0.0, 0.0, 0.2645]
-  pin_tip: [0.0, 0.0, 0.2725]      # casing bottom + ~8 mm of pin
+  fingertip_a: [0.004, 0.0, 0.2269]
+  fingertip_b: [-0.004, 0.0, 0.2269]
+  casing_bottom: [0.0, 0.0, 0.2269]   # = fingertip (jumper casing, user photo 10-27)
+  pin_tip: [0.0, 0.0, 0.2319]        # legs < 5 mm below the casing (jumper_probe 10-27)

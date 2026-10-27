@@ -1,0 +1,46 @@
+# Breadboard pose in the robot base frame, found by touch (breadboard/touch_locate.py),
+# 2026-10-27 10:56 + end retry 10:58. No operator teaching; rough box from the fixed cam (ArUco
+# cube + depth), then 3 top + 2 far-edge + 1 end guarded touches (4 N, 5 mm/s), tool yaw -75 deg.
+# Run data: data/runs/touch_locate_20261027-105602/result.json (Jetson, aspire worktree).
+#
+# Board orientation (user 2026-10-27 11:20: row 1 = the end closest to the robot, white cube;
+# the print is not mirrored, so with rows running -x, row a lies on the far long edge, +y,
+# towards the checkerboard). Rows run along -x, columns a -> j along -y. The hole positions use
+# the touched row-1 end and the pitch 2.54 (configs/breadboard/board.yaml); the row-63 end
+# (wires, yellow cube) is beyond the reach limit and was not touched.
+stamp: '2026-10-27T10:58'
+method: touch (3 top, 2 far edge, 1 end)
+frame: base
+tip_contacts_mm:            # tip centre (TCP fingertip_z 0.2545, provisional) at contact
+  top1: [-465.11, -24.97, -14.06]
+  top2: [-400.11, -24.97, -14.68]
+  top3: [-440.12, -45.98, -14.54]
+  far1: [-465.01, -8.93, -17.18]
+  far2: [-414.98, -8.81, -17.19]
+  end1: [-350.58, -48.02, -17.61]
+tip_half_mm: [2.93, 2.58]   # closed 4 x 5 mm tip at yaw -75, along base x / y
+far_edge_y_mm: -11.45       # a side (far, +y)
+row1_end_x_mm: -353.51      # row-1 end face (closest to the robot)
+yaw_deg: 0.139              # long axis vs base x
+top_tilt_deg: 0.865         # mostly along x: 0.6 mm over 65 mm (tape / backing)
+top_z_mm: 13.1              # from the scene (plate +4.6 in base + 8.5 board), not touched
+# tip z at the top contacts = -14.4 with fingertip_z 0.2545, so the real fingertip is ~0.227 m
+# below the flange (27.5 mm SHORTER than the CAD); in configs/breadboard/gripper.yaml (0.2269).
+fingertip_z_est_m: 0.2269
+holes_mm:                   # centres, from the row-1 end: row r x = -356.75 - (r - 1) * 2.54
+  row1_x: -356.75           # end face - 3.24 (board.yaml a1 -> end)
+  a_y: -23.94               # far edge - 12.49
+  e_y: -34.10
+  f_y: -41.72
+  j_y: -51.88
+  a1: [-356.75, -23.94]
+  j1: [-356.75, -51.88]
+  a41: [-458.35, -23.94]    # about the last reachable row
+  a63: [-514.23, -23.94]
+# a63 x from the other end's offset (165.1 length) would be -515.37: length and pitch do not close
+# by 1.1 mm (see board.yaml). TODO: a peck at two holes far apart (e.g. rows 1 and 40).
+reach_note: >-
+  x < -0.46 is at the UR3's reach limit (elbow singularity: elbow < 0.5 rad, IK times out
+  higher up; the 282 mm tool makes it worse). Reachable: rows 1-~41. Rows ~42-63 (wire end)
+  are not; the L fixture should sit ~5 cm closer to the robot. The white cube sits on the
+  a-side rail at the row-1 end: keep a-side rail work there clear of it.
