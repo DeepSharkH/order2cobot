@@ -1,0 +1,14 @@
+id: ik-gap-is-unreachable
+title: robot_inverse_kinematics times out (status gap) where there is no solution
+applies_to:
+- plan_step
+symptom: null
+cause: the host IK does not answer "no solution"; it times out after 8 s -> call(...)["data"] KeyError
+fix: 'treat a gap as unreachable (place_probe.ik_ok); keep start poses low: at x -0.44 a 12 cm high start is out
+  of reach'
+status: validated
+validated_by:
+- touch_locate_20261027-105602
+seen_in:
+- touch_locate 10:4x (start 12 cm up, KeyError data)
+stamp: '2026-10-27'

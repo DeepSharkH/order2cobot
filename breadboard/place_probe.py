@@ -1,0 +1,226 @@
+"""Place a 2-leg casing (jumper, LED, ... from casings.json) into two holes where the model says
+they are; the operator reports the holes it went into (explore mode, ground truth).
+
+One program per placement:
+  (0) a part left in the board by the last run is pulled out first (state file);
+  (1) the leg tips touch the hole-free strip on the target's half -> leg length below the fingertip;
+  (2) low approach (2 cm) to the pair + the last found offset; pecks (centre, rings 0.7 / 1.4 mm)
+      at 2 N until the legs drop > 1.5 mm below the surface;
+  (3) seat straight down, capped at 6 N (legs bend), release the push;
+  (4) lift 5 mm (legs still ~1.5 mm in the holes) so the operator can read them; hold.
+The found offset (hole found - model target) is saved: it is the next search's centre and, over
+several rows, tells a grasp offset (constant) from a pitch error (grows with the row).
+
+  python -m breadboard.place_probe j3 j4                       # plan, no motion
+  python -m breadboard.place_probe j3 j4 --part jumper_s1 --run
+  python -m breadboard.place_probe --pull --run                # take the part out, lift
+  python -m breadboard.place_probe --confirm j3 j4             # operator: it is in these holes
+"""
+import argparse
+import json
+import time
+from pathlib import Path
+
+import numpy as np
+import yaml
+from scipy.spatial.transform import Rotation as R
+
+from breadboard.touch_locate import GRIPPER, tool_down
+from urcore.urexec import URExec, call
+from urcore.urlib import LIB
+from urcore.urscript_lint import lint
+
+ROOT = Path(__file__).resolve().parent.parent
+APP, CLIENT = 'breadboard_explore', 'breadboard-explore'
+STATE = ROOT / 'data' / 'breadboard_state.json'
+CASINGS = ROOT / 'assets/models/component_casings/casings.json'
+J = ('base', 'shoulder', 'elbow', 'wrist1', 'wrist2', 'wrist3')
+PITCH = 0.00254
+F_TOUCH, F_SEAT, F_PULL = 2.0, 6.0, 20.0
+SAFE = 0.020          # low approach: fingertip this far above the top (user 10-27)
+DROP = 0.0015         # legs this far below the surface = they found the holes
+LIFT = 0.005          # after seating, legs stay ~1.5 mm in the holes for reading
+RINGS = (0.0007, 0.0014)
+X_MIN = -0.460        # reach: further out the elbow straightens (singularity)
+
+
+def casing(name):
+    return next(c for c in json.loads(CASINGS.read_text())['casings'] if c['casing'] == name)
+
+
+def hole(name, pose):
+    """Base x, y (m) of a hole like 'j10' from board_pose.yaml (rows along -x)."""
+    h = pose['holes_mm']
+    col, row = name[0].lower(), int(name[1:])
+    ys = {c: h['a_y'] - i * 2.54 for i, c in enumerate('abcde')}
+    ys.update({c: h['f_y'] - i * 2.54 for i, c in enumerate('fghij')})
+    return np.array([h['row1_x'] - (row - 1) * 2.54, ys[col]]) / 1000
+
+
+def strip_y(col, pose):
+    """The hole-free strip between the outer hole row and the rail, on the target's half."""
+    h = pose['holes_mm']
+    return (h['a_y'] + 6.43 / 2) / 1000 if col in 'abcde' else (h['j_y'] - 6.43 / 2) / 1000
+
+
+def pattern(c):
+    out = [tuple(c)]
+    for r in RINGS:
+        out += [(c[0] + r * np.cos(a), c[1] + r * np.sin(a)) for a in np.arange(8) * np.pi / 4]
+    return out
+
+
+def load_state():
+    return json.loads(STATE.read_text()) if STATE.exists() else {}
+
+
+def save_state(st):
+    STATE.parent.mkdir(parents=True, exist_ok=True)
+    STATE.write_text(json.dumps(st, indent=1))
+
+
+def pull_lines(top):
+    return ['textmsg("pull start")', f'pull_out([0, 0, -1], {F_PULL}, 0.010, 0.004)',
+            'q = get_actual_tcp_pose()',
+            f'movel(p[q[0], q[1], {top + SAFE:.5f}, q[3], q[4], q[5]], a=0.3, v=0.02)']
+
+
+def program(rv, strip_xy, target, offset, top, pull_first):
+    o = ', '.join(f'{v:.5f}' for v in rv)
+    P = lambda x, y, z: f'p[{x:.5f}, {y:.5f}, {z}, {o}]'  # noqa: E731
+    sx, sy = strip_xy
+    tx, ty = target
+    s = ['textmsg("place_probe start")'] + (pull_lines(top) if pull_first else [])
+    s += [f'movel({P(sx, sy, f"{top + SAFE:.5f}")}, a=0.3, v=0.03)',
+          f'h = guarded_axial([0, 0, -1], {SAFE + 0.004:.4f}, {F_TOUCH}, 0.005)',
+          'if not h:', '  textmsg("ABORT no strip contact")', f'  movel({P(sx, sy, f"{top + SAFE:.5f}")}, a=0.3, v=0.03)',
+          'else:',
+          'zs = get_actual_tcp_pose()[2]', 'textmsg("strip ", zs)',
+          'back_off([0, 0, -1], 0.003)',
+          f'movel({P(sx, sy, f"zs + {SAFE}")}, a=0.3, v=0.03)',
+          f'movel({P(tx + offset[0], ty + offset[1], f"zs + {SAFE}")}, a=0.3, v=0.03)',
+          'found = False', 'zf = 0']
+    for i, (x, y) in enumerate(pattern((tx + offset[0], ty + offset[1]))):
+        s += ['if not found:',
+              f'  movel({P(x, y, f"zs + {DROP}")}, a=0.2, v=0.01)',
+              f'  h = guarded_axial([0, 0, -1], 0.006, {F_TOUCH}, 0.003)',
+              '  z = get_actual_tcp_pose()[2]',
+              f'  if zs - z > {DROP}:',
+              '    found = True', '    zf = z', f'    textmsg("found {i} ", get_actual_tcp_pose())',
+              '  else:', f'    textmsg("peck {i} ", z)', f'    movel({P(x, y, f"zs + {DROP}")}, a=0.2, v=0.01)', '  end',
+              'end']
+    s += ['if found:',
+          f'  d = seat_z(zf - {top:.5f} + 0.001, {F_SEAT}, 0.003)',
+          '  textmsg("seated ", get_actual_tcp_pose())',
+          f'  pull_out([0, 0, -1], {F_PULL}, {LIFT}, 0.003)',
+          '  textmsg("hold ", get_actual_tcp_pose())',
+          'else:',
+          '  textmsg("NOT FOUND")', f'  movel({P(tx, ty, f"zs + {SAFE}")}, a=0.3, v=0.02)',
+          'end',
+          'end',                     # strip contact
+          'textmsg("place_probe done")']
+    return '\n'.join(s)
+
+
+def ik_ok(ex, grip, rv, q0, pts):
+    bad = []
+    for x, y, z in pts:
+        fl = R.from_rotvec(rv).as_matrix() @ -np.array(grip['tcp_tip'][:3]) + [x, y, z]
+        ik = ex._in_active_tcp(list(fl) + rv, q0)       # the bridge IK works in the active TCP
+        r = call(ex.b, 'robot_inverse_kinematics', pose={'position': ik[:3], 'orientation': ik[3:]}, qNear=q0)
+        if 'data' not in r:                           # host IK times out (gap) where there is no solution
+            bad.append(((x, y, z), 'no IK'))
+            continue
+        q = [float(r['data'][k]) for k in J]
+        if abs(q[5] - q0[5]) > 0.8 or abs(q[2]) < 0.5:
+            bad.append(((x, y, z), 'w3/elbow', np.round(q, 2).tolist()))
+    return bad
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument('holes', nargs='*')
+    ap.add_argument('--part', default='jumper_s1')
+    ap.add_argument('--run', action='store_true')
+    ap.add_argument('--pull', action='store_true')
+    ap.add_argument('--confirm', action='store_true', help='record the holes the operator read')
+    a = ap.parse_args()
+    st = load_state()
+    if a.confirm:
+        last = st.get('last', {})
+        last['operator_holes'] = [h.lower() for h in a.holes]
+        last['hit'] = sorted(last['operator_holes']) == sorted(last.get('holes', []))
+        st['last'] = last
+        st.setdefault('history', []).append(dict(last))
+        save_state(st)
+        print(json.dumps(last, indent=1))
+        return
+    g = yaml.safe_load(GRIPPER.read_text())
+    pose = yaml.safe_load((ROOT / 'configs/breadboard/board_pose.yaml').read_text())
+    top = pose['top_z_mm'] / 1000
+    grip = {'tcp_tip': [0, 0, g['fingertip_z'], 0, 0, 0], 'collision_points': g['collision_points']}
+    ex = URExec(APP, CLIENT, grip, tcp_key='tcp_tip')
+    q0 = [call(ex.b, 'robot_get_joint_positions')['data'][k] for k in J]
+    if a.pull:
+        msgs, _ = ex.run('\n'.join(pull_lines(top)), timeout=120) if a.run else (['plan only'], None)
+        print('\n'.join(msgs))
+        if a.run:
+            st['inserted'] = None
+            save_state(st)
+        return
+    spec = casing(a.part)
+    pair = [hole(h, pose) for h in a.holes]
+    span = abs(pair[1][0] - pair[0][0]) if len(pair) == 2 else 0
+    want = spec['pin_spacing'] * PITCH
+    if len(pair) != 2 or abs(pair[1][1] - pair[0][1]) > 1e-6 or abs(span - want) > 1e-6:
+        raise SystemExit(f'{a.part}: give 2 holes in one column, {spec["pin_spacing"]} rows apart')
+    target = np.mean(pair, axis=0)
+    if min(pair[0][0], pair[1][0]) < X_MIN:
+        raise SystemExit(f'beyond the reach limit (x < {X_MIN}): rows past ~41')
+    offset = np.array(st.get('offset_mm', [0, 0])) / 1000
+    # legs side by side along the finger face = flange y: turn flange y along base x (the rows)
+    yaw = next((y for y in (-np.pi / 2, np.pi / 2) if not ik_ok(ex, grip, tool_down(y), q0, [(*target, top + 0.04)])), None)
+    if yaw is None:
+        raise SystemExit('no tool yaw reachable (wrist 3 / elbow / IK)')
+    rv = tool_down(yaw)
+    strip = (target[0], strip_y(a.holes[0][0].lower(), pose))
+    pull_first = bool(st.get('inserted'))
+    prog = program(rv, strip, target, offset, top, pull_first)
+    problems = lint(LIB + prog)
+    print(prog, '\n---\nlint:', problems or 'ok', '| part', a.part, '| yaw deg', round(np.degrees(yaw)),
+          '| target mm', np.round(target * 1000, 2).tolist(), '| offset mm', np.round(offset * 1000, 2).tolist(),
+          '| strip mm', np.round(np.array(strip) * 1000, 2).tolist(), '| pull first', st.get('inserted'))
+    bad = ik_ok(ex, grip, rv, q0, [(*strip, top + 0.04), (*strip, top), (*target, top + SAFE), (*target, top)])
+    print('IK:', 'all reachable' if not bad else bad)
+    if not a.run or problems or bad:
+        return
+    start = R.from_rotvec(rv).as_matrix() @ -np.array(grip['tcp_tip'][:3]) + [strip[0], strip[1], top + 0.04]
+    if not pull_first:      # a part in the board: the program pulls it out before any sideways move
+        ex.move_checked(list(start) + rv, v=0.2, floor=top, min_clear=0.02)
+    t0 = time.time()
+    msgs, _ = ex.run(prog, timeout=300)
+    res = {'stamp': time.strftime('%Y-%m-%dT%H:%M:%S'), 'secs': round(time.time() - t0, 1), 'part': a.part,
+           'holes': [h.lower() for h in a.holes], 'target_mm': np.round(target * 1000, 2).tolist(),
+           'offset_used_mm': np.round(offset * 1000, 2).tolist(), 'yaw_deg': round(float(np.degrees(yaw))), 'msgs': msgs}
+    zs = next((float(m.split()[1]) for m in msgs if m.startswith('strip ')), None)
+    if zs is not None:
+        res['leg_length_mm'] = round((zs - top) * 1000, 2)
+    found = next((m for m in msgs if m.startswith('found ')), None)
+    if found:
+        p = [float(v) for v in found.split('p[')[1].rstrip(']').split(',')]
+        res['found_offset_mm'] = np.round((np.array(p[:2]) - target) * 1000, 2).tolist()
+        st['offset_mm'] = res['found_offset_mm']
+        st['inserted'] = res['holes']
+    st['last'] = {k: res[k] for k in ('stamp', 'part', 'holes', 'target_mm', 'offset_used_mm') if k in res} | \
+                 {k: res.get(k) for k in ('found_offset_mm', 'leg_length_mm')}
+    save_state(st)
+    print(json.dumps({k: v for k, v in res.items() if k != 'msgs'}, indent=1))
+    print('\n'.join(m for m in msgs if not m.startswith(('pose ', 'force ', 'contact '))))
+    d = ROOT / 'data' / 'runs' / time.strftime('place_probe_%Y%m%d-%H%M%S')
+    d.mkdir(parents=True, exist_ok=True)
+    (d / 'result.json').write_text(json.dumps(res, indent=1))
+    print('saved', d)
+
+
+if __name__ == '__main__':
+    main()

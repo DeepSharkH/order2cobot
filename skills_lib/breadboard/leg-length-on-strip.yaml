@@ -1,0 +1,14 @@
+id: leg-length-on-strip
+title: measure the leg length on the hole-free strip of the target half
+applies_to:
+- insert_step
+symptom: null
+cause: leg length below the fingertip changes per grasp (6.05 / 5.09 / 5.85 mm) and the board tilts ~1 mm across
+fix: 'touch the strip between the outer hole row and the rail on the same half (a-e: far, f-j: near), right before
+  the pecks'
+status: validated
+validated_by:
+- place_probe_20261027-120419
+- place_probe_20261027-120624
+seen_in: []
+stamp: '2026-10-27'

@@ -1,0 +1,15 @@
+id: reach-limit-x
+title: x < -0.46 m is the UR3 elbow singularity at board height
+applies_to:
+- plan_step
+- layout
+symptom: null
+cause: 'the arm stretches out: elbow < 0.5 rad, IK gaps, force-mode faults (10-26); the 227 mm tool lifts the flange
+  and makes it worse'
+fix: only rows 1-~41 on this taped board (X_MIN in place_probe); the L fixture ~5 cm closer to the robot
+status: validated
+validated_by:
+- place_probe_20261027-120624 (row 36, x -0.445, fine)
+seen_in:
+- touch_locate plan (elbow 0.39 at x -0.48)
+stamp: '2026-10-27'

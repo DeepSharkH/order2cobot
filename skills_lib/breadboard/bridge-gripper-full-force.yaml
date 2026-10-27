@@ -1,0 +1,14 @@
+id: bridge-gripper-full-force
+title: the Hand-E only grips through the full-force smart skill
+applies_to:
+- grasp_step
+symptom: null
+cause: bridge smart skill = 100 % force (~185 N) / full stroke; it broke PLA fingers; the operator loads parts by
+  hand for now
+fix: 'open: gentle grip / release (partial stroke, lower force) before autonomous picking'
+status: proposed
+validated_by: []
+seen_in:
+- protoboard-wire 20261026-174057
+- operator-loaded jumper 2026-10-27
+stamp: '2026-10-27'

@@ -1,0 +1,14 @@
+id: halt-skips-tcp-reset
+title: halt in a step leaves the step TCP active
+applies_to:
+- any_step
+symptom: null
+cause: URExec appends set_tcp(flange) at the end of the step; halt ends before it, robot_get_pose / IK then work
+  in the fingertip TCP and flange-frame targets come out 23-28 cm off
+fix: never halt; abort through if/else so the step ends normally; convert IK targets with URExec._in_active_tcp
+status: validated
+validated_by:
+- place_probe_20261027-120419
+seen_in:
+- 'jumper_probe_20261027-112533 (next run: IK gap on both yaws)'
+stamp: '2026-10-27'

@@ -1,0 +1,17 @@
+id: peck-search-learns-offset
+title: peck rings find the holes; the found offset is the next search centre
+applies_to:
+- insert_step
+symptom: null
+cause: 'holes were ~1.2 mm (+0.8 x / -1.0 y) from the model at rows 3 and 35 alike: a constant shift (grasp + edge-touch
+  correction), not a pitch error'
+fix: 'pecks at 2 N: centre, rings 0.7 / 1.4 mm; legs > 1.5 mm below the strip = in; save found - target as offset_mm
+  (data/breadboard_state.json) and centre the next search there (row 35: found on the first peck)'
+status: validated
+validated_by:
+- place_probe_20261027-120419
+- place_probe_20261027-120624
+seen_in:
+- jumper_probe_20261027-113102 (ring 0.7)
+- place_probe_20261027-120419 (ring 0.7)
+stamp: '2026-10-27'
