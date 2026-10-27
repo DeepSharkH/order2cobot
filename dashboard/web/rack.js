@@ -69,8 +69,8 @@ export class RackView {
     const needed = new Set(this.need.map((n) => n.part_id));
     const wantCols = new Set(this.need.map((n) => opt[n.part_id]?.pin_spacing).filter(Boolean));     // columns a missing part fits
     let svg = `<svg viewBox="0 0 ${W} ${H}" class="rk-svg">
-      <text x="${W / 2}" y="7" class="side">BACK · SWITCH</text>
-      <text x="${W / 2}" y="${H - 1.5}" class="side front">FRONT · BREADBOARD</text>
+      <text x="${W / 2}" y="7" class="side">BACK</text>
+      <text x="${W / 2}" y="${H - 1.5}" class="side front">FRONT</text>
       <rect x="${M}" y="${top}" width="${RACK.w}" height="${RACK.d}" rx="3" class="plate"/>`;
     // column heads: the leg spacing each column takes
     for (let c = 0; c < RACK.cols; c++) {

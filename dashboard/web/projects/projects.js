@@ -328,7 +328,7 @@ function shoppingList() {
   const key = JSON.stringify(P.view.shopping);
   if (shop?.key === key && shop.id === P.id) return shop.box;
   const host = h('div', { class: 'shop-rack' }), chips = h('div', { class: 'shop-need' });
-  const box = h('div', { class: 'shop' }, h('div', { class: 'shop-head' }, 'Missing on the rack · tap a slot to fill it'), chips, host,
+  const box = h('div', { class: 'shop' }, h('div', { class: 'shop-head' }, 'Missing on the rack'), chips, host,
     h('button', { class: 'launch', disabled: true, title: 'Every part has to be on the rack first' }, playIcon(), h('span', {}, 'Build it')));
   const rack = shop?.rack && shop.id === P.id ? shop.rack : new RackView(host, { onChange: () => refresh() });
   if (rack.host !== host) { host.replaceWith(rack.host); }

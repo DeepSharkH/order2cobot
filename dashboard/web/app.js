@@ -416,7 +416,7 @@ function buildCards() {
       <p class="note" id="fuse-sum"></p>
     </div>
     <div class="card dark" id="c-rack">
-      <div class="card-head"><div><h3>Rack</h3><p>tap a slot to say what stands in it</p></div>
+      <div class="card-head"><div><h3>Rack</h3></div>
         <span class="chip quiet" id="rack-count"></span><button id="rack-turn" title="Turn the drawing 180°">↻</button></div>
       <div class="rack-view" id="rack-grid"></div>
     </div>`;
