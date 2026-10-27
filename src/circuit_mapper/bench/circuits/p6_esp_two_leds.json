@@ -1,0 +1,88 @@
+{
+  "schema_version": "1.0",
+  "circuit_id": "p6_esp_two_leds",
+  "description": "Two ESP32 GPIO-driven LED channels: J_IN1 signal through R1 (330 \u03a9) to the red LED D1, and J_IN2 signal through R2 (330 \u03a9) to the green LED D2, with both cathodes on a GND shared with J_POWER.",
+  "components": [
+    {
+      "id": "J_POWER",
+      "part_id": "power_connector_2pin"
+    },
+    {
+      "id": "J_IN1",
+      "part_id": "power_connector_2pin"
+    },
+    {
+      "id": "J_IN2",
+      "part_id": "power_connector_2pin"
+    },
+    {
+      "id": "R1",
+      "part_id": "resistor_330ohm_gap_1"
+    },
+    {
+      "id": "R2",
+      "part_id": "resistor_330ohm_gap_0"
+    },
+    {
+      "id": "D1",
+      "part_id": "led_red_gap_3"
+    },
+    {
+      "id": "D2",
+      "part_id": "led_green_gap_3"
+    }
+  ],
+  "nets": [
+    {
+      "id": "GPIO_A",
+      "pins": [
+        "J_IN1.positive",
+        "R1.1"
+      ]
+    },
+    {
+      "id": "LED1_ANODE",
+      "pins": [
+        "R1.2",
+        "D1.anode"
+      ]
+    },
+    {
+      "id": "GPIO_B",
+      "pins": [
+        "J_IN2.positive",
+        "R2.1"
+      ]
+    },
+    {
+      "id": "LED2_ANODE",
+      "pins": [
+        "R2.2",
+        "D2.anode"
+      ]
+    },
+    {
+      "id": "GND",
+      "pins": [
+        "D1.cathode",
+        "D2.cathode",
+        "J_IN1.negative",
+        "J_IN2.negative",
+        "J_POWER.negative"
+      ]
+    }
+  ],
+  "unconnected_pins": [
+    "J_POWER.positive"
+  ],
+  "assumptions": [
+    "The NodeMCU ESP32 is not in the kit and cannot be placed by the robot, so it stays off the board and is connected with hand-wired jumpers.",
+    "J_IN1 and J_IN2 are connection points for two ESP32 GPIO outputs (3.3 V logic). Their negative pins are tied to the shared GND.",
+    "J_POWER is the connection point for the ESP's 3V3/GND supply. Its negative pin is on the shared GND. Its positive pin (3V3) connects to nothing on the board and is only a hand-wiring point for the ESP's 3V3 pin.",
+    "Supply is a regulated 3.3 V, or the ESP is powered over USB. Never feed 5 V into the ESP's 3V3 pin.",
+    "Uses both 330 \u03a9 parts in the kit: resistor_330ohm_gap_1 for R1 and resistor_330ohm_gap_0 for R2. That gives roughly 3\u20134 mA per LED at 3.3 V.",
+    "Each LED's anode faces its resistor and GPIO (higher potential), and its cathode goes to GND. The LED is on when the GPIO is driven HIGH.",
+    "The e-ink screen is not part of this circuit."
+  ],
+  "unresolved_questions": []
+}
