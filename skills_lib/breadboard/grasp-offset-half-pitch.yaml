@@ -21,6 +21,8 @@ validated_by:
 - 'place_probe_20261027-124151 (LED led_s2, grasp +1.58 mm, first peck, pair_check ok, operator: j20/j22)'
 - 'place_probe_20261027-125131 (LED a25/a27, far half, re-calibrated after a pull: +1.46 mm, first peck, operator
   confirmed)'
+- 'place_probe_20261027-130909 (LED led_s4, new grasp: legs measured first, +0.19 mm, tilt residual -0.02 mm, first
+  peck, operator confirmed)'
 seen_in:
 - place_probe_20261027-121451 (LED led_s2, j19/j21 for j20/j22)
 - 'place_probe_20261027-123645 (calibration against the MODEL end face: 0.85 mm, one hole off again, flagged by
