@@ -1,0 +1,56 @@
+{
+  "schema_version": "1.0",
+  "circuit_id": "rc_low_pass_filter",
+  "description": "Passive first-order RC low-pass filter: the signal goes from J_IN through R1 (1 k\u03a9) to J_OUT, and C1 (100 nF) connects the output to ground (fc \u2248 1.59 kHz).",
+  "components": [
+    {
+      "id": "J_IN",
+      "part_id": "power_connector_2pin"
+    },
+    {
+      "id": "R1",
+      "part_id": "resistor_1kohm_gap_0"
+    },
+    {
+      "id": "C1",
+      "part_id": "capacitor_ceramic_100nf"
+    },
+    {
+      "id": "J_OUT",
+      "part_id": "power_connector_2pin"
+    }
+  ],
+  "nets": [
+    {
+      "id": "INPUT",
+      "pins": [
+        "J_IN.positive",
+        "R1.1"
+      ]
+    },
+    {
+      "id": "OUTPUT",
+      "pins": [
+        "R1.2",
+        "C1.1",
+        "J_OUT.positive"
+      ]
+    },
+    {
+      "id": "GND",
+      "pins": [
+        "J_IN.negative",
+        "C1.2",
+        "J_OUT.negative"
+      ]
+    }
+  ],
+  "unconnected_pins": [],
+  "assumptions": [
+    "Passive filter: no supply connector is needed, and J_IN and J_OUT share a common ground.",
+    "J_IN (positive = signal, negative = ground) and J_OUT (positive = filtered output, negative = ground) are hand-wired connection points.",
+    "Cutoff frequency fc = 1/(2\u03c0\u00b71 k\u03a9\u00b7100 nF) \u2248 1.59 kHz, assuming the output load is high-impedance (well above 1 k\u03a9).",
+    "The default _gap_0 resistor variant is used; the ceramic capacitor is unpolarised, so its orientation does not matter."
+  ],
+  "unresolved_questions": []
+}

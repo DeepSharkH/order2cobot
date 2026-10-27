@@ -1,5 +1,8 @@
 """Conservative 2D casing and finger envelopes; dimensions are millimeters."""
 
+from collections import defaultdict
+from graphlib import CycleError, TopologicalSorter
+from heapq import heappop, heappush
 from itertools import combinations
 from math import isclose
 
@@ -94,27 +97,122 @@ def relation(a, b, margin):
     return "a_first" if a_first else "b_first" if b_first else "independent"
 
 
-def constrain_assembly(model, selected, orders, known, margin):
-    """Add exact conditional cuts for collisions found in a candidate solution.
+def pose(shape):
+    """The boxes around the centre, and the centre, in µm: all that relation() reads.
 
-    Checking only selected placements avoids millions of unused pair constraints.
-    The solver is rerun after new cuts; no unverified solution is returned.
+    A casing that is symmetric under a half turn has one kind at 0 and 180 degrees.
     """
-    changed = False
-    for a, b in combinations(selected, 2):
-        key = (a["chosen"].index, b["chosen"].index)
-        rule = relation(a["shape"], b["shape"], margin)
-        if rule == "independent" or key in known:
+    x, y = (round(v * 1000) for v in shape["center_mm"])
+
+    def around(box):
+        return tuple(round(v * 1000) - c for v, c in zip(box, (x, y, x, y), strict=True))
+
+    return (around(shape["body"]), tuple(sorted(map(around, shape["fingers"])))), (x, y)
+
+
+def no_fit_cliques(candidates, parts, margin, rules):
+    """Yield cliques of candidates that relation() forbids together.
+
+    Owners below parts are parts that pick exactly one candidate. For each candidate x and
+    each such part B after x's own (any part, for a wire): x and every candidate of B that
+    x forbids. B picks one, so this is a clique. Wire-wire pairs are left to the lazy cuts.
+    relation() reads only boxes, so rules caches it by both kinds and the centre offset.
+    """
+    poses = [pose(c["shape"]) for c in candidates]
+    cells = defaultdict(lambda: defaultdict(list))  # (part, kind): centre: literals
+    kinds, xs, ys = defaultdict(set), defaultdict(set), defaultdict(set)
+    for c, (kind, (x, y)) in zip(candidates, poses, strict=True):
+        xs[kind].add(x)
+        ys[kind].add(y)
+        if c["owner"] < parts:
+            cells[c["owner"], kind][x, y].append(c["chosen"])
+            kinds[c["owner"]].add(kind)
+    # Farthest box edge from the centre, per kind: farther apart, nothing overlaps.
+    reach = {
+        k: [max(abs(v) for box in (k[0], *k[1]) for v in box[axis::2]) for axis in (0, 1)]
+        for k in xs
+    }
+    offsets = {}
+
+    def forbidden(ka, kb):
+        """Centre offsets from ka to kb that relation() forbids (scale-free, so in µm)."""
+        if (ka, kb) not in offsets:
+            far = [reach[ka][axis] + reach[kb][axis] + margin * 1000 for axis in (0, 1)]
+            dxs = {xb - xa for xa in xs[ka] for xb in xs[kb] if abs(xb - xa) < far[0]}
+            dys = {yb - ya for ya in ys[ka] for yb in ys[kb] if abs(yb - ya) < far[1]}
+            offsets[ka, kb] = []
+            for dx in dxs:
+                for dy in dys:
+                    key = ka, kb, dx, dy
+                    if key not in rules:
+                        rules[key] = relation(shift(ka, 0, 0), shift(kb, dx, dy), margin * 1000)
+                    if rules[key] == "forbidden":
+                        offsets[ka, kb].append((dx, dy))
+        return offsets[ka, kb]
+
+    for c, (ka, (x, y)) in zip(candidates, poses, strict=True):
+        own = c["owner"]
+        for part in range(own + 1 if own < parts else 0, parts):
+            clique = [c["chosen"]]
+            for kb in kinds[part]:
+                cell = cells[part, kb]
+                for dx, dy in forbidden(ka, kb):
+                    clique += cell.get((x + dx, y + dy), ())
+            if len(clique) > 1:
+                yield clique
+
+
+def shift(kind, dx, dy):
+    """A shape of this kind centred at dx, dy (µm)."""
+    body, fingers = kind
+
+    def move(box):
+        return box[0] + dx, box[1] + dy, box[2] + dx, box[3] + dy
+
+    return {"body": move(body), "fingers": [move(f) for f in fingers]}
+
+
+def constrain_assembly(model, selected, known, margin, priority=None):
+    """Add exact cuts for collisions found in a candidate solution, or return its order.
+
+    Checking only selected placements avoids millions of unused pair constraints. A
+    forbidden pair is cut. Otherwise "A's fingers hit B" puts A before B, and the steps
+    are sorted topologically, lowest priority first among the ready ones. A precedence
+    cycle (3 or more steps: a 2-cycle is forbidden) gets one nogood. With any cut this
+    returns None and the solver is rerun; no unverified solution is returned.
+    """
+    sorter = TopologicalSorter({i: () for i in range(len(selected))})
+    cuts = []
+    for i, j in combinations(range(len(selected)), 2):
+        rule = relation(selected[i]["shape"], selected[j]["shape"], margin)
+        if rule == "forbidden":
+            cuts.append((i, j))
+        elif rule != "independent":
+            sorter.add(*((j, i) if rule == "a_first" else (i, j)))  # (step, its predecessor)
+    try:
+        sorter.prepare()
+    except CycleError as error:
+        cuts.append(error.args[1][1:])  # The cycle lists its first step twice.
+    for steps in cuts:
+        literals = [selected[i]["chosen"] for i in steps]
+        key = tuple(sorted(x.index for x in literals))
+        if key in known:
             continue
         known.add(key)
-        changed = True
-        both = [a["chosen"], b["chosen"]]
-        if rule == "forbidden":
-            model.add(a["chosen"] + b["chosen"] <= 1)
+        if len(literals) == 2:
+            model.add(literals[0] + literals[1] <= 1)
         else:
-            before, after = (a, b) if rule == "a_first" else (b, a)
-            model.add(orders[before["owner"]] < orders[after["owner"]]).only_enforce_if(both)
-    return changed
+            model.add_bool_or([~x for x in literals])
+    if cuts:
+        return None
+    order, ready = [], []
+    while sorter.is_active():
+        for i in sorter.get_ready():
+            heappush(ready, (priority(selected[i]) if priority else 0, i))
+        _, i = heappop(ready)
+        order.append(selected[i])
+        sorter.done(i)
+    return order
 
 
 def verify_assembly(steps, margin):
