@@ -1,9 +1,13 @@
 """Register a CAD model in the robot base frame from the cameras (no robot motion).
 
-    cloud:  fixed D435 depth -> table plane -> the object's top face at its CAD height ->
-            min-area rectangle (centre, yaw mod 180 deg) -> disambiguate the 180 deg ->
-            refine x / y / yaw on the colour image: project the CAD edges and pull them
-            onto the image edges (distance transform). ~1 mm: a first guess, not a target.
+    plank:  the wooden plate everything sits on, measured once from all three cameras'
+            depth against the checkerboard each of them sees (data/cad/plank.yaml). It
+            fixes z / roll / pitch of every object: only x / y / yaw are left to fit.
+    cloud:  fixed D435 depth -> the object's top face above the plank -> min-area
+            rectangle (centre, yaw mod 180 deg) -> disambiguate the 180 deg -> refine
+            x / y / yaw on the colour images (fixed D435 + the gripper cam when it sees the
+            object): project the CAD edges and pull them onto the image edges (distance
+            transform). ~1 mm: a first guess, not a target.
     survey: the gripper-camera port survey (porttest/port_survey.py -> data/ports.yaml,
             rays agree to ~0.1 mm): fit the 8 CAD port centres with yaw/tilt/translation
             and the row pitch free.
@@ -23,9 +27,11 @@ from cadguide.model import ROOT, apply, pose, yaw_of
 
 VISION = yaml.safe_load((ROOT / 'configs' / 'vision.yaml').read_text())
 DASH = VISION['dashboard_url'].rstrip('/')
+BOARD = yaml.safe_load((ROOT / 'configs' / 'calib_dashboard.yaml').read_text())['board']
+PLANK_FILE = ROOT / 'data' / 'cad' / 'plank.yaml'
 # rough work areas in base [m] (x, y): where to look for each object on the table
 AREA = {'ls108g': {'x': [-0.46, -0.16], 'y': [0.06, 0.30]},
-        'breadboard': {'x': [-0.48, -0.16], 'y': [-0.12, 0.12]}}
+        'breadboard': {'x': [-0.60, -0.36], 'y': [-0.14, 0.04]}}   # glued down since 2026-10-26
 # the switch's port face points toward the robot base (-y in base), see rj45-insert skill
 FACE_TOWARD = np.array([0.0, -1.0])
 
@@ -54,12 +60,46 @@ def capture(cam=0, n_depth=5):
     return color, depth
 
 
+def world_base():
+    """T_world_base from the dashboard's scene calibration (upright base, x / y / yaw / z)."""
+    b = yaml.safe_load((ROOT / VISION['scene_file']).read_text())['base']
+    return pose(b['x'], b['y'], b.get('z', 0.0), np.radians(b['yaw_deg']))
+
+
 def camera_in_base():
     """(T_base_cam, K) of the fixed camera from the dashboard's scene calibration."""
     sc = yaml.safe_load((ROOT / VISION['scene_file']).read_text())
-    b = sc['base']
-    T_world_base = pose(b['x'], b['y'], b.get('z', 0.0), np.radians(b['yaw_deg']))
-    return np.linalg.inv(T_world_base) @ np.array(sc['T_world_fcam']), np.array(sc['fcam']['K'])
+    return np.linalg.inv(world_base()) @ np.array(sc['T_world_fcam']), np.array(sc['fcam']['K'])
+
+
+def dash_state(timeout=10):
+    """One state message of the dashboard websocket: live camera poses, K, robot q."""
+    import asyncio
+    import json
+    import aiohttp
+
+    async def get():
+        async with aiohttp.ClientSession() as s:
+            async with s.ws_connect(f'{DASH}/ws', max_msg_size=0) as ws:
+                async for m in ws:
+                    if m.type == aiohttp.WSMsgType.TEXT and (d := json.loads(m.data)).get('type') == 'state':
+                        return d
+    return asyncio.run(asyncio.wait_for(get(), timeout))
+
+
+def gripper_view():
+    """(colour undistorted, T_base_cam, K) of the gripper cam, or None while the arm moves."""
+    st0 = dash_state()
+    color = cv2.imdecode(np.frombuffer(_get('/api/frame/1'), np.uint8), cv2.IMREAD_COLOR)
+    st1 = dash_state()
+    if np.abs(np.subtract(st0['robot']['q'], st1['robot']['q'])).max() > 1e-3:
+        return None
+    c = st1['cams'][1]
+    if c.get('T_world_cam') is None or c.get('K') is None:
+        return None
+    K = np.array(c['K'])
+    color = cv2.undistort(color, K, np.array(c.get('dist') or [0.0] * 5))
+    return color, np.linalg.inv(world_base()) @ np.array(c['T_world_cam']), K
 
 
 def cloud(depth, K, T):
@@ -170,6 +210,129 @@ def top_face_rect(model, P, c, n, area):
     return np.array([cx, cy]), yaw, np.array([w, d]), float(np.median(Q[:, 2])), len(Q), n_top
 
 
+# ── the plank ────────────────────────────────────────────────────────────────
+
+def _plane_z(P, tol=0.0015, seed=0):
+    """Dominant near-horizontal plane z = a x + b y + c: RANSAC, then least squares on the
+    inliers. -> (a, b, c), inlier mask, rms."""
+    rng = np.random.default_rng(seed)
+    best, best_n = None, 0
+    for _ in range(800):
+        a, b, c = P[rng.choice(len(P), 3, replace=False)]
+        n = np.cross(b - a, c - a)
+        if np.linalg.norm(n) < 1e-12:
+            continue
+        n = n / np.linalg.norm(n) * np.sign(n[2] or 1)
+        if n[2] < np.cos(np.radians(8)):
+            continue
+        k = int((np.abs((P - a) @ n) < tol).sum())
+        if k > best_n:
+            best, best_n = (a, n), k
+    a, n = best
+    inl = np.abs((P - a) @ n) < tol
+    A = np.c_[P[:, 0], P[:, 1], np.ones(len(P))]
+    for _ in range(3):
+        coef, *_ = np.linalg.lstsq(A[inl], P[inl, 2], rcond=None)
+        r = P[:, 2] - A @ coef
+        inl = np.abs(r) < tol
+    return coef, inl, float(np.std(r[inl]))
+
+
+def _world_cloud(st, i, n=7):
+    """Camera i's depth (median of n frames) as world points, from the dashboard."""
+    c = st['cams'][i]
+    stack = []
+    for _ in range(n):
+        stack.append(np.load(io.BytesIO(_get(f'/api/depth/{i}'))))
+        time.sleep(0.15)
+    D = np.stack(stack).astype(np.float32)
+    D[D == 0] = np.nan
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore', RuntimeWarning)
+        d = np.nanmedian(D, 0)
+    v, u = np.nonzero(np.isfinite(d))
+    if c.get('K'):
+        K, z = np.array(c['K']), d[v, u]
+        P = np.c_[(u - K[0, 2]) * z / K[0, 0], (v - K[1, 2]) * z / K[1, 1], z]
+    else:   # orthographic heightmap (SICK T Mini)
+        (ox, oy, _), (px, py, _) = c['ortho']['origin'], c['ortho']['pixel']
+        P = np.c_[ox + u * px, oy + v * py, d[v, u]]
+    T = np.array(c['T_world_cam'])
+    return P @ T[:3, :3].T + T[:3, 3]
+
+
+def measure_plank(cams=(0, 1, 2)):
+    """The plank's plane in the world (checkerboard frame, z up, z = 0 on the board top).
+
+    Every depth camera reads heights with its own offset (D435 ~+2.5 mm, gripper cam
+    ~+3.3 mm over the board PnP), so each camera measures the plank *against the board top
+    it sees itself*: the offset cancels. The board sits on the plank, so the plank is the
+    board plane minus that measured thickness (weighted by points / spread on the plate's
+    white margin: the gripper cam dominates, the T Mini's ToF reads the white plate ~3 mm
+    high against the wood); its slope is the per-axis median of the cameras' plank fits."""
+    st = dash_state()
+    hx, hy = (BOARD['cols'] + 1) * BOARD['square'] / 2, (BOARD['rows'] + 1) * BOARD['square'] / 2
+    t0 = BOARD.get('thickness', 0.004)
+    per = {}
+    for i in cams:
+        c = st['cams'][i]
+        if not c.get('ok') or c.get('T_world_cam') is None:
+            continue
+        P = _world_cloud(st, i)
+        # the board top on the plate's white margin around the pattern: ToF and stereo read
+        # the black squares at another height than white, the plank is white-ish too
+        ax, ay = np.abs(P[:, 0]), np.abs(P[:, 1])
+        on_board = (ax < hx + 0.011) & (ay < hy + 0.011) & ((ax > hx + 0.003) | (ay > hy + 0.003)) & (np.abs(P[:, 2]) < 0.01)
+        # the plate reaches ~4 cm past the pattern (logo tab): keep it out of the plank
+        off = ~((np.abs(P[:, 0]) < hx + 0.05) & (np.abs(P[:, 1]) < hy + 0.07))
+        near = off & (np.abs(P[:, 0]) < 0.8) & (np.abs(P[:, 1]) < 0.8) & (np.abs(P[:, 2] + t0) < 0.012)
+        if on_board.sum() < 100 or near.sum() < 2000:
+            continue
+        (a, b, c0), inl, rms = _plane_z(P[near])
+        # plate height over this camera's own plank, at each margin point (offsets cancel);
+        # plank points that fall in the ring sit near 0 and are cut at half the thickness
+        h = P[on_board, 2] - (a * P[on_board, 0] + b * P[on_board, 1] + c0)
+        h = h[(h > t0 / 2) & (h < 3 * t0)]
+        if len(h) < 50:
+            continue
+        th, rms_b = float(np.median(h)), float(1.4826 * np.median(np.abs(h - np.median(h))))
+        Q = P[near][inl]
+        a, b, c0 = (float(v) for v in (a, b, c0))
+        cb = c0 + th
+        per[c['name']] = {'slope_mm_per_m': [round(a * 1e3, 3), round(b * 1e3, 3)], 'z0_mm': round(c0 * 1e3, 2),
+                          'board_z0_mm': round(cb * 1e3, 2), 'thickness_mm': round((cb - c0) * 1e3, 2),
+                          'rms_mm': round(rms * 1e3, 2), 'board_rms_mm': round(rms_b * 1e3, 2), 'points': int(inl.sum()),
+                          'margin_points': len(h),
+                          'extent_m': [[round(float(v), 3) for v in np.percentile(Q[:, 0], [1, 99])],
+                                       [round(float(v), 3) for v in np.percentile(Q[:, 1], [1, 99])]]}
+    if not per:
+        raise RegistrationFailed('plank: no camera sees both the board and the plank')
+    w = np.array([v['margin_points'] / v['board_rms_mm'] ** 2 for v in per.values()])
+    t = float(np.sum(w * [v['thickness_mm'] for v in per.values()]) / w.sum()) / 1e3
+    # the D435's plank slope jumps by ~0.3 deg between captures: median per axis
+    a, b = (float(v) for v in np.median([v['slope_mm_per_m'] for v in per.values()], axis=0) / 1e3)
+    out = {'stamp': time.strftime('%Y-%m-%dT%H:%M:%S'), 'frame': 'world (checkerboard, z up)',
+           'plane': {'a': float(a), 'b': float(b), 'c': -t, 'rule': 'z = a x + b y + c [m]'},
+           'thickness_mm': round(t * 1e3, 2), 'tilt_deg': round(float(np.degrees(np.arctan(np.hypot(a, b)))), 3),
+           'cameras': per}
+    PLANK_FILE.parent.mkdir(parents=True, exist_ok=True)
+    PLANK_FILE.write_text(yaml.safe_dump(out, sort_keys=False))
+    return out
+
+
+def plank_in_base():
+    """(point, upward unit normal) of the plank in the base frame. Before the first
+    measure_plank: the board plane lowered by the configured plate thickness."""
+    if PLANK_FILE.exists():
+        pl = yaml.safe_load(PLANK_FILE.read_text())['plane']
+        a, b, c = pl['a'], pl['b'], pl['c']
+    else:
+        a, b, c = 0.0, 0.0, -BOARD.get('thickness', 0.004)
+    n = np.array([-a, -b, 1.0]) / np.linalg.norm([a, b, 1.0])
+    Tbw = np.linalg.inv(world_base())
+    return Tbw[:3, :3] @ [0.0, 0.0, c] + Tbw[:3, 3], Tbw[:3, :3] @ n
+
+
 def rail_colour_score(model, T, color, Tc, K):
     """Breadboard 180 deg check: red (+) lines must be red, blue (-) lines blue."""
     rl = model.spec['rail_lines']
@@ -203,13 +366,15 @@ def edge_points(model):
     return np.vstack(pts)
 
 
-def refine_on_image(model, T, color, Tc, K, search_mm=6.0):
-    """Shift / turn the model in its table plane until its edges sit on image edges."""
-    g = cv2.GaussianBlur(cv2.cvtColor(color, cv2.COLOR_BGR2GRAY), (3, 3), 0)
-    edges = cv2.Canny(g, 30, 90)
-    dt = cv2.distanceTransform(255 - edges, cv2.DIST_L2, 3)
+def refine_on_image(model, T, views, search_mm=10.0):
+    """Shift / turn the model in its plank plane until its edges sit on the image edges of
+    every view [(name, colour, T_base_cam, K)] at once: 3 DOF (x, y, yaw)."""
     E = edge_points(model)
     n = T[:3, 2]
+    dts = []
+    for name, color, Tc, K in views:
+        g = cv2.GaussianBlur(cv2.cvtColor(color, cv2.COLOR_BGR2GRAY), (3, 3), 0)
+        dts.append((name, cv2.distanceTransform(255 - cv2.Canny(g, 30, 90), cv2.DIST_L2, 3), Tc, K))
 
     def moved(x):
         dx, dy, dyaw = x[0] / 1000, x[1] / 1000, np.radians(x[2])
@@ -220,24 +385,29 @@ def refine_on_image(model, T, color, Tc, K, search_mm=6.0):
         T2[:3, 3] = T[:3, 3] + [dx, dy, 0]
         return T2
 
-    def cost(x, trunc=8.0):
+    def view_cost(x, dt, Tc, K, trunc=8.0):
         uv = project(apply(moved(x), [1, 1], E), Tc, K)
         ok = (uv[:, 0] >= 0) & (uv[:, 1] >= 0) & (uv[:, 0] < dt.shape[1] - 1) & (uv[:, 1] < dt.shape[0] - 1)
         d = cv2.remap(dt, uv[ok, 0].astype(np.float32).reshape(-1, 1), uv[ok, 1].astype(np.float32).reshape(-1, 1),
                       cv2.INTER_LINEAR).ravel()
-        return float(np.mean(np.minimum(d, trunc))) if ok.mean() > 0.8 else 99.0
+        return (float(np.mean(np.minimum(d, trunc))) if ok.mean() > 0.8 else 99.0), d
+
+    def cost(x):
+        return float(np.mean([view_cost(x, dt, Tc, K)[0] for _, dt, Tc, K in dts]))
 
     starts = [[x, y, 0.0] for x in (-search_mm / 2, 0, search_mm / 2) for y in (-search_mm / 2, 0, search_mm / 2)]
     best = min((minimize(cost, s, method='Nelder-Mead', options={'xatol': 0.02, 'fatol': 1e-3,
                                                                  'initial_simplex': np.array(s) + np.array(
                                                                      [[0, 0, 0], [1.5, 0, 0], [0, 1.5, 0], [0, 0, 1.0]])})
                 for s in starts), key=lambda r: r.fun)
-    uv = project(apply(moved(best.x), [1, 1], E), Tc, K)
-    ok = (uv[:, 0] >= 0) & (uv[:, 1] >= 0) & (uv[:, 0] < dt.shape[1] - 1) & (uv[:, 1] < dt.shape[0] - 1)
-    d = dt[uv[ok, 1].astype(int), uv[ok, 0].astype(int)]
+    per = {}
+    for name, dt, Tc, K in dts:
+        c, d = view_cost(best.x, dt, Tc, K)
+        per[name] = {'edge_cost_px': round(c, 2), 'edge_inliers': round(float(np.mean(d < 2.0)), 3)}
     return moved(best.x), {'shift_mm': [round(float(v), 2) for v in best.x[:2]],
                            'turn_deg': round(float(best.x[2]), 3), 'edge_cost_px': round(best.fun, 2),
-                           'edge_inliers': round(float(np.mean(d < 2.0)), 3)}
+                           'edge_inliers': round(float(np.mean([v['edge_inliers'] for v in per.values()])), 3),
+                           'views': per}
 
 
 def overlay(model, T, scale, color, Tc, K, path):
@@ -258,17 +428,16 @@ def from_cloud(model, out_dir=None):
     Tc, K = camera_in_base()
     P, _ = cloud(depth, K, Tc)
     area = AREA[model.name]
-    near = (P[:, 0] > area['x'][0] - 0.1) & (P[:, 0] < area['x'][1] + 0.1) & \
-           (P[:, 1] > area['y'][0] - 0.1) & (P[:, 1] < area['y'][1] + 0.1)
-    c, n = table_plane(P[near])
-    ctr, yaw, size, z_top, npts, n = top_face_rect(model, P, c, n, area)
+    c, n = plank_in_base()
+    ctr, yaw, size, _, npts, _ = top_face_rect(model, P, c, n, area)
     size_err = (size - model.size[:2]) * 1000
+    # z / roll / pitch from the plank: the object stands on it
+    foot = np.array([ctr[0], ctr[1], c[2] - (n[0] * (ctr[0] - c[0]) + n[1] * (ctr[1] - c[1])) / n[2]])
     hyps = []
     for k in (0, 1):
         T = np.eye(4)
         T[:3, :3] = tilt(n) @ pose(0, 0, 0, yaw + k * np.pi)[:3, :3]
-        top = np.array([ctr[0], ctr[1], z_top])
-        T[:3, 3] = top - T[:3, :3] @ [0, 0, model.top_z()]
+        T[:3, 3] = foot - T[:3, :3] @ [0, 0, model.bottom_z()]
         hyps.append(T)
     if model.kind == 'switch':
         face = [float((T[:3, :3] @ [0, -1, 0])[:2] @ FACE_TOWARD) for T in hyps]
@@ -277,19 +446,30 @@ def from_cloud(model, out_dir=None):
         sc = [rail_colour_score(model, T, color, Tc, K) for T in hyps]
         T, why = hyps[int(np.argmax(sc))], f'rail colours (red-blue score {max(sc):.0f} vs {min(sc):.0f})'
     T_depth = T
-    T, img = refine_on_image(model, T, color, Tc, K)
+    views = [('fixed D435', color, Tc, K)]
+    g = gripper_view()
+    if g is not None and _in_view(model, T, *g):
+        views.append(('gripper cam', *g))
+    T, img = refine_on_image(model, T, views)
     d_img = (T[:3, 3] - T_depth[:3, 3]) * 1000
-    info = {'method': 'cloud+image (fixed D435)', 'points': npts,
+    info = {'method': 'plank + D435 top face + 3-DOF image fit (' + ', '.join(v[0] for v in views) + ')',
+            'points': npts, 'plank_normal_base': [round(float(v), 5) for v in n],
             'rect_size_error_mm': [round(float(v), 1) for v in size_err],
             'orientation': why, 'image': img,
             'depth_vs_image_mm': [round(float(v), 2) for v in d_img[:2]],
-            'table_normal': [round(float(v), 4) for v in n],
             'yaw_deg': round(np.degrees(yaw_of(T)), 2)}
     if out_dir:
         out_dir.mkdir(parents=True, exist_ok=True)
-        overlay(model, T, [1, 1], color, Tc, K, out_dir / f'{model.name}_overlay.png')
-        cv2.imwrite(str(out_dir / f'{model.name}_color.png'), color)
+        for name, col, Tv, Kv in views:
+            tag = '' if name == 'fixed D435' else '_gripper'
+            overlay(model, T, [1, 1], col, Tv, Kv, out_dir / f'{model.name}_overlay{tag}.png')
+            cv2.imwrite(str(out_dir / f'{model.name}_color{tag}.png'), col)
     return T, np.array([1.0, 1.0]), info
+
+
+def _in_view(model, T, color, Tc, K):
+    uv = project(apply(T, [1, 1], edge_points(model)), Tc, K)
+    return bool(np.mean((uv[:, 0] >= 0) & (uv[:, 1] >= 0) & (uv[:, 0] < color.shape[1]) & (uv[:, 1] < color.shape[0])) > 0.95)
 
 
 def from_survey(model, path):
@@ -340,3 +520,18 @@ def from_touch(model, face_y, top_z, left_x, yaw=None):
             'touch_mm': [round(v * 1000, 2) for v in (face_y, top_z, left_x)],
             'yaw_deg': round(np.degrees(yaw), 3)}
     return T, np.array([1.0, 1.0]), info
+
+
+def from_manual(model, x, y, yaw, z=None):
+    """Hand-set pose in base: the object origin at x / y [m], turned yaw [rad], standing on
+    the plank (z / roll / pitch from it, as from_cloud places the top-face fit), or with its
+    origin at height z [m] (still tilted like the plank)."""
+    c, n = plank_in_base()
+    T = np.eye(4)
+    T[:3, :3] = tilt(n) @ pose(0, 0, 0, yaw)[:3, :3]
+    b = T[:3, :3] @ [0, 0, model.bottom_z()]          # origin -> the centre of the part's bottom
+    if z is None:
+        foot = np.array([x, y]) + b[:2]
+        z = c[2] - (n[0] * (foot[0] - c[0]) + n[1] * (foot[1] - c[1])) / n[2] - b[2]
+    T[:3, 3] = x, y, z
+    return T

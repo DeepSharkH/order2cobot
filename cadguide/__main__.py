@@ -1,13 +1,15 @@
 """CAD guidance for insertion tasks: register -> predict -> insert -> anchor -> predict ...
 
     python -m cadguide ensure   [obj ...] [--refresh] [--compact]   # THE tool: targets in base mm
+    python -m cadguide plank                                       # measure the plank plane (all cameras)
     python -m cadguide status   [obj]
     python -m cadguide register obj [--survey data/ports.yaml]     # cameras only, no motion
+    python -m cadguide register obj --manual X Y YAW_DEG [--z Z]   # by hand (or: dashboard Edit)
     python -m cadguide predict  obj FEATURE [--json]               # e.g. port:5, hole:c12
     python -m cadguide anchor   obj FEATURE X Y Z [--run RUN] [--note TEXT]   # seated, metres, tip TCP
     python -m cadguide reset    obj [--anchors]                    # drop fit (and anchors)
 
-obj: ls108g | breadboard. The table plane fixes z / roll / pitch; anchors solve the
+obj: ls108g | breadboard. The plank (data/cad/plank.yaml) fixes z / roll / pitch; anchors solve the
 in-plane x / y / yaw and the pitch: 6 DOF from the cameras at ~1 mm becomes 3 DOF + pitch
 from seated insertions at ~0.2 mm. See .claude/skills/cad-guidance/SKILL.md.
 """
@@ -27,7 +29,9 @@ MOVE_TOL = {'switch': 1.0e-3, 'breadboard': 0.6e-3}
 # prior sigmas by registration method
 SIGMA = {'cloud': dict(sigma_t=2.0e-3, sigma_yaw=np.radians(1.0), sigma_scale=[0.015, 0.015]),
          'survey': dict(sigma_t=1.0e-3, sigma_yaw=np.radians(0.3), sigma_scale=[0.04, 0.04]),
-         'touch': dict(sigma_t=0.7e-3, sigma_yaw=np.radians(1.0), sigma_scale=[0.04, 0.04])}
+         'touch': dict(sigma_t=0.7e-3, sigma_yaw=np.radians(1.0), sigma_scale=[0.04, 0.04]),
+         # placed by hand: its box lined up with the part in the camera feeds (dashboard editor) or typed in
+         'manual': dict(sigma_t=1.5e-3, sigma_yaw=np.radians(0.5), sigma_scale=[0.015, 0.015])}
 
 
 def used(s):
@@ -90,10 +94,42 @@ def cmd_status(args):
                   f"yaw {f['yaw_deg']} deg, pitch {f['pitch_mm']} mm")
 
 
+def register_manual(name, T, scale=None, method='manual'):
+    """Save a hand-placed T_base_obj (+ pitch scales; None keeps the current ones) as the
+    registration. Like any new registration it starts a new pose history: the anchors are
+    dropped, and the pitch they learned is kept as long as the scale was left as it was."""
+    model, s = CadModel(name), state.load(name)
+    old = state.current(s)
+    T = np.asarray(T, float)
+    scale = np.asarray(scale if scale is not None else old[1] if old else [1.0, 1.0], float)
+    reg = {'T': T, 'scale': scale, 'stamp': state.now(), 'kind': 'manual', **SIGMA['manual'],
+           'method': method, 'yaw_deg': round(np.degrees(yaw_of(T)), 3)}
+    f = s.get('fit')
+    if f and f['anchors'] >= 2 and np.allclose(scale, f['scale'], atol=1e-6):
+        reg['sigma_scale'], reg['pitch_from_anchors'] = [0.003, 0.003], f['pitch_mm']
+    if old is not None:
+        reg['moved_vs_previous_mm'] = [round(float(v), 2) for v in (T[:3, 3] - old[0][:3, 3]) * 1000]
+    dropped = used(s)
+    for a in dropped:
+        a['used'], a['dropped'] = False, f"superseded by the manual registration {reg['stamp']}"
+    s['registration'] = reg
+    refit(model, s)
+    state.save(name, s)
+    return {'object': name, 'origin_mm': (T[:3, 3] * 1000).round(2).tolist(), 'yaw_deg': reg['yaw_deg'],
+            'scale': scale.round(6).tolist(), 'anchors_dropped': len(dropped),
+            'moved_vs_previous_mm': reg.get('moved_vs_previous_mm')}
+
+
 def cmd_register(args):
     from cadguide import register as R
     model = CadModel(args.obj)
     out = ROOT / 'results' / f"{time.strftime('%Y%m%d-%H%M%S')}_cad_register"
+    if args.manual:
+        x, y, yaw = args.manual
+        T = R.from_manual(model, x, y, np.radians(yaw), z=args.z)
+        print('GATE PASS: manual registration (hand-set pose' + (', on the plank)' if args.z is None else ')'))
+        print(json.dumps(register_manual(args.obj, T, method='manual (cli' + (', on the plank)' if args.z is None else ')'))))
+        return
     if args.touch:
         prev = state.current(state.load(args.obj))
         T, scale, info = R.from_touch(model, *args.touch, yaw=yaw_of(prev[0]) if prev else None)
@@ -278,6 +314,17 @@ def cmd_ensure(args):
     print(json.dumps(res, separators=(',', ':')) if args.compact else json.dumps(res, indent=1))
 
 
+def cmd_plank(args):
+    from cadguide import register as R
+    out = R.measure_plank()
+    for name, v in out['cameras'].items():
+        print(f"   {name:<22} thickness {v['thickness_mm']:5.2f} mm (board {v['board_z0_mm']:+.2f}, plank {v['z0_mm']:+.2f}, "
+              f"board rms {v['board_rms_mm']:.2f})  slope {v['slope_mm_per_m']} mm/m  plank rms {v['rms_mm']:.2f} mm, {v['points']} pts")
+    c, n = R.plank_in_base()
+    print(f"plank: {out['thickness_mm']} mm below the board top, tilt {out['tilt_deg']} deg (world); "
+          f"base frame: z {c[2] * 1000:.2f} mm at ({c[0] * 1000:.0f}, {c[1] * 1000:.0f}), normal {np.round(n, 5).tolist()} -> {R.PLANK_FILE}")
+
+
 def cmd_reset(args):
     s = state.load(args.obj)
     s['fit'] = None
@@ -303,6 +350,10 @@ def main(argv=None):
     p.add_argument('--force', action='store_true', help='save even if the gate fails')
     p.add_argument('--touch', nargs=3, type=float, metavar=('FACE_Y', 'TOP_Z', 'LEFT_X'),
                    help='switch: plug-tip touch references [m] (porttest.rj45_b touch_refs)')
+    p.add_argument('--manual', nargs=3, type=float, metavar=('X', 'Y', 'YAW_DEG'),
+                   help='hand-set pose: object origin x / y in base [m], yaw [deg]; z / roll / pitch from the plank '
+                        '(the dashboard editor does the same by dragging)')
+    p.add_argument('--z', type=float, help='with --manual: origin z in base [m] instead of standing on the plank')
     p.set_defaults(fn=cmd_register)
     p = sub.add_parser('predict')
     p.add_argument('obj', choices=state.OBJECTS)
@@ -323,6 +374,8 @@ def main(argv=None):
     p.add_argument('--max-age-min', type=float, default=60, help='older evidence is flagged stale')
     p.add_argument('--compact', action='store_true')
     p.set_defaults(fn=cmd_ensure)
+    p = sub.add_parser('plank', help='measure the plank plane from all cameras against the checkerboard')
+    p.set_defaults(fn=cmd_plank)
     p = sub.add_parser('reset')
     p.add_argument('obj', choices=state.OBJECTS)
     p.add_argument('--anchors', action='store_true')

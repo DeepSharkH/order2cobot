@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Breadboards rebuilt from the vendor CAD (assets/models/breadboard.sab, the 400-tie-point one):
-breadboard = the full-size one on the table (60 rows, nominal length), breadboard_400 = the CAD as is.
+breadboard = the full-size 830 one on the table (63 rows, BB830 size), breadboard_400 = the CAD as is.
 
 The .sab is an ACIS B-rep (SpaceClaim 2012) that nothing open tessellates, so this script
 reads the exact numbers out of it (hole centres from the hole-shaft vertices, outline and
@@ -12,7 +12,7 @@ x across the board (columns a -> j, + rails on the left of each rail pair), y al
 
 Outputs (dashboard/web/models/cad/):
     <name>.glb    three.js-loadable mesh (nodes: body, rail_plus, rail_minus)
-    <name>.json   features: every hole by name ('a1'..'j60', 'L+1'..'R-50' on the table board) etc.
+    <name>.json   features: every hole by name ('a1'..'j63', 'L+1'..'R-50' on the table board) etc.
 
 Needs manifold3d (gitignored ./.deps one level up):
     uv pip install --python .venv/bin/python --target assets/models/.deps manifold3d
@@ -69,12 +69,14 @@ def from_cad():
                                                                   S[along & (L < 80), 4].max()))
 
 
-# The board on the table is the full-size one (60 numbered rows a-e | f-j, + and - rails on
-# both sides, split in the middle), the vendor CAD is the 400 one of the same family
-# (same 55 mm cross-section, hole profile, rail lines, channel). The 830 is built from the
-# CAD cross-section with a nominal MB-102 length; its rail grouping (2 x 5 groups of 5 per
-# rail, split at the middle) is nominal too - the anchors correct the grid on the robot.
-VARIANTS = {'breadboard_400': None, 'breadboard': {'rows': 60, 'length': 165.1}}
+# The board on the table is the full-size 830 one (63 rows a-e | f-j, + and - rails on both
+# sides, split in the middle): 63 rows counted on the gripper-cam top view 2026-10-26 (hole
+# span 157.5 mm; 60 rows would be 149.9), 8.6 mm high by the gripper-cam depth over the
+# plank (BB830: 165.1 x 54.6 x 8.5). The vendor CAD is the 400 one of the same family
+# (same 55 mm cross-section, hole profile, rail lines, channel); the 830 is built from that
+# cross-section with the BB830 length and height. Its rail grouping (2 x 5 groups of 5 per
+# rail, split at the middle) is nominal - the anchors correct the grid on the robot.
+VARIANTS = {'breadboard_400': None, 'breadboard': {'rows': 63, 'length': 165.1, 'height': 8.5}}
 
 
 def _layout(c, o, variant):
@@ -115,7 +117,7 @@ def build(name='breadboard'):
     o = np.array([(lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, hi[2]])     # board frame origin
     W, Lb, H = hi - lo
     if variant:
-        Lb = variant['length']
+        Lb, H = variant['length'], variant.get('height', H)
     holes, spans, rows = _layout(c, o, variant)
     xl = sorted(c['xlines'] - o[0])
     # the x lines on the top face, left to right (see the docstring of from_cad)
@@ -145,7 +147,7 @@ def build(name='breadboard'):
     spec = {
         'name': name, 'rows': rows, 'tie_points': len(holes),
         'source': 'assets/models/breadboard.sab (ACIS, SpaceClaim, 400 version)' + (
-            '' if variant is None else f"; {rows} rows, length {Lb} mm and rail grouping nominal (MB-102)"),
+            '' if variant is None else f"; {rows} rows, length {Lb} mm, height {H} mm (BB830), rail grouping nominal"),
         'units': 'mm',
         'frame': 'origin = centre of the top face; x columns a->j, y toward row 1, z up',
         'size': [round(float(W), 3), round(float(Lb), 3), round(float(H), 3)],

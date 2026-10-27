@@ -19,7 +19,11 @@ Serves web/ and streams to each browser over one websocket (/ws):
   binary [u8 1][u8 cam_index] + JPEG            camera frame (0 fixed, 1 gripper, 2 SICK ToF if configured)
   binary [u8 2][u8 cam_index][2 pad][u32 n] + n*3 f32 xyz + n*3 u8 rgb   cloud in that camera's frame
 The browser sends {"type": ...}: locate_fixed, locate_tof, mount_from_view, set_base {x, y, yaw}, set_overlays {on},
-qa_test {port, phase}, qa_reset {port?}, locate_object {name, images?}.
+qa_test {port, phase}, qa_reset {port?}, locate_object {name, images?}, and from the scene editor
+(manual calibration) edit_preview {base?: {x, y, yaw_deg}, cad?: {name: {T, scale}}} (its unsaved
+poses, drawn on the feeds; {} when it closes) and set_cad_pose {name, T, scale}: a CAD target's
+T_base_obj as its manual registration (cad_targets.py). set_base and set_cad_pose are answered
+with {"type": "saved", "item", "ok", "message"}.
 
 POST /api/claude {"prompt", "session"?, "mode"?}   Claude Code CLI on the subscription (claude_chat.py)
 /api/circuit...   Circuit Assembly tab: request -> questions -> circuit JSON -> CSP layout -> assembly
@@ -62,6 +66,7 @@ from aiohttp import WSMsgType, web
 
 from agents.vision.locate import EDGES
 
+from . import cad_targets
 from . import calibration as cal
 from . import check_link
 from . import circuit_design
@@ -78,6 +83,7 @@ cv2.setNumThreads(2)     # the detection, camera and robot threads share the CPU
 
 ROOT = Path(__file__).resolve().parent.parent
 WEB = Path(__file__).resolve().parent / 'web'
+EDIT_TTL = 3.0       # s: an editor preview not refreshed for this long is dropped (browser gone)
 
 
 class Robot:
@@ -275,6 +281,8 @@ class App:
         self.clouds = [None for _ in self.cams]      # latest cloud per camera + its world pose, for objects
         self.plane = [None for _ in self.cams]       # depth on the board vs z = 0, per camera
         self.overlays = True
+        self.cad = cad_targets.CadTargets(b.get('thickness', 0.004))
+        self.edit = {'t': 0.0, 'base': None, 'cad': {}}      # the scene editor's unsaved poses (edit_preview)
         self.busy = None
         self.message = ''
         for i in range(len(self.cams)):
@@ -282,8 +290,9 @@ class App:
             threading.Thread(target=self._cloud_loop, args=(i,), daemon=True).start()
 
     # ── poses in the world (board) frame ──────────────────────────────────
-    def T_world_base(self):
-        b = self.scene['base']
+    def T_world_base(self, edit=None):
+        """The saved base, or with edit (_edit()) the one the scene editor is dragging."""
+        b = self.scene['base'] if not (edit and edit['base']) else {**self.scene['base'], **edit['base']}
         T = base_T(b['x'], b['y'], np.radians(b['yaw_deg']))
         T[2, 3] = b.get('z', 0.0)          # fixed offset below the board plane (scene_solve --free-z)
         return T
@@ -291,14 +300,14 @@ class App:
     def dh(self):
         return self.robot.dh if self.robot.dh is not None else kin.UR3E_NOMINAL_DH
 
-    def cam_pose(self, idx, q=None):
-        """T_world_cam, or None if the camera can't be placed."""
+    def cam_pose(self, idx, q=None, Tb=None):
+        """T_world_cam, or None if the camera can't be placed. Tb: T_world_base for the gripper cam."""
         if idx != 1:
             T = self.scene.get({0: 'T_world_fcam', 2: 'T_world_tcam'}[idx])
             return None if T is None else np.array(T)
         if q is None:
             q, _ = self.robot.joints()
-        return None if q is None else self.T_world_base() @ kin.fk(q, self.dh()) @ self.mount
+        return None if q is None else (self.T_world_base() if Tb is None else Tb) @ kin.fk(q, self.dh()) @ self.mount
 
     def board_view(self, idx):
         """T_world_cam from this camera's live view of the board, or None."""
@@ -388,8 +397,9 @@ class App:
 
     def _draw(self, idx, img, d):
         """Detected corners + board axes; then, from the scene calibration, the
-        robot's joint chain (cream) and the board corners (cyan rings) — both
-        should sit on the real ones."""
+        robot's joint chain (cream), the board corners (cyan rings), the located objects
+        and the CAD targets' boxes — all should sit on the real ones. While the scene
+        editor is open, its unsaved base and CAD poses are drawn instead of the saved ones."""
         cam = self.cams[idx]
         if d['corners'] is not None:
             cv2.drawChessboardCorners(img, (self.board.cols, self.board.rows),
@@ -399,43 +409,56 @@ class App:
                 rv, _ = cv2.Rodrigues(T[:3, :3])
                 cv2.drawFrameAxes(img, cam.K, cam.dist, rv, T[:3, 3], self.board.square * 3, 3)
         q, _ = self.robot.joints()
-        Tw = self.cam_pose(idx, q)
-        if Tw is None or cam.K is None:
+        edit = self._edit()
+        Tb = self.T_world_base(edit)
+        Tw, to_px = self.cam_pose(idx, q, Tb), _pixel_map(cam)
+        if Tw is None or to_px is None:
             return img
         Ti = kin.inv(Tw)
 
         def project(P):
-            P = (Ti[:3, :3] @ P.T).T + Ti[:3, 3]
-            return cal._project(P, cam.K, cam.dist).astype(int) if np.all(P[:, 2] > 0.05) else None
+            """World points (N, 3) -> pixels (N, 2) int, usable (N,)."""
+            uv, ok = to_px(P @ Ti[:3, :3].T + Ti[:3, 3])
+            return np.round(uv).astype(int), ok
+
+        t = np.linspace(0, 1, 24)[:, None]
+
+        def box(corners, colour, width):
+            # edges sampled in 3D so they bend with the lens distortion like the real ones
+            for a, b in EDGES:
+                uv, ok = project(corners[a] + t * (corners[b] - corners[a]))
+                for run in _runs(ok):
+                    cv2.polylines(img, [uv[run].reshape(-1, 1, 2).astype(np.int32)], False, colour, width, cv2.LINE_AA)
 
         if q is not None and idx == 0:          # the gripper cam rides on the arm: no chain to see
-            Tb = self.T_world_base()
             P = np.array([(Tb @ F)[:3, 3] for F in kin.fk_frames(q, self.dh())])
-            uv = project(P)
-            if uv is not None:
+            uv, ok = project(P)
+            if ok.all():
                 for a, b in zip(uv[:-1], uv[1:]):
                     cv2.line(img, tuple(a), tuple(b), (218, 245, 254), 3, cv2.LINE_AA)
                 for p in uv:
                     cv2.circle(img, tuple(p), 6, (60, 72, 210), -1, cv2.LINE_AA)
         Wb = self.T_world_board
-        uv = project((Wb[:3, :3] @ self.board.obj.T).T + Wb[:3, 3])
-        if uv is not None:
-            for p in uv:
-                cv2.circle(img, tuple(p), 4, (255, 220, 0), 1, cv2.LINE_AA)
-        # located objects: model instances (grey) and the bounding box (brass), edges sampled
-        # in 3D so they bend with the lens distortion like the real ones
-        t = np.linspace(0, 1, 24)[:, None]
-        for name, box, inst in self.objects.boxes():
-            parts = [*((b, (119, 133, 140), 1) for b in inst if len(inst) > 1), (box, (93, 161, 201), 2)]
-            for corners, colour, width in parts:
-                for a, b in EDGES:
-                    uv = project(corners[a] + t * (corners[b] - corners[a]))
-                    if uv is not None:
-                        cv2.polylines(img, [uv.reshape(-1, 1, 2).astype(np.int32)], False, colour, width, cv2.LINE_AA)
-            uv = project(box[4:5])
-            if uv is not None:
+        uv, ok = project((Wb[:3, :3] @ self.board.obj.T).T + Wb[:3, 3])
+        for p in uv[ok]:
+            cv2.circle(img, tuple(p), 4, (255, 220, 0), 1, cv2.LINE_AA)
+        # located objects: model instances (grey) and the bounding box (brass)
+        for name, corners, inst in self.objects.boxes():
+            for c in (inst if len(inst) > 1 else []):
+                box(c, (119, 133, 140), 1)
+            box(corners, (93, 161, 201), 2)
+            uv, ok = project(corners[4:5])
+            if ok[0]:
                 cv2.putText(img, name, (int(uv[0, 0]) + 6, int(uv[0, 1]) - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.7,
                             (93, 161, 201), 2, cv2.LINE_AA)
+        # CAD targets (cadguide poses), Hestia style: the box in the target's colour, its tag
+        # above the top face; sized for the stream, which is scaled to stream_width
+        s = max(1.0, img.shape[1] / self.cfg.get('stream_width', 960))
+        for tag, corners, colour in self.cad.boxes(Tb, edit['cad']):
+            box(corners, colour, round(2 * s))
+            uv, ok = project(corners[4:].mean(0, keepdims=True))
+            if ok[0]:
+                _tag(img, tag, uv[0], colour, s)
         return img
 
     def _cloud_loop(self, idx):
@@ -554,6 +577,24 @@ class App:
         self._save_scene()
         return f'gripper cam mount set: {len(views)} frames, {rms:.2f} px, spread {spread:.1f} mm — saved'
 
+    def _edit(self):
+        """The scene editor's unsaved poses while it sends them, else none."""
+        e = self.edit
+        return e if time.time() - e['t'] < EDIT_TTL else {'base': None, 'cad': {}}
+
+    def edit_preview(self, req):
+        """Unsaved poses of the scene editor, for the overlays: base {x, y, yaw_deg},
+        cad {name: {T, scale}} (T_base_obj); an empty one when it closes."""
+        b, cad = req.get('base'), {}
+        for name, p in (req.get('cad') or {}).items():
+            try:
+                if name in self.cad.models:
+                    cad[name] = cad_targets.checked_pose(p['T'], p['scale'])
+            except (ValueError, KeyError, TypeError):
+                pass
+        base = None if not b else {'x': float(b['x']), 'y': float(b['y']), 'yaw_deg': float(b['yaw_deg'])}
+        self.edit = {'t': time.time(), 'base': base, 'cad': cad}
+
     def set_base(self, x, y, yaw_deg):
         if self.mirror:
             return f'read-only mirror of {self.mirror}: set the base on that dashboard'
@@ -598,7 +639,45 @@ class App:
                 'board': self.board.describe(), 'base': self.scene['base'],
                 'T_world_base': self.T_world_base().tolist(),
                 'busy': self.busy, 'message': self.message, 'overlays': self.overlays,
-                'qa': self.qa.state(), 'objects': self.objects.state(), 'mirror': self.mirror}
+                'qa': self.qa.state(), 'objects': self.objects.state(), 'mirror': self.mirror,
+                'cad': self.cad.state(self._edit()['cad'])}
+
+
+def _pixel_map(cam):
+    """Camera-frame points (N, 3) -> (pixels (N, 2), usable (N,)), or None before the camera
+    has a model. Pinhole: in front of it and not far outside the image (the distortion
+    polynomial folds far points back in); orthographic grid (T Mini): x / y on the grid."""
+    if cam.orthographic:
+        if cam.grid is None:
+            return None
+        (ox, oy, _), (px, py, _) = cam.grid
+        return lambda P: (np.c_[(P[:, 0] - ox) / px, (P[:, 1] - oy) / py], np.ones(len(P), bool))
+    if cam.K is None:
+        return None
+    K = np.asarray(cam.K)
+    r2 = np.inf if not cam.size else 1.5 * max(((u - K[0, 2]) / K[0, 0]) ** 2 + ((v - K[1, 2]) / K[1, 1]) ** 2
+                                               for u in (0, cam.size[0]) for v in (0, cam.size[1]))
+
+    def to_px(P):
+        front = P[:, 2] > 0.05
+        P = np.where(front[:, None], P, [0.0, 0.0, 1.0])       # behind: projected harmlessly, then dropped
+        return cal._project(P, K, cam.dist), front & ((P[:, 0] ** 2 + P[:, 1] ** 2) / P[:, 2] ** 2 < r2)
+    return to_px
+
+
+def _runs(ok):
+    """Runs of consecutive True indices, at least 2 long (a polyline each)."""
+    i = np.flatnonzero(ok)
+    return [r for r in np.split(i, np.flatnonzero(np.diff(i) > 1) + 1) if len(r) > 1]
+
+
+def _tag(img, text, at, colour, s=1.0):
+    """Hestia-style name tag: a solid block in the colour, dark caps, centred above the pixel at."""
+    font, fs, th = cv2.FONT_HERSHEY_DUPLEX, 0.45 * s, max(1, round(s))
+    (w, h), _ = cv2.getTextSize(text, font, fs, th)
+    pad, x0, y1 = round(5 * s), int(at[0] - w / 2), int(at[1] - 4 * s)
+    cv2.rectangle(img, (x0 - pad, y1 - h - 2 * pad), (x0 + w + pad, y1), colour, -1)
+    cv2.putText(img, text, (x0, y1 - pad), font, fs, (17, 17, 17), th, cv2.LINE_AA)
 
 
 def _camera(cls, cfg):
@@ -681,6 +760,20 @@ async def _locate_object(app, name, images=None):
     await _run_action(app, f'locating {name}', run)
 
 
+async def _save_cad(ws, app, req):
+    """set_cad_pose: the scene editor's pose of a CAD target as its manual registration."""
+    name = str(req.get('name'))
+    try:
+        app._read_only()
+        msg = await asyncio.get_running_loop().run_in_executor(None, app.cad.save, name, req.get('T'), req.get('scale'))
+        ok = True
+    except Exception as e:
+        msg, ok = f'{name}: manual registration failed: {e}', False
+    app.message = msg
+    if not ws.closed:
+        await ws.send_str(json.dumps({'type': 'saved', 'item': name, 'ok': ok, 'message': msg}))
+
+
 async def ws_handler(request):
     ws = web.WebSocketResponse(heartbeat=10.0, max_msg_size=0)
     await ws.prepare(request)
@@ -703,6 +796,11 @@ async def ws_handler(request):
                 asyncio.create_task(_run_action(app, 'gripper cam mount', app.mount_from_view))
             elif t == 'set_base':
                 app.message = app.set_base(float(req['x']), float(req['y']), float(req['yaw']))
+                await ws.send_str(json.dumps({'type': 'saved', 'item': 'base', 'ok': not app.mirror, 'message': app.message}))
+            elif t == 'edit_preview':
+                app.edit_preview(req)
+            elif t == 'set_cad_pose':
+                asyncio.create_task(_save_cad(ws, app, req))
             elif t == 'set_overlays':
                 app.overlays = bool(req.get('on'))
             elif t == 'qa_test':

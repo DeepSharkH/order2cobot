@@ -75,46 +75,50 @@ const hande = new HandEModel();       // Robotiq Hand-E on the flange
 flangeG.add(hande.root);
 hande.load().catch((e) => console.error('Hand-E meshes failed to load', e));
 
-// CAD models of the targets (assets/models/cad/*.py) at T_base_obj from
-// models/cad/poses.json (python -m cadguide register / anchor), semi-transparent so
-// the camera clouds and the arm show through: misalignment is visible at a glance.
+// CAD models of the targets (assets/models/cad/*.py) at their cadguide poses T_base_obj
+// (state.cad: python -m cadguide register / anchor, or the manual calibration below),
+// semi-transparent so the camera clouds and the arm show through: misalignment is visible at
+// a glance. g is the rigid pose, its child s the pitch scales about the model's scale origin
+// (cadguide.model.CadModel.place), so the drawn grid is the one the targets come from.
 const cad = {};
 const cadLoader = new GLTFLoader();
 async function loadCadModel(name) {
   const g = placed(baseGroup);
   g.visible = false;
+  const s = placed(g);
   const gltf = await cadLoader.loadAsync(`./models/cad/${name}.glb`);
   gltf.scene.traverse((o) => {
     if (!o.isMesh) return;
     o.material = o.material.clone();
     Object.assign(o.material, { transparent: true, opacity: 0.45, depthWrite: false });
   });
-  g.add(gltf.scene);
+  s.add(gltf.scene);
   const l = label(name);
+  l.obj.position.set(0, 0, name === 'ls108g' ? 0.04 : 0.015);
   g.add(l.obj);
-  cad[name] = { g, l, key: '' };
+  cad[name] = { g, s, l, key: '' };
+  applyCad(lastState?.cad);
 }
 Promise.all(['ls108g', 'breadboard'].map(loadCadModel)).catch((e) => console.error('CAD models', e));
 let cadOn = true;
-async function pollCadPoses() {
-  try {
-    const poses = await (await fetch('./models/cad/poses.json', { cache: 'no-store' })).json();
-    for (const [name, m] of Object.entries(cad)) {
-      const p = poses[name];
-      m.g.visible = cadOn && !!p;
-      if (!p) continue;
-      const key = JSON.stringify(p);
-      if (key === m.key) continue;
-      m.key = key;
-      // object x / y pitch scales (fitted from anchors) stretch the model about its origin
-      m.g.matrix.copy(mat4(p.T)).multiply(new THREE.Matrix4().makeScale(p.scale[0], p.scale[1], 1));
-      m.l.el.innerHTML = `${name} <small>${p.source}${p.anchors ? ` · ${p.anchors} anchor${p.anchors > 1 ? 's' : ''}` : ''}</small>`;
-      m.l.obj.position.set(0, 0, name === 'ls108g' ? 0.04 : 0.015);
-    }
-  } catch { /* not registered yet */ }
+// Tr(o) · S · Tr(−o): the pitch scales stretch the model about its scale origin o (object frame)
+function setCadScale(m, scale, o) {
+  m.s.matrix.makeScale(scale[0], scale[1], 1).setPosition((1 - scale[0]) * o[0], (1 - scale[1]) * o[1], 0);
 }
-pollCadPoses();
-setInterval(pollCadPoses, 2000);
+function applyCad(c) {
+  for (const [name, m] of Object.entries(cad)) {
+    const p = c?.objects?.[name];
+    const edited = editor.active && editor.items[name];     // the editor drives the models while open
+    m.g.visible = cadOn && !!(p?.T || edited);
+    if (edited || !p?.T) continue;
+    const key = JSON.stringify([p.T, p.scale, p.kind, p.anchors]);
+    if (key === m.key) continue;
+    m.key = key;
+    m.g.matrix.copy(mat4(p.T));
+    setCadScale(m, p.scale, p.scale_origin);
+    m.l.el.innerHTML = `${name} <small>${esc(p.kind)}${p.anchors ? ` · ${p.anchors} anchor${p.anchors > 1 ? 's' : ''}` : ''}</small>`;
+  }
+}
 
 // cameras, drawn like the Hestia dashboard: a short pyramid from the
 // intrinsics (optical frame: x right, y down, z forward), an "up" triangle
@@ -343,7 +347,7 @@ function toggle(id, fn) {
   b.onclick = () => { b.classList.toggle('on'); fn(b.classList.contains('on')); };
 }
 toggle('#btn-cloud', (on) => { fuse.cloudOn = on; showClouds(); });
-toggle('#btn-cad', (on) => { cadOn = on; for (const m of Object.values(cad)) m.key = ''; pollCadPoses(); });
+toggle('#btn-cad', (on) => { cadOn = on; applyCad(lastState?.cad); });
 toggle('#btn-ovl', (on) => send({ type: 'set_overlays', on }));
 
 // ── camera feeds ────────────────────────────────────────────────────────────
@@ -390,7 +394,7 @@ function buildCards() {
       <table class="fuse" id="fuse-rows"></table>
       <p class="note" id="fuse-sum"></p>
     </div>`;
-  $('#b-edit').onclick = () => (editor.active ? editor.close() : editor.open());
+  $('#b-edit').onclick = () => (editor.active && editor.sel === 'base' ? editor.close() : editor.open('base'));
   $('#b-tint').onclick = (e) => { fuse.tint = !fuse.tint; e.target.classList.toggle('on', fuse.tint); clouds.forEach((_, i) => paintCloud(i)); };
   $('#fuse-rows').onchange = (e) => {
     const i = Number(e.target.dataset.cam);
@@ -431,6 +435,7 @@ function applyState(s) {
   ensureFeeds(s.cams);
   ensureViews(s.cams);
   if (!editor.active) baseGroup.matrix.copy(mat4(s.T_world_base));
+  applyCad(s.cad);
   if (s.robot.q) robot.setJoints(s.robot.q);
   if (s.robot.flange) flangeG.matrix.copy(mat4(s.robot.flange));
 
